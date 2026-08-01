@@ -1,5 +1,5 @@
 import { Env } from "@/Env";
-import { ProblemDetails } from "@/models/ProblemDetails";
+import { ProblemDetails } from "@/models/internal/ProblemDetails";
 import { Class } from "@/types/Class";
 import { createContext } from "react";
 import { Yesttp } from "yesttp";

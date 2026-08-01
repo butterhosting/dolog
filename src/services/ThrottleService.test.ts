@@ -5,6 +5,7 @@ import { TestFixture } from "@/testing/TestFixture.test";
 import { beforeEach, describe, expect, it } from "bun:test";
 import { TestScheduler } from "rxjs/testing";
 import { ThrottleService } from "./ThrottleService";
+import { ThrottleEvent } from "@/models/ThrottleEvent";
 
 /**
  * The throttler is built on time-based operators, so these run on rxjs' virtual clock: a "1000ms"
@@ -54,10 +55,10 @@ describe(ThrottleService.name, () => {
       expectObservable(throttled, "^ 1500ms !").toBe("(abcde) 993ms t", {
         ...events,
         t: expect.objectContaining({
-          type: ContainerEvent.Type.throttle,
+          object: "throttle_event",
           container,
           foldCount: 2,
-        }) as unknown as ContainerEvent,
+        }) as ThrottleEvent,
       });
     });
   });
@@ -82,7 +83,7 @@ describe(ThrottleService.name, () => {
       // then (the start survives, only the sixth log is folded)
       expectObservable(throttled, "^ 1500ms !").toBe("(sabcde) 992ms t", {
         ...events,
-        t: expect.objectContaining({ foldCount: 1 }) as unknown as ContainerEvent,
+        t: expect.objectContaining({ foldCount: 1 }) as ContainerEvent,
       });
     });
   });

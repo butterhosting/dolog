@@ -2,27 +2,19 @@ import { ZodParser } from "@/helpers/ZodParser";
 import { Temporal } from "@js-temporal/polyfill";
 import z from "zod/v4";
 import { Container } from "./Container";
+import { StdStream } from "./StdStream";
 
-export type ContainerEvent =
-  | ContainerEvent.Start //
-  | ContainerEvent.Stop
-  | ContainerEvent.Log
-  | ContainerEvent.Throttle;
+export type ContainerEvent = ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log;
 
 export namespace ContainerEvent {
   export enum Type {
     start = "start",
     stop = "stop",
     log = "log",
-    throttle = "throttle",
-  }
-
-  export enum Stream {
-    stdout = "stdout",
-    stderr = "stderr",
   }
 
   type Common = {
+    object: "container_event";
     timestamp: Temporal.Instant;
     container: Container;
   };
@@ -37,17 +29,8 @@ export namespace ContainerEvent {
 
   export type Log = Common & {
     type: Type.log;
-    stream: Stream;
+    stdStream: StdStream;
     message: string;
-  };
-
-  /**
-   * Stands in for log lines the throttler dropped, so a chatty container degrades into a
-   * visible gap rather than silently starving everything downstream.
-   */
-  export type Throttle = Common & {
-    type: Type.throttle;
-    foldCount: number;
   };
 
   const common = {
@@ -58,10 +41,23 @@ export namespace ContainerEvent {
   export const parse = ZodParser.forType<ContainerEvent>()
     .ensureSchemaMatchesType(() =>
       z.discriminatedUnion("type", [
-        z.object({ ...common, type: z.literal(Type.start) }),
-        z.object({ ...common, type: z.literal(Type.stop) }),
-        z.object({ ...common, type: z.literal(Type.log), stream: z.enum(Stream), message: z.string() }),
-        z.object({ ...common, type: z.literal(Type.throttle), foldCount: z.number() }),
+        z.object({
+          ...common,
+          type: z.literal(Type.start),
+          object: z.literal("container_event"),
+        }),
+        z.object({
+          ...common,
+          type: z.literal(Type.stop),
+          object: z.literal("container_event"),
+        }),
+        z.object({
+          ...common,
+          type: z.literal(Type.log),
+          object: z.literal("container_event"),
+          stdStream: z.enum(StdStream),
+          message: z.string(),
+        }),
       ]),
     )
     .ensureTypeMatchesSchema();

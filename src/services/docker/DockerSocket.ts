@@ -2,6 +2,7 @@ import { Env } from "@/Env";
 import { DockerError } from "@/errors/DockerError";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { StdStream } from "@/models/StdStream";
 import { Temporal } from "@js-temporal/polyfill";
 import z from "zod/v4";
 
@@ -16,12 +17,12 @@ export class DockerSocket {
 
   public async listRunningContainers(): Promise<Container[]> {
     const response = await this.request("/containers/json");
-    return DockerSocket.Summaries.parse(await response.json()).map((summary) =>
+    return Internal.Summaries.parse(await response.json()).map((summary) =>
       Container.parse({
         id: summary.Id,
         object: "container",
-        name: DockerSocket.readName(summary.Names.at(0) ?? summary.Id),
-        group: DockerSocket.readGroup(summary.Labels),
+        name: Internal.readName(summary.Names.at(0) ?? summary.Id),
+        group: Internal.readGroup(summary.Labels),
       }),
     );
   }
@@ -32,22 +33,22 @@ export class DockerSocket {
    */
   public async hasTty(id: string): Promise<boolean> {
     const response = await this.request(`/containers/${id}/json`);
-    return DockerSocket.Inspection.parse(await response.json()).Config.Tty;
+    return Internal.Inspection.parse(await response.json()).Config.Tty;
   }
 
   public async *streamLifecycle(signal: AbortSignal): AsyncGenerator<DockerSocket.Lifecycle> {
     const filters = JSON.stringify({ type: ["container"], event: ["start", "die"] });
     const response = await this.request(`/events?filters=${encodeURIComponent(filters)}`, signal);
-    for await (const line of DockerSocket.readLines(DockerSocket.readBody(response, "/events"))) {
-      const event = DockerSocket.Lifecycle.parse(JSON.parse(line));
+    for await (const line of Internal.readLines(Internal.readBody(response, "/events"))) {
+      const event = Internal.LifecycleEvent.parse(JSON.parse(line));
       yield {
         status: (event.Action ?? event.status)!,
         timestamp: Temporal.Instant.fromEpochMilliseconds(event.time * 1000),
         container: Container.parse({
           id: event.Actor.ID,
           object: "container",
-          name: DockerSocket.readName(event.Actor.Attributes.name),
-          group: DockerSocket.readGroup(event.Actor.Attributes),
+          name: Internal.readName(event.Actor.Attributes.name),
+          group: Internal.readGroup(event.Actor.Attributes),
         }),
       };
     }
@@ -59,12 +60,12 @@ export class DockerSocket {
   public async *streamLogs(id: string, tty: boolean, signal: AbortSignal): AsyncGenerator<DockerSocket.LogLine> {
     const path = `/containers/${id}/logs?follow=1&stdout=1&stderr=1&timestamps=1&tail=0`;
     const response = await this.request(path, signal);
-    const body = DockerSocket.readBody(response, path);
-    const payloads = tty ? DockerSocket.readTtyPayloads(body) : DockerSocket.readMultiplexedPayloads(body);
-    for await (const { stream, text } of payloads) {
+    const body = Internal.readBody(response, path);
+    const payloads = tty ? Internal.readTtyPayloads(body) : Internal.readMultiplexedPayloads(body);
+    for await (const { stdStream, text } of payloads) {
       for (const line of text.split("\n")) {
         if (line.length > 0) {
-          yield DockerSocket.readLogLine(stream, line);
+          yield Internal.readLogLine(stdStream, line);
         }
       }
     }
@@ -84,7 +85,7 @@ export class DockerSocket {
 
 export namespace DockerSocket {
   export type LogLine = {
-    stream: ContainerEvent.Stream;
+    stdStream: StdStream;
     timestamp: Temporal.Instant;
     message: string;
   };
@@ -94,7 +95,9 @@ export namespace DockerSocket {
     timestamp: Temporal.Instant;
     container: Container;
   };
+}
 
+namespace Internal {
   const LABEL_COMPOSE_PROJECT = "com.docker.compose.project";
   const LABEL_SWARM_STACK = "com.docker.stack.namespace";
   const FRAME_HEADER_BYTES = 8;
@@ -116,7 +119,7 @@ export namespace DockerSocket {
    * only send `status`. The request is filtered down to start/die, so whichever arrives is one
    * of the two.
    */
-  export const Lifecycle = z
+  export const LifecycleEvent = z
     .object({
       Action: z.enum(["start", "die"]).optional(),
       status: z.enum(["start", "die"]).optional(),
@@ -127,6 +130,11 @@ export namespace DockerSocket {
       }),
     })
     .refine((event) => Boolean(event.Action ?? event.status), { error: "missing_action" });
+
+  type Payload = {
+    stdStream: StdStream;
+    text: string;
+  };
 
   export function readName(name: string): string {
     return name.startsWith("/") ? name.slice(1) : name;
@@ -147,12 +155,12 @@ export namespace DockerSocket {
    * Docker's `timestamps=1` prefixes every line with an RFC3339Nano instant and a single space.
    * A line without one is still worth keeping, so it falls back to arrival time.
    */
-  export function readLogLine(stream: ContainerEvent.Stream, line: string): LogLine {
+  export function readLogLine(stdStream: StdStream, line: string): DockerSocket.LogLine {
     const separator = line.indexOf(" ");
     if (separator > 0) {
       try {
         return {
-          stream,
+          stdStream,
           timestamp: Temporal.Instant.from(line.slice(0, separator)),
           message: line.slice(separator + 1),
         };
@@ -160,7 +168,7 @@ export namespace DockerSocket {
         // not a timestamp after all
       }
     }
-    return { stream, timestamp: Temporal.Now.instant(), message: line };
+    return { stdStream, timestamp: Temporal.Now.instant(), message: line };
   }
 
   export async function* readLines(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
@@ -178,10 +186,10 @@ export namespace DockerSocket {
     }
   }
 
-  export async function* readTtyPayloads(body: ReadableStream<Uint8Array>): AsyncGenerator<{ stream: ContainerEvent.Stream; text: string }> {
+  export async function* readTtyPayloads(body: ReadableStream<Uint8Array>): AsyncGenerator<Payload> {
     const decoder = new TextDecoder();
     for await (const chunk of body) {
-      yield { stream: ContainerEvent.Stream.stdout, text: decoder.decode(chunk, { stream: true }) };
+      yield { stdStream: StdStream.out, text: decoder.decode(chunk, { stream: true }) };
     }
   }
 
@@ -189,9 +197,7 @@ export namespace DockerSocket {
    * Non-TTY containers interleave stdout and stderr on one connection, each chunk prefixed by an
    * 8-byte header: a stream descriptor, three padding bytes, then a big-endian payload length.
    */
-  export async function* readMultiplexedPayloads(
-    body: ReadableStream<Uint8Array>,
-  ): AsyncGenerator<{ stream: ContainerEvent.Stream; text: string }> {
+  export async function* readMultiplexedPayloads(body: ReadableStream<Uint8Array>): AsyncGenerator<Payload> {
     const decoder = new TextDecoder();
     let buffer: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
     for await (const chunk of body) {
@@ -208,10 +214,10 @@ export namespace DockerSocket {
         if (buffer.length - offset < FRAME_HEADER_BYTES + size) {
           break;
         }
-        const stream = buffer[offset] === 2 ? ContainerEvent.Stream.stderr : ContainerEvent.Stream.stdout;
+        const stdStream = buffer[offset] === 2 ? StdStream.err : StdStream.out;
         const start = offset + FRAME_HEADER_BYTES;
         yield {
-          stream,
+          stdStream,
           text: decoder.decode(buffer.subarray(start, start + size)),
         };
         offset = start + size;

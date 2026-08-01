@@ -1,7 +1,7 @@
 import { Temporal } from "@js-temporal/polyfill";
 import { basename } from "path";
 import { Env } from "./Env";
-import { LogLevel } from "./models/LogLevel";
+import { LogLevel } from "./models/internal/LogLevel";
 
 export class Logger {
   private static timeZone: string;

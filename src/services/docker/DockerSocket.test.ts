@@ -1,79 +1,194 @@
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { TestEnvironment } from "@/testing/TestEnvironment.test";
-import { beforeEach, describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { DockerSocket } from "./DockerSocket";
+import { StdStream } from "@/models/StdStream";
 
+const TIMESTAMP = "2026-08-01T10:11:12.130000000Z";
+
+/**
+ * Driven through the public methods against a stubbed socket, so the wire formats stay covered
+ * without reaching into the module's internals.
+ */
 describe(DockerSocket.name, () => {
+  let context: TestEnvironment.Context;
+  let socket: DockerSocket;
+
   beforeEach(async () => {
-    await TestEnvironment.initialize();
+    context = await TestEnvironment.initialize();
+    socket = new DockerSocket(context.env);
   });
 
-  describe("readMultiplexedPayloads", () => {
-    it("should split stdout and stderr apart", async () => {
+  describe("streamLogs", () => {
+    it("should split stdout and stderr apart and lift docker's timestamp prefix out", async () => {
       // given
-      const body = streamOf(frame(1, "out\n"), frame(2, "err\n"));
+      respondWith(streamOf(frame(1, `${TIMESTAMP} GET / 200\n`), frame(2, `${TIMESTAMP} boom\n`)));
       // when
-      const payloads = await collect(DockerSocket.readMultiplexedPayloads(body));
+      const lines = await readLogs();
       // then
-      expect(payloads).toEqual([
-        { stream: ContainerEvent.Stream.stdout, text: "out\n" },
-        { stream: ContainerEvent.Stream.stderr, text: "err\n" },
+      expect(lines).toEqual([
+        { stdStream: StdStream.out, timestamp: "2026-08-01T10:11:12.13Z", message: "GET / 200" },
+        { stdStream: StdStream.err, timestamp: "2026-08-01T10:11:12.13Z", message: "boom" },
       ]);
     });
 
     it("should reassemble a frame that arrives across several chunks", async () => {
       // given
-      const whole = frame(1, "hello world\n");
-      const body = streamOf(whole.subarray(0, 3), whole.subarray(3, 10), whole.subarray(10));
+      const whole = frame(1, `${TIMESTAMP} hello world\n`);
+      respondWith(streamOf(whole.subarray(0, 3), whole.subarray(3, 20), whole.subarray(20)));
       // when
-      const payloads = await collect(DockerSocket.readMultiplexedPayloads(body));
+      const lines = await readLogs();
       // then
-      expect(payloads).toEqual([{ stream: ContainerEvent.Stream.stdout, text: "hello world\n" }]);
+      expect(lines.map(({ message }) => message)).toEqual(["hello world"]);
     });
 
-    it("should hold back a frame until its payload is complete", async () => {
+    it("should hold back a frame whose payload never completes", async () => {
       // given (the header promises more bytes than ever arrive)
-      const truncated = frame(1, "hello").subarray(0, 10);
-      const body = streamOf(truncated);
+      respondWith(streamOf(frame(1, `${TIMESTAMP} hello\n`).subarray(0, 12)));
       // when
-      const payloads = await collect(DockerSocket.readMultiplexedPayloads(body));
+      const lines = await readLogs();
       // then
-      expect(payloads).toEqual([]);
+      expect(lines).toEqual([]);
+    });
+
+    it("should read a tty container's stream as raw stdout", async () => {
+      // given (no frame headers at all)
+      respondWith(streamOf(encode(`${TIMESTAMP} first\n${TIMESTAMP} second\n`)));
+      // when
+      const lines = await readLogs({ tty: true });
+      // then
+      expect(lines).toEqual([
+        { stdStream: StdStream.out, timestamp: "2026-08-01T10:11:12.13Z", message: "first" },
+        { stdStream: StdStream.out, timestamp: "2026-08-01T10:11:12.13Z", message: "second" },
+      ]);
+    });
+
+    it("should keep a line that has no parsable timestamp", async () => {
+      // given
+      respondWith(streamOf(frame(1, "no timestamp here\n")));
+      // when
+      const lines = await readLogs();
+      // then
+      expect(lines.map(({ message }) => message)).toEqual(["no timestamp here"]);
+      expect(lines.at(0)?.timestamp).toBeTruthy();
     });
   });
 
-  describe("readLogLine", () => {
-    it("should lift docker's timestamp prefix out of the message", () => {
+  describe("listRunningContainers", () => {
+    it("should strip the leading slash and prefer the swarm stack over the compose project", async () => {
+      // given
+      respondWith(
+        Response.json([
+          {
+            Id: "abc",
+            Names: ["/web"],
+            Labels: { "com.docker.stack.namespace": "stack", "com.docker.compose.project": "project" },
+          },
+        ]),
+      );
       // when
-      const line = DockerSocket.readLogLine(ContainerEvent.Stream.stdout, "2026-08-01T10:11:12.130000000Z GET / 200");
+      const containers = await socket.listRunningContainers();
       // then
-      expect(line.timestamp.toString()).toEqual("2026-08-01T10:11:12.13Z");
-      expect(line.message).toEqual("GET / 200");
+      expect(containers).toEqual([{ id: "abc", object: "container", name: "web", group: "stack" }]);
     });
 
-    it("should keep a line that has no parsable timestamp", () => {
+    it("should fall back to the compose project, and leave an unlabelled container ungrouped", async () => {
+      // given
+      respondWith(
+        Response.json([
+          { Id: "a", Names: ["/one"], Labels: { "com.docker.compose.project": "shop" } },
+          { Id: "b", Names: ["/two"], Labels: null },
+        ]),
+      );
       // when
-      const line = DockerSocket.readLogLine(ContainerEvent.Stream.stderr, "no timestamp here");
+      const containers = await socket.listRunningContainers();
       // then
-      expect(line.message).toEqual("no timestamp here");
-      expect(line.timestamp).toBeDefined();
+      expect(containers.map(({ name, group }) => ({ name, group }))).toEqual([
+        { name: "one", group: "shop" },
+        { name: "two", group: undefined },
+      ]);
     });
   });
 
-  describe("readGroup", () => {
-    it("should prefer the swarm stack over the compose project", () => {
+  describe("hasTty", () => {
+    it("should read the tty flag off the container's config", async () => {
+      // given
+      respondWith(Response.json({ Config: { Tty: true } }));
       // then
-      expect(DockerSocket.readGroup({ "com.docker.stack.namespace": "stack", "com.docker.compose.project": "project" })).toEqual("stack");
-      expect(DockerSocket.readGroup({ "com.docker.compose.project": "project" })).toEqual("project");
-      expect(DockerSocket.readGroup(null)).toBeUndefined();
+      expect(await socket.hasTty("abc")).toBe(true);
     });
   });
+
+  describe("streamLifecycle", () => {
+    it("should read the modern `Action` field", async () => {
+      // given
+      respondWith(streamOf(encode(`${lifecycle({ Action: "start" })}\n${lifecycle({ Action: "die" })}\n`)));
+      // when
+      const events = await collect(socket.streamLifecycle(new AbortController().signal));
+      // then
+      expect(events.map(({ status }) => status)).toEqual(["start", "die"]);
+      expect(events.at(0)?.container).toEqual({ id: "abc", object: "container", name: "web", group: "shop" });
+    });
+
+    it("should still read a legacy daemon's `status` field", async () => {
+      // given
+      respondWith(streamOf(encode(`${lifecycle({ status: "die" })}\n`)));
+      // when
+      const events = await collect(socket.streamLifecycle(new AbortController().signal));
+      // then
+      expect(events.map(({ status }) => status)).toEqual(["die"]);
+    });
+  });
+
+  describe("request", () => {
+    it("should turn a non-ok response into a domain error", async () => {
+      // given
+      respondWith(new Response("nope", { status: 500 }));
+      // then
+      expect(socket.listRunningContainers()).rejects.toEqual(
+        expect.objectContaining({
+          problem: "DockerError::unexpected_response",
+          details: { path: "/containers/json", status: 500 },
+        }),
+      );
+    });
+
+    it("should turn an unreachable socket into a domain error", async () => {
+      // given
+      spyOn(globalThis, "fetch").mockRejectedValue(new Error("ECONNREFUSED"));
+      // then
+      expect(socket.listRunningContainers()).rejects.toEqual(expect.objectContaining({ problem: "DockerError::socket_unreachable" }));
+    });
+  });
+
+  async function readLogs({ tty = false }: { tty?: boolean } = {}) {
+    const lines = await collect(socket.streamLogs("abc", tty, new AbortController().signal));
+    return lines.map(({ stdStream, timestamp, message }) => ({ stdStream, timestamp: timestamp.toString(), message }));
+  }
 });
 
-function frame(stream: 1 | 2, text: string): Uint8Array {
-  const payload = new TextEncoder().encode(text);
+function respondWith(body: ReadableStream<Uint8Array> | Response) {
+  const response = body instanceof Response ? body : new Response(body, { status: 200 });
+  spyOn(globalThis, "fetch").mockResolvedValue(response);
+}
+
+function lifecycle(overrides: Record<string, string>): string {
+  return JSON.stringify({
+    Type: "container",
+    time: 1785592390,
+    Actor: { ID: "abc", Attributes: { name: "/web", "com.docker.compose.project": "shop" } },
+    ...overrides,
+  });
+}
+
+function encode(text: string): Uint8Array {
+  return new TextEncoder().encode(text);
+}
+
+function frame(stdStream: 1 | 2, text: string): Uint8Array {
+  const payload = encode(text);
   const buffer = new Uint8Array(8 + payload.length);
-  buffer[0] = stream;
+  buffer[0] = stdStream;
   new DataView(buffer.buffer).setUint32(4, payload.length, false);
   buffer.set(payload, 8);
   return buffer;

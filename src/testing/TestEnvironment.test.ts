@@ -1,7 +1,7 @@
 import { DockerSocket } from "@/services/docker/DockerSocket";
 import { Env } from "@/Env";
 import { Logger } from "@/Logger";
-import { LogLevel } from "@/models/LogLevel";
+import { LogLevel } from "@/models/internal/LogLevel";
 import { OmitBetter } from "@/types/OmitBetter";
 import { jest, mock, Mock } from "bun:test";
 import { join } from "path";

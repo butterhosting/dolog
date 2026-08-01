@@ -1,27 +1,35 @@
 import { Env } from "@/Env";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { DologEvent } from "@/models/DologEvent";
+import { ThrottleEvent } from "@/models/ThrottleEvent";
 import { Throughput } from "@/models/Throughput";
 import { Temporal } from "@js-temporal/polyfill";
 import { Buffer } from "buffer";
-import { debounceTime, EMPTY, finalize, GroupedObservable, groupBy, interval, merge, mergeMap, Observable, of, Subject, takeUntil } from "rxjs";
+import {
+  debounceTime,
+  EMPTY,
+  finalize,
+  groupBy,
+  GroupedObservable,
+  interval,
+  merge,
+  mergeMap,
+  Observable,
+  of,
+  Subject,
+  takeUntil,
+} from "rxjs";
 
 const WINDOW_MS = 1_000;
 const IDLE_EVICTION_MS = 5 * 60 * 1_000;
 
-/**
- * Caps how much any single container can shout, and keeps a live throughput reading per container
- * as a side effect of doing so.
- *
- * It is a service rather than a bare operator because the throughput readings are state that
- * outlives any one subscription, and are meant to be read from elsewhere.
- */
 export class ThrottleService {
   private readonly throughput = new Map<string, Throughput>();
 
   public constructor(private readonly env: Env.Private) {}
 
-  public throttle(events: Observable<ContainerEvent>): Observable<ContainerEvent> {
+  public throttle(events: Observable<ContainerEvent>): Observable<DologEvent> {
     return events.pipe(
       groupBy((event) => event.container.id, {
         duration: (group) => group.pipe(debounceTime(IDLE_EVICTION_MS)),
@@ -39,7 +47,7 @@ export class ThrottleService {
    * discarded and reported as a single `throttle` event when the window closes. Well-behaved
    * containers therefore see no added latency at all.
    */
-  private throttleContainer(group: GroupedObservable<string, ContainerEvent>): Observable<ContainerEvent> {
+  private throttleContainer(group: GroupedObservable<string, ContainerEvent>): Observable<DologEvent> {
     const limit = this.env.X_DOLOG_THROTTLE_LOGS_PER_SECOND;
     const closed = new Subject<void>();
     const window = { container: undefined as Container | undefined, logs: 0, bytes: 0, folded: 0 };
@@ -64,7 +72,7 @@ export class ThrottleService {
       }),
     );
 
-    const windows = interval(WINDOW_MS).pipe(
+    const windows: Observable<ThrottleEvent> = interval(WINDOW_MS).pipe(
       takeUntil(closed),
       mergeMap(() => {
         const { container, logs, bytes, folded } = window;
@@ -86,8 +94,8 @@ export class ThrottleService {
         if (folded === 0) {
           return EMPTY;
         }
-        return of<ContainerEvent.Throttle>({
-          type: ContainerEvent.Type.throttle,
+        return of<ThrottleEvent>({
+          object: "throttle_event",
           timestamp: measured,
           container,
           foldCount: folded,

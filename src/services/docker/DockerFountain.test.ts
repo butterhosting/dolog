@@ -5,6 +5,7 @@ import { Temporal } from "@js-temporal/polyfill";
 import { beforeEach, describe, expect, it } from "bun:test";
 import { firstValueFrom, take, toArray } from "rxjs";
 import { DockerFountain } from "./DockerFountain";
+import { StdStream } from "@/models/StdStream";
 
 describe(DockerFountain.name, () => {
   let context: TestEnvironment.Context;
@@ -24,7 +25,7 @@ describe(DockerFountain.name, () => {
     const container = TestFixture.container();
     context.dockerSocketMock.listRunningContainers.mockResolvedValue([container]);
     context.dockerSocketMock.streamLogs.mockImplementation(async function* () {
-      yield { stream: ContainerEvent.Stream.stdout, timestamp: Temporal.Now.instant(), message: "listening on 3000" };
+      yield { stdStream: StdStream.out, timestamp: Temporal.Now.instant(), message: "listening on 3000" };
       await never();
     });
 
@@ -64,7 +65,7 @@ describe(DockerFountain.name, () => {
       await never();
     });
     context.dockerSocketMock.streamLogs.mockImplementation(async function* () {
-      yield { stream: ContainerEvent.Stream.stdout, timestamp: Temporal.Now.instant(), message: "once" };
+      yield { stdStream: StdStream.out, timestamp: Temporal.Now.instant(), message: "once" };
       await never();
     });
 
@@ -87,7 +88,7 @@ describe(DockerFountain.name, () => {
       if (id === broken.id) {
         throw new Error("stream exploded");
       }
-      yield { stream: ContainerEvent.Stream.stdout, timestamp: Temporal.Now.instant(), message: "still here" };
+      yield { stdStream: StdStream.out, timestamp: Temporal.Now.instant(), message: "still here" };
       await never();
     });
 

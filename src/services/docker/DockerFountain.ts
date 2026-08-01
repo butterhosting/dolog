@@ -4,6 +4,7 @@ import { ContainerEvent } from "@/models/ContainerEvent";
 import { Temporal } from "@js-temporal/polyfill";
 import { catchError, defer, EMPTY, from, map, merge, mergeMap, Observable, of, repeat, retry, share, timer } from "rxjs";
 import { DockerSocket } from "./DockerSocket";
+import { object } from "zod/v3";
 
 const RECONNECT_DELAY_MS = 2_000;
 
@@ -21,15 +22,11 @@ export class DockerFountain {
   public constructor(private readonly dockerSocket: DockerSocket) {}
 
   public initialize(): Observable<ContainerEvent> {
-    /**
-     * Memoized and kept hot: subscribing twice must not open a second set of log streams, and the
-     * fountain must not shut down when the last subscriber happens to drop off.
-     */
-    this.events ??= defer(() => this.produce()).pipe(share({ resetOnRefCountZero: false }));
+    this.events ??= defer(() => this.beginListening()).pipe(share({ resetOnRefCountZero: false }));
     return this.events;
   }
 
-  private produce(): Observable<ContainerEvent> {
+  private beginListening(): Observable<ContainerEvent> {
     const streaming = new Set<string>();
     return merge(this.alreadyRunning(), this.lifecycle()).pipe(
       mergeMap((event) => {
@@ -59,7 +56,8 @@ export class DockerFountain {
     return defer(() => this.dockerSocket.listRunningContainers()).pipe(
       retry({ delay: (error) => this.reconnect("Could not list running containers", error) }),
       mergeMap((containers) => from(containers)),
-      map((container) => ({
+      map((container): ContainerEvent.Start => ({
+        object: "container_event",
         type: ContainerEvent.Type.start as const,
         timestamp: Temporal.Now.instant(),
         container,
@@ -75,8 +73,18 @@ export class DockerFountain {
     return this.abortable((signal) => this.dockerSocket.streamLifecycle(signal)).pipe(
       map(({ status, timestamp, container }): ContainerEvent.Start | ContainerEvent.Stop => {
         return status === "start"
-          ? { type: ContainerEvent.Type.start, timestamp, container }
-          : { type: ContainerEvent.Type.stop, timestamp, container };
+          ? {
+              type: ContainerEvent.Type.start,
+              object: "container_event",
+              timestamp,
+              container,
+            }
+          : {
+              type: ContainerEvent.Type.stop,
+              object: "container_event",
+              timestamp,
+              container,
+            };
       }),
       retry({ delay: (error) => this.reconnect("Docker event stream failed", error) }),
       repeat({ delay: () => this.reconnect("Docker event stream closed") }),
@@ -89,11 +97,12 @@ export class DockerFountain {
   private logs(container: Container): Observable<ContainerEvent.Log> {
     return defer(() => this.dockerSocket.hasTty(container.id)).pipe(
       mergeMap((tty) => this.abortable((signal) => this.dockerSocket.streamLogs(container.id, tty, signal))),
-      map(({ stream, timestamp, message }) => ({
+      map(({ stdStream, timestamp, message }): ContainerEvent.Log => ({
+        object: "container_event",
         type: ContainerEvent.Type.log as const,
         timestamp,
         container,
-        stream,
+        stdStream,
         message,
       })),
       catchError((error) => {
