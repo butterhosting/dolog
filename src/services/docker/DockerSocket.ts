@@ -1,7 +1,6 @@
 import { Env } from "@/Env";
 import { DockerError } from "@/errors/DockerError";
 import { Container } from "@/models/Container";
-import { ContainerEvent } from "@/models/ContainerEvent";
 import { StdStream } from "@/models/StdStream";
 import { Temporal } from "@js-temporal/polyfill";
 import z from "zod/v4";
@@ -13,6 +12,10 @@ import z from "zod/v4";
  * Bun's `fetch` speaks unix sockets natively, so no docker client library is involved.
  */
 export class DockerSocket {
+  private static readonly LABEL_COMPOSE_PROJECT = "com.docker.compose.project";
+  private static readonly LABEL_SWARM_STACK = "com.docker.stack.namespace";
+  private static readonly FRAME_HEADER_BYTES = 8;
+
   public constructor(private readonly env: Env.Private) {}
 
   public async listRunningContainers(): Promise<Container[]> {
@@ -21,8 +24,8 @@ export class DockerSocket {
       Container.parse({
         id: summary.Id,
         object: "container",
-        name: Internal.readName(summary.Names.at(0) ?? summary.Id),
-        group: Internal.readGroup(summary.Labels),
+        name: this.readName(summary.Names.at(0) ?? summary.Id),
+        group: this.readGroup(summary.Labels),
       }),
     );
   }
@@ -39,7 +42,7 @@ export class DockerSocket {
   public async *streamLifecycle(signal: AbortSignal): AsyncGenerator<DockerSocket.Lifecycle> {
     const filters = JSON.stringify({ type: ["container"], event: ["start", "die"] });
     const response = await this.request(`/events?filters=${encodeURIComponent(filters)}`, signal);
-    for await (const line of Internal.readLines(Internal.readBody(response, "/events"))) {
+    for await (const line of this.readLines(this.readBody(response, "/events"))) {
       const event = Internal.LifecycleEvent.parse(JSON.parse(line));
       yield {
         status: (event.Action ?? event.status)!,
@@ -47,8 +50,8 @@ export class DockerSocket {
         container: Container.parse({
           id: event.Actor.ID,
           object: "container",
-          name: Internal.readName(event.Actor.Attributes.name),
-          group: Internal.readGroup(event.Actor.Attributes),
+          name: this.readName(event.Actor.Attributes.name),
+          group: this.readGroup(event.Actor.Attributes),
         }),
       };
     }
@@ -60,12 +63,12 @@ export class DockerSocket {
   public async *streamLogs(id: string, tty: boolean, signal: AbortSignal): AsyncGenerator<DockerSocket.LogLine> {
     const path = `/containers/${id}/logs?follow=1&stdout=1&stderr=1&timestamps=1&tail=0`;
     const response = await this.request(path, signal);
-    const body = Internal.readBody(response, path);
-    const payloads = tty ? Internal.readTtyPayloads(body) : Internal.readMultiplexedPayloads(body);
+    const body = this.readBody(response, path);
+    const payloads = tty ? this.readTtyPayloads(body) : this.readMultiplexedPayloads(body);
     for await (const { stdStream, text } of payloads) {
       for (const line of text.split("\n")) {
         if (line.length > 0) {
-          yield Internal.readLogLine(stdStream, line);
+          yield this.readLogLine(stdStream, line);
         }
       }
     }
@@ -80,6 +83,104 @@ export class DockerSocket {
       throw DockerError.unexpected_response({ path, status: response.status });
     }
     return response;
+  }
+
+  private readName(name: string): string {
+    return name.startsWith("/") ? name.slice(1) : name;
+  }
+
+  private readGroup(labels: Record<string, string> | null | undefined): string | undefined {
+    return labels?.[DockerSocket.LABEL_SWARM_STACK] ?? labels?.[DockerSocket.LABEL_COMPOSE_PROJECT];
+  }
+
+  private readBody(response: Response, path: string): ReadableStream<Uint8Array> {
+    if (!response.body) {
+      throw DockerError.empty_response_body({ path });
+    }
+    return response.body;
+  }
+
+  /**
+   * Docker's `timestamps=1` prefixes every line with an RFC3339Nano instant and a single space.
+   * A line without one is still worth keeping, so it falls back to arrival time.
+   */
+  private readLogLine(stdStream: StdStream, line: string): DockerSocket.LogLine {
+    const separator = line.indexOf(" ");
+    if (separator > 0) {
+      try {
+        return {
+          stdStream,
+          timestamp: Temporal.Instant.from(line.slice(0, separator)),
+          message: line.slice(separator + 1),
+        };
+      } catch {
+        // not a timestamp after all
+      }
+    }
+    return { stdStream, timestamp: Temporal.Now.instant(), message: line };
+  }
+
+  private async *readLines(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
+    let pending = "";
+    const decoder = new TextDecoder();
+    for await (const chunk of body) {
+      pending += decoder.decode(chunk, { stream: true });
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+      for (const line of lines) {
+        if (line.trim().length > 0) {
+          yield line;
+        }
+      }
+    }
+  }
+
+  private async *readTtyPayloads(body: ReadableStream<Uint8Array>): AsyncGenerator<Internal.Payload> {
+    const decoder = new TextDecoder();
+    for await (const chunk of body) {
+      yield { stdStream: StdStream.out, text: decoder.decode(chunk, { stream: true }) };
+    }
+  }
+
+  /**
+   * Non-TTY containers interleave stdout and stderr on one connection, each chunk prefixed by an
+   * 8-byte header: a stream descriptor, three padding bytes, then a big-endian payload length.
+   */
+  private async *readMultiplexedPayloads(body: ReadableStream<Uint8Array>): AsyncGenerator<Internal.Payload> {
+    const headerBytes = DockerSocket.FRAME_HEADER_BYTES;
+    const decoder = new TextDecoder();
+    let buffer: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
+    for await (const chunk of body) {
+      /**
+       * Walked with an offset rather than re-slicing per frame: a chatty container packs thousands
+       * of tiny frames into one chunk, and copying the remainder each time makes a single chunk
+       * quadratic -- enough to wedge the process outright.
+       */
+      let offset = 0;
+      buffer = buffer.length === 0 ? chunk : this.concat(buffer, chunk);
+      while (buffer.length - offset >= headerBytes) {
+        const header = new DataView(buffer.buffer, buffer.byteOffset + offset, headerBytes);
+        const size = header.getUint32(4, false);
+        if (buffer.length - offset < headerBytes + size) {
+          break;
+        }
+        const stdStream = buffer[offset] === 2 ? StdStream.err : StdStream.out;
+        const start = offset + headerBytes;
+        yield {
+          stdStream,
+          text: decoder.decode(buffer.subarray(start, start + size)),
+        };
+        offset = start + size;
+      }
+      buffer = offset === 0 ? buffer : buffer.slice(offset);
+    }
+  }
+
+  private concat(left: Uint8Array, right: Uint8Array): Uint8Array {
+    const result = new Uint8Array(left.length + right.length);
+    result.set(left);
+    result.set(right, left.length);
+    return result;
   }
 }
 
@@ -97,10 +198,15 @@ export namespace DockerSocket {
   };
 }
 
+/**
+ * Docker's wire formats: the shapes coming off the socket, and the schemas that validate them.
+ * None of it escapes this module.
+ */
 namespace Internal {
-  const LABEL_COMPOSE_PROJECT = "com.docker.compose.project";
-  const LABEL_SWARM_STACK = "com.docker.stack.namespace";
-  const FRAME_HEADER_BYTES = 8;
+  export type Payload = {
+    stdStream: StdStream;
+    text: string;
+  };
 
   export const Summaries = z.array(
     z.object({
@@ -130,106 +236,4 @@ namespace Internal {
       }),
     })
     .refine((event) => Boolean(event.Action ?? event.status), { error: "missing_action" });
-
-  type Payload = {
-    stdStream: StdStream;
-    text: string;
-  };
-
-  export function readName(name: string): string {
-    return name.startsWith("/") ? name.slice(1) : name;
-  }
-
-  export function readGroup(labels: Record<string, string> | null | undefined): string | undefined {
-    return labels?.[LABEL_SWARM_STACK] ?? labels?.[LABEL_COMPOSE_PROJECT];
-  }
-
-  export function readBody(response: Response, path: string): ReadableStream<Uint8Array> {
-    if (!response.body) {
-      throw DockerError.empty_response_body({ path });
-    }
-    return response.body;
-  }
-
-  /**
-   * Docker's `timestamps=1` prefixes every line with an RFC3339Nano instant and a single space.
-   * A line without one is still worth keeping, so it falls back to arrival time.
-   */
-  export function readLogLine(stdStream: StdStream, line: string): DockerSocket.LogLine {
-    const separator = line.indexOf(" ");
-    if (separator > 0) {
-      try {
-        return {
-          stdStream,
-          timestamp: Temporal.Instant.from(line.slice(0, separator)),
-          message: line.slice(separator + 1),
-        };
-      } catch {
-        // not a timestamp after all
-      }
-    }
-    return { stdStream, timestamp: Temporal.Now.instant(), message: line };
-  }
-
-  export async function* readLines(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
-    let pending = "";
-    const decoder = new TextDecoder();
-    for await (const chunk of body) {
-      pending += decoder.decode(chunk, { stream: true });
-      const lines = pending.split("\n");
-      pending = lines.pop() ?? "";
-      for (const line of lines) {
-        if (line.trim().length > 0) {
-          yield line;
-        }
-      }
-    }
-  }
-
-  export async function* readTtyPayloads(body: ReadableStream<Uint8Array>): AsyncGenerator<Payload> {
-    const decoder = new TextDecoder();
-    for await (const chunk of body) {
-      yield { stdStream: StdStream.out, text: decoder.decode(chunk, { stream: true }) };
-    }
-  }
-
-  /**
-   * Non-TTY containers interleave stdout and stderr on one connection, each chunk prefixed by an
-   * 8-byte header: a stream descriptor, three padding bytes, then a big-endian payload length.
-   */
-  export async function* readMultiplexedPayloads(body: ReadableStream<Uint8Array>): AsyncGenerator<Payload> {
-    const decoder = new TextDecoder();
-    let buffer: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
-    for await (const chunk of body) {
-      /**
-       * Walked with an offset rather than re-slicing per frame: a chatty container packs thousands
-       * of tiny frames into one chunk, and copying the remainder each time makes a single chunk
-       * quadratic -- enough to wedge the process outright.
-       */
-      let offset = 0;
-      buffer = buffer.length === 0 ? chunk : concat(buffer, chunk);
-      while (buffer.length - offset >= FRAME_HEADER_BYTES) {
-        const header = new DataView(buffer.buffer, buffer.byteOffset + offset, FRAME_HEADER_BYTES);
-        const size = header.getUint32(4, false);
-        if (buffer.length - offset < FRAME_HEADER_BYTES + size) {
-          break;
-        }
-        const stdStream = buffer[offset] === 2 ? StdStream.err : StdStream.out;
-        const start = offset + FRAME_HEADER_BYTES;
-        yield {
-          stdStream,
-          text: decoder.decode(buffer.subarray(start, start + size)),
-        };
-        offset = start + size;
-      }
-      buffer = offset === 0 ? buffer : buffer.slice(offset);
-    }
-  }
-
-  function concat(left: Uint8Array, right: Uint8Array): Uint8Array {
-    const result = new Uint8Array(left.length + right.length);
-    result.set(left);
-    result.set(right, left.length);
-    return result;
-  }
 }

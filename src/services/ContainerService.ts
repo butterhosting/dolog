@@ -12,7 +12,7 @@ export class ContainerService {
     private readonly throttleService: ThrottleService,
   ) {}
 
-  public initialize(): Observable<DologEvent> {
+  public initializeStream(): Observable<DologEvent> {
     this.events ??= this.throttleService //
       .throttle(this.dockerFountain.initialize())
       .pipe(share({ resetOnRefCountZero: false }));

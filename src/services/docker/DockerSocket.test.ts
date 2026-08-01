@@ -1,4 +1,3 @@
-import { ContainerEvent } from "@/models/ContainerEvent";
 import { TestEnvironment } from "@/testing/TestEnvironment.test";
 import { beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { DockerSocket } from "./DockerSocket";

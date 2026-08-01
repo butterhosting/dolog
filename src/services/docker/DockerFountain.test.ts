@@ -20,7 +20,7 @@ describe(DockerFountain.name, () => {
     context.dockerSocketMock.streamLogs.mockImplementation(silent);
   });
 
-  it("should announce containers that were already running, then follow their logs", async () => {
+  it("should follow the logs of containers that were already running, without inventing a start", async () => {
     // given
     const container = TestFixture.container();
     context.dockerSocketMock.listRunningContainers.mockResolvedValue([container]);
@@ -30,12 +30,9 @@ describe(DockerFountain.name, () => {
     });
 
     // when
-    const events = await firstValueFrom(fountain.initialize().pipe(take(2), toArray()));
-    // then
-    expect(events).toEqual([
-      expect.objectContaining({ type: ContainerEvent.Type.start, container }),
-      expect.objectContaining({ type: ContainerEvent.Type.log, container, message: "listening on 3000" }),
-    ]);
+    const events = await firstValueFrom(fountain.initialize().pipe(take(1), toArray()));
+    // then (the log arrives on its own -- dolog did not witness this container start)
+    expect(events).toEqual([expect.objectContaining({ type: ContainerEvent.Type.log, container, message: "listening on 3000" })]);
   });
 
   it("should map docker's lifecycle events onto start and stop", async () => {
@@ -57,7 +54,7 @@ describe(DockerFountain.name, () => {
   });
 
   it("should not attach twice when a container is both listed and announced", async () => {
-    // given (the container was already up, and docker reports its start as well)
+    // given (the container started in the window between opening the event stream and listing)
     const container = TestFixture.container();
     context.dockerSocketMock.listRunningContainers.mockResolvedValue([container]);
     context.dockerSocketMock.streamLifecycle.mockImplementation(async function* () {
@@ -71,7 +68,7 @@ describe(DockerFountain.name, () => {
 
     // when
     const events = await firstValueFrom(fountain.initialize().pipe(take(2), toArray()));
-    // then (one start, one log -- not a duplicated log stream)
+    // then (the real start survives, and its logs are followed exactly once)
     expect(events).toEqual([
       expect.objectContaining({ type: ContainerEvent.Type.start }),
       expect.objectContaining({ type: ContainerEvent.Type.log, message: "once" }),
@@ -93,11 +90,9 @@ describe(DockerFountain.name, () => {
     });
 
     // when
-    const events = await firstValueFrom(fountain.initialize().pipe(take(3), toArray()));
-    // then
-    expect(events.filter((event) => event.type === ContainerEvent.Type.log)).toEqual([
-      expect.objectContaining({ container: healthy, message: "still here" }),
-    ]);
+    const events = await firstValueFrom(fountain.initialize().pipe(take(1), toArray()));
+    // then (the broken stream is swallowed, the healthy one keeps flowing)
+    expect(events).toEqual([expect.objectContaining({ container: healthy, message: "still here" })]);
   });
 
   it("should hand out the same stream every time it is initialized", () => {

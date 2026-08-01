@@ -1,10 +1,8 @@
 import { Logger } from "@/Logger";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
-import { Temporal } from "@js-temporal/polyfill";
 import { catchError, defer, EMPTY, from, map, merge, mergeMap, Observable, of, repeat, retry, share, timer } from "rxjs";
 import { DockerSocket } from "./DockerSocket";
-import { object } from "zod/v3";
 
 const RECONNECT_DELAY_MS = 2_000;
 
@@ -12,6 +10,11 @@ const RECONNECT_DELAY_MS = 2_000;
  * The single source of container events. Turned on once, it emits for the lifetime of the process:
  * containers that come online start producing logs, containers that die stop, and a dead socket is
  * retried until it comes back.
+ *
+ * The stream reports only what actually happened while it was listening. Containers that were
+ * already up get their logs followed but no `start` -- dolog did not witness them start, and
+ * inventing one would date it to boot time rather than to the event. Ask `DockerSocket` directly
+ * for a point-in-time view of what is running.
  *
  * It never emits `throttle` events -- that is the throttler's job, downstream.
  */
@@ -28,40 +31,40 @@ export class DockerFountain {
 
   private beginListening(): Observable<ContainerEvent> {
     const streaming = new Set<string>();
-    return merge(this.alreadyRunning(), this.lifecycle()).pipe(
-      mergeMap((event) => {
-        if (event.type === ContainerEvent.Type.stop) {
-          streaming.delete(event.container.id);
-          return of(event);
-        }
-        /**
-         * A container that was already up when we started also produces a `start` event if it was
-         * started moments ago, so the same container can arrive twice. Attaching twice would
-         * duplicate every one of its log lines.
-         */
-        if (streaming.has(event.container.id)) {
-          return EMPTY;
-        }
-        streaming.add(event.container.id);
-        return merge(of(event), this.logs(event.container));
-      }),
+    /**
+     * The listing and the event stream are opened concurrently, so a container starting in that
+     * window shows up in both. Attaching twice would duplicate every one of its log lines.
+     */
+    const follow = (container: Container): Observable<ContainerEvent.Log> => {
+      if (streaming.has(container.id)) {
+        return EMPTY;
+      }
+      streaming.add(container.id);
+      return this.logs(container);
+    };
+    return merge(
+      this.alreadyRunning().pipe(mergeMap(follow)),
+      this.lifecycle().pipe(
+        mergeMap((event) => {
+          if (event.type === ContainerEvent.Type.stop) {
+            streaming.delete(event.container.id);
+            return of(event);
+          }
+          return merge(of(event), follow(event.container));
+        }),
+      ),
     );
   }
 
   /**
-   * Containers that were already running get a synthetic `start`, so that a restart of dolog
-   * presents the same picture as having watched them boot.
+   * Docker's event stream only reports from the moment it is opened, so without this the fountain
+   * would stay silent until something happened to restart. These containers are followed for their
+   * logs only -- they produce no event of their own.
    */
-  private alreadyRunning(): Observable<ContainerEvent.Start> {
+  private alreadyRunning(): Observable<Container> {
     return defer(() => this.dockerSocket.listRunningContainers()).pipe(
       retry({ delay: (error) => this.reconnect("Could not list running containers", error) }),
       mergeMap((containers) => from(containers)),
-      map((container): ContainerEvent.Start => ({
-        object: "container_event",
-        type: ContainerEvent.Type.start as const,
-        timestamp: Temporal.Now.instant(),
-        container,
-      })),
     );
   }
 
