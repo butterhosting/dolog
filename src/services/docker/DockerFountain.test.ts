@@ -5,7 +5,7 @@ import { Temporal } from "@js-temporal/polyfill";
 import { beforeEach, describe, expect, it } from "bun:test";
 import { firstValueFrom, take, toArray } from "rxjs";
 import { DockerFountain } from "./DockerFountain";
-import { StdStream } from "@/models/StdStream";
+import { StreamVariant } from "@/models/StreamVariant";
 
 describe(DockerFountain.name, () => {
   let context: TestEnvironment.Context;
@@ -15,7 +15,7 @@ describe(DockerFountain.name, () => {
     context = await TestEnvironment.initialize();
     fountain = new DockerFountain(context.dockerSocketMock.cast());
     context.dockerSocketMock.listRunningContainers.mockResolvedValue([]);
-    context.dockerSocketMock.streamLifecycle.mockImplementation(silent);
+    context.dockerSocketMock.streamLifecycles.mockImplementation(silent);
     context.dockerSocketMock.streamLogs.mockImplementation(silent);
   });
 
@@ -24,7 +24,7 @@ describe(DockerFountain.name, () => {
     const container = TestFixture.container();
     context.dockerSocketMock.listRunningContainers.mockResolvedValue([container]);
     context.dockerSocketMock.streamLogs.mockImplementation(async function* () {
-      yield { stdStream: StdStream.out, timestamp: Temporal.Now.instant(), message: "listening on 3000" };
+      yield { streamVariant: StreamVariant.stdout, timestamp: Temporal.Now.instant(), message: "listening on 3000" };
       await never();
     });
 
@@ -37,7 +37,7 @@ describe(DockerFountain.name, () => {
   it("should map docker's lifecycle events onto start and stop", async () => {
     // given
     const container = TestFixture.container();
-    context.dockerSocketMock.streamLifecycle.mockImplementation(async function* () {
+    context.dockerSocketMock.streamLifecycles.mockImplementation(async function* () {
       yield { status: "start" as const, timestamp: Temporal.Now.instant(), container };
       yield { status: "die" as const, timestamp: Temporal.Now.instant(), container };
       await never();
@@ -56,12 +56,12 @@ describe(DockerFountain.name, () => {
     // given (the container started in the window between opening the event stream and listing)
     const container = TestFixture.container();
     context.dockerSocketMock.listRunningContainers.mockResolvedValue([container]);
-    context.dockerSocketMock.streamLifecycle.mockImplementation(async function* () {
+    context.dockerSocketMock.streamLifecycles.mockImplementation(async function* () {
       yield { status: "start" as const, timestamp: Temporal.Now.instant(), container };
       await never();
     });
     context.dockerSocketMock.streamLogs.mockImplementation(async function* () {
-      yield { stdStream: StdStream.out, timestamp: Temporal.Now.instant(), message: "once" };
+      yield { streamVariant: StreamVariant.stdout, timestamp: Temporal.Now.instant(), message: "once" };
       await never();
     });
 
@@ -84,7 +84,7 @@ describe(DockerFountain.name, () => {
       if (id === broken.id) {
         throw new Error("stream exploded");
       }
-      yield { stdStream: StdStream.out, timestamp: Temporal.Now.instant(), message: "still here" };
+      yield { streamVariant: StreamVariant.stdout, timestamp: Temporal.Now.instant(), message: "still here" };
       await never();
     });
 

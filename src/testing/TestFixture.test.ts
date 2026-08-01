@@ -1,6 +1,6 @@
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
-import { StdStream } from "@/models/StdStream";
+import { StreamVariant } from "@/models/StreamVariant";
 import { Temporal } from "@js-temporal/polyfill";
 
 type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } : T;
@@ -22,7 +22,7 @@ export namespace TestFixture {
       type: ContainerEvent.Type.log,
       timestamp: Temporal.Now.instant(),
       container: container(),
-      stdStream: StdStream.out,
+      streamVariant: StreamVariant.stdout,
       message: "GET / 200",
     };
     return deepMerge(defaults, overrides);

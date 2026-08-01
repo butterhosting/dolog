@@ -1,7 +1,7 @@
 import { TestEnvironment } from "@/testing/TestEnvironment.test";
 import { beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { DockerSocket } from "./DockerSocket";
-import { StdStream } from "@/models/StdStream";
+import { StreamVariant } from "@/models/StreamVariant";
 
 const TIMESTAMP = "2026-08-01T10:11:12.130000000Z";
 
@@ -26,8 +26,8 @@ describe(DockerSocket.name, () => {
       const lines = await readLogs();
       // then
       expect(lines).toEqual([
-        { stdStream: StdStream.out, timestamp: "2026-08-01T10:11:12.13Z", message: "GET / 200" },
-        { stdStream: StdStream.err, timestamp: "2026-08-01T10:11:12.13Z", message: "boom" },
+        { streamVariant: StreamVariant.stdout, timestamp: "2026-08-01T10:11:12.13Z", message: "GET / 200" },
+        { streamVariant: StreamVariant.stderr, timestamp: "2026-08-01T10:11:12.13Z", message: "boom" },
       ]);
     });
 
@@ -50,47 +50,98 @@ describe(DockerSocket.name, () => {
       expect(lines).toEqual([]);
     });
 
-    it("should read a tty container's stream as raw stdout", async () => {
-      // given (the container reports a tty, so its stream carries no frame headers)
-      respondWithLogs(streamOf(encode(`${TIMESTAMP} first\n${TIMESTAMP} second\n`)), { tty: true });
+    it("should read a tty container's stream as raw stdout, keeping the text verbatim", async () => {
+      // given (the container reports a tty, so its stream carries no frame headers -- and no
+      // timestamps were requested for it, so nothing may be stripped off the front)
+      respondWithLogs(streamOf(encode(`first\nsecond\n`)), { tty: true });
       // when
       const lines = await readLogs();
       // then
-      expect(lines).toEqual([
-        { stdStream: StdStream.out, timestamp: "2026-08-01T10:11:12.13Z", message: "first" },
-        { stdStream: StdStream.out, timestamp: "2026-08-01T10:11:12.13Z", message: "second" },
+      expect(lines.map(({ streamVariant, message }) => ({ streamVariant, message }))).toEqual([
+        { streamVariant: StreamVariant.stdout, message: "first" },
+        { streamVariant: StreamVariant.stdout, message: "second" },
       ]);
+    });
+
+    it("should drop the carriage return a pty adds to every line", async () => {
+      // given (a pty translates \n into \r\n on its way out)
+      respondWithLogs(streamOf(encode(`first\r\nsecond\r\n`)), { tty: true });
+      // when
+      const lines = await readLogs();
+      // then (the \r was the terminal's, not the container's)
+      expect(lines.map(({ message }) => message)).toEqual(["first", "second"]);
+    });
+
+    it("should not mistake a tty container's own output for a docker timestamp", async () => {
+      // given (a container logging its own timestamps -- none of it is docker's to remove)
+      respondWithLogs(streamOf(encode(`${TIMESTAMP} my own timestamp\n`)), { tty: true });
+      // when
+      const lines = await readLogs();
+      // then
+      expect(lines.map(({ message }) => message)).toEqual([`${TIMESTAMP} my own timestamp`]);
     });
 
     it("should reassemble a line split across chunks of a tty stream", async () => {
       // given (a tty stream has no framing at all, so a chunk can end anywhere)
-      respondWithLogs(streamOf(encode(`${TIMESTAMP} hello `), encode(`world\n`)), { tty: true });
-      // when
-      const lines = await readLogs();
-      // then (one line, and its timestamp survived -- it only appeared in the first chunk)
-      expect(lines).toEqual([{ stdStream: StdStream.out, timestamp: "2026-08-01T10:11:12.13Z", message: "hello world" }]);
-    });
-
-    it("should reassemble a line split across two frames", async () => {
-      // given (docker splits a long line once it outgrows its read buffer)
-      respondWithLogs(streamOf(frame(1, `${TIMESTAMP} hello `), frame(1, `world\n`)));
+      respondWithLogs(streamOf(encode(`hello `), encode(`world\n`)), { tty: true });
       // when
       const lines = await readLogs();
       // then
       expect(lines.map(({ message }) => message)).toEqual(["hello world"]);
     });
 
+    it("should reassemble a line split across two frames", async () => {
+      // given (docker splits a long line once it outgrows its 16KB read buffer, and stamps BOTH
+      // halves with the timestamp of the line they belong to)
+      respondWithLogs(streamOf(frame(1, `${TIMESTAMP} hello `), frame(1, `${TIMESTAMP} world\n`)));
+      // when
+      const lines = await readLogs();
+      // then (the repeated timestamp is dropped rather than spliced into the message)
+      expect(lines).toEqual([{ streamVariant: StreamVariant.stdout, timestamp: "2026-08-01T10:11:12.13Z", message: "hello world" }]);
+    });
+
+    it("should not request timestamps for a tty container, since they cannot be removed again", async () => {
+      // given
+      const requested: string[] = [];
+      respondWithLogs(streamOf(encode(`hi\n`)), { tty: true, record: requested });
+      // when
+      await readLogs();
+      // then
+      expect(requested.find((url) => url.includes("/logs"))).toContain("timestamps=0");
+    });
+
+    it("should request timestamps for a framed container, where they can be removed again", async () => {
+      // given
+      const requested: string[] = [];
+      respondWithLogs(streamOf(frame(1, `${TIMESTAMP} hi\n`)), { record: requested });
+      // when
+      await readLogs();
+      // then
+      expect(requested.find((url) => url.includes("/logs"))).toContain("timestamps=1");
+    });
+
+    it("should keep the timestamp of every line when one payload carries several", async () => {
+      // given (only the FIRST line of a continuation payload repeats a timestamp; the rest are real)
+      const other = "2026-08-01T22:33:44.000000000Z";
+      respondWithLogs(streamOf(frame(1, `${TIMESTAMP} one\n${other} two\n`)));
+      // when
+      const lines = await readLogs();
+      // then
+      expect(lines).toEqual([
+        { streamVariant: StreamVariant.stdout, timestamp: "2026-08-01T10:11:12.13Z", message: "one" },
+        { streamVariant: StreamVariant.stdout, timestamp: "2026-08-01T22:33:44Z", message: "two" },
+      ]);
+    });
+
     it("should not splice stdout and stderr into each other while both are mid-line", async () => {
       // given (a half-written stdout line, a whole stderr line, then the rest of the stdout line)
-      respondWithLogs(
-        streamOf(frame(1, `${TIMESTAMP} out-start `), frame(2, `${TIMESTAMP} err whole\n`), frame(1, `out-end\n`)),
-      );
+      respondWithLogs(streamOf(frame(1, `${TIMESTAMP} out-start `), frame(2, `${TIMESTAMP} err whole\n`), frame(1, `out-end\n`)));
       // when
       const lines = await readLogs();
       // then (stderr came through untouched, and stdout rejoined its own halves)
       expect(lines).toEqual([
-        { stdStream: StdStream.err, timestamp: "2026-08-01T10:11:12.13Z", message: "err whole" },
-        { stdStream: StdStream.out, timestamp: "2026-08-01T10:11:12.13Z", message: "out-start out-end" },
+        { streamVariant: StreamVariant.stderr, timestamp: "2026-08-01T10:11:12.13Z", message: "err whole" },
+        { streamVariant: StreamVariant.stdout, timestamp: "2026-08-01T10:11:12.13Z", message: "out-start out-end" },
       ]);
     });
 
@@ -155,7 +206,7 @@ describe(DockerSocket.name, () => {
       // given
       respondWith(streamOf(encode(`${lifecycle({ Action: "start" })}\n${lifecycle({ Action: "die" })}\n`)));
       // when
-      const events = await collect(socket.streamLifecycle(new AbortController().signal));
+      const events = await collect(socket.streamLifecycles(new AbortController().signal));
       // then
       expect(events.map(({ status }) => status)).toEqual(["start", "die"]);
       expect(events.at(0)?.container).toEqual({ id: "abc", object: "container", name: "web", group: "shop" });
@@ -165,7 +216,7 @@ describe(DockerSocket.name, () => {
       // given
       respondWith(streamOf(encode(`${lifecycle({ status: "die" })}\n`)));
       // when
-      const events = await collect(socket.streamLifecycle(new AbortController().signal));
+      const events = await collect(socket.streamLifecycles(new AbortController().signal));
       // then
       expect(events.map(({ status }) => status)).toEqual(["die"]);
     });
@@ -194,7 +245,7 @@ describe(DockerSocket.name, () => {
 
   async function readLogs() {
     const lines = await collect(socket.streamLogs("abc", new AbortController().signal));
-    return lines.map(({ stdStream, timestamp, message }) => ({ stdStream, timestamp: timestamp.toString(), message }));
+    return lines.map(({ streamVariant, timestamp, message }) => ({ streamVariant, timestamp: timestamp.toString(), message }));
   }
 });
 
@@ -207,8 +258,9 @@ function respondWith(body: ReadableStream<Uint8Array> | Response) {
  * `streamLogs` inspects the container for its tty flag before opening the log stream, so these two
  * calls have to be answered separately.
  */
-function respondWithLogs(body: ReadableStream<Uint8Array>, { tty = false }: { tty?: boolean } = {}) {
+function respondWithLogs(body: ReadableStream<Uint8Array>, { tty = false, record }: { tty?: boolean; record?: string[] } = {}) {
   const handler = async (input: URL | RequestInfo) => {
+    record?.push(`${input}`);
     return `${input}`.includes("/logs") ? new Response(body, { status: 200 }) : Response.json({ Config: { Tty: tty } });
   };
   spyOn(globalThis, "fetch").mockImplementation(handler as typeof fetch);
@@ -227,10 +279,10 @@ function encode(text: string): Uint8Array {
   return new TextEncoder().encode(text);
 }
 
-function frame(stdStream: 1 | 2, text: string): Uint8Array {
+function frame(streamVariant: 1 | 2, text: string): Uint8Array {
   const payload = encode(text);
   const buffer = new Uint8Array(8 + payload.length);
-  buffer[0] = stdStream;
+  buffer[0] = streamVariant;
   new DataView(buffer.buffer).setUint32(4, payload.length, false);
   buffer.set(payload, 8);
   return buffer;

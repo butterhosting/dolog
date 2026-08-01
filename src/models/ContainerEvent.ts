@@ -2,7 +2,7 @@ import { ZodParser } from "@/helpers/ZodParser";
 import { Temporal } from "@js-temporal/polyfill";
 import z from "zod/v4";
 import { Container } from "./Container";
-import { StdStream } from "./StdStream";
+import { StreamVariant } from "./StreamVariant";
 
 export type ContainerEvent = ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log;
 
@@ -29,7 +29,7 @@ export namespace ContainerEvent {
 
   export type Log = Common & {
     type: Type.log;
-    stdStream: StdStream;
+    streamVariant: StreamVariant;
     message: string;
   };
 
@@ -55,7 +55,7 @@ export namespace ContainerEvent {
           ...common,
           type: z.literal(Type.log),
           object: z.literal("container_event"),
-          stdStream: z.enum(StdStream),
+          streamVariant: z.enum(StreamVariant),
           message: z.string(),
         }),
       ]),

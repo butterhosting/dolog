@@ -1,6 +1,6 @@
 import { ContainerEvent } from "./models/ContainerEvent";
 import { DologEvent } from "./models/DologEvent";
-import { StdStream } from "./models/StdStream";
+import { StreamVariant } from "./models/StreamVariant";
 
 const DIM = "\x1b[2m";
 const BOLD = "\x1b[1m";
@@ -25,7 +25,7 @@ export namespace ContainerEventPrinter {
           case ContainerEvent.Type.stop:
             return `${RED}▼ stopped${RESET}`;
           case ContainerEvent.Type.log:
-            return event.stdStream === StdStream.err ? `${RED}${event.message}${RESET}` : event.message;
+            return event.streamVariant === StreamVariant.stderr ? `${RED}${event.message}${RESET}` : event.message;
         }
       }
       case "throttle_event": {

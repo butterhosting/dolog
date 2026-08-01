@@ -77,7 +77,7 @@ export class DockerFountain {
    * this observable never terminates, which is what keeps the fountain running.
    */
   private lifecycle(): Observable<ContainerEvent.Start | ContainerEvent.Stop> {
-    return this.abortable((signal) => this.dockerSocket.streamLifecycle(signal)).pipe(
+    return this.abortable((signal) => this.dockerSocket.streamLifecycles(signal)).pipe(
       map(({ status, timestamp, container }): ContainerEvent.Start | ContainerEvent.Stop => {
         return status === "start"
           ? {
@@ -103,12 +103,12 @@ export class DockerFountain {
    */
   private logs(container: Container): Observable<ContainerEvent.Log> {
     return this.abortable((signal) => this.dockerSocket.streamLogs(container.id, signal)).pipe(
-      map(({ stdStream, timestamp, message }): ContainerEvent.Log => ({
+      map(({ streamVariant, timestamp, message }): ContainerEvent.Log => ({
         object: "container_event",
         type: ContainerEvent.Type.log as const,
         timestamp,
         container,
-        stdStream,
+        streamVariant,
         message,
       })),
       catchError((error) => {
