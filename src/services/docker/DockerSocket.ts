@@ -204,19 +204,31 @@ export class DockerSocket {
        */
       let offset = 0;
       buffer = buffer.length === 0 ? chunk : this.concat(buffer, chunk);
+      // Remember: our `buffer: Uint8Array` is a window into an underlying `ArrayBufferLike` memory pool of unspecified dimension
+      // - as long as we only work via our given `buffer` window, everything is fine
+      // - but if we want to construct a secondary view, mapped onto the same underlying memory pool,
+      //   then we should take the `byteOffset` into account, that we were handed alongside with our original window
+
       while (buffer.length - offset >= FRAME_HEADER_BYTES) {
-        const header = new DataView(buffer.buffer, buffer.byteOffset + offset, FRAME_HEADER_BYTES);
-        const size = header.getUint32(4, false);
-        if (buffer.length - offset < FRAME_HEADER_BYTES + size) {
+        const header = new DataView(
+          buffer.buffer, // References to that memory pool of unspecified dimension
+          buffer.byteOffset + offset, // at which index to start reading from that pool
+          FRAME_HEADER_BYTES, // how many bytes to read
+        );
+        const headerStdStream = buffer[offset] === 2 ? StdStream.err : StdStream.out;
+        const headerPayloadSize = header.getUint32(4, false); // unsigned int32 (bits) = 4 bytes = exactly our 4 bytes wide big-endian size field
+
+        if (buffer.length - offset < FRAME_HEADER_BYTES + headerPayloadSize) {
           break;
         }
-        const stdStream = buffer[offset] === 2 ? StdStream.err : StdStream.out;
-        const start = offset + FRAME_HEADER_BYTES;
+
+        const payloadStart = offset + FRAME_HEADER_BYTES;
+        const payloadEnd = payloadStart + headerPayloadSize;
         yield {
-          stdStream,
-          text: decoder.decode(buffer.subarray(start, start + size)),
+          stdStream: headerStdStream,
+          text: decoder.decode(buffer.subarray(payloadStart, payloadEnd)),
         };
-        offset = start + size;
+        offset = payloadEnd;
       }
       buffer = offset === 0 ? buffer : buffer.slice(offset);
     }
