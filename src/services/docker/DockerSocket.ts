@@ -31,18 +31,21 @@ export class DockerSocket {
   }
 
   public async *streamLifecycle(signal: AbortSignal): AsyncGenerator<DockerSocket.Lifecycle> {
-    const filters = JSON.stringify({ type: ["container"], event: ["start", "die"] });
+    const filters = JSON.stringify({
+      type: ["container"],
+      event: ["start", "die"],
+    });
     const response = await this.request(`/events?filters=${encodeURIComponent(filters)}`, signal);
     for await (const line of this.readLines(this.readBody(response, "/events"))) {
-      const event = Internal.LifecycleEvent.parse(JSON.parse(line));
+      const lifecycleEvent = Internal.LifecycleEvent.parse(JSON.parse(line));
       yield {
-        status: (event.Action ?? event.status)!,
-        timestamp: Temporal.Instant.fromEpochMilliseconds(event.time * 1000),
+        status: (lifecycleEvent.Action ?? lifecycleEvent.status)!,
+        timestamp: Temporal.Instant.fromEpochMilliseconds(lifecycleEvent.time * 1000),
         container: Container.parse({
-          id: event.Actor.ID,
+          id: lifecycleEvent.Actor.ID,
           object: "container",
-          name: this.readName(event.Actor.Attributes.name),
-          group: this.readGroup(event.Actor.Attributes),
+          name: this.readName(lifecycleEvent.Actor.Attributes.name),
+          group: this.readGroup(lifecycleEvent.Actor.Attributes),
         }),
       };
     }
@@ -53,12 +56,29 @@ export class DockerSocket {
     const path = `/containers/${id}/logs?follow=1&stdout=1&stderr=1&timestamps=1&tail=0`;
     const response = await this.request(path, signal);
     const body = this.readBody(response, path);
-    const payloads = tty ? this.readTtyPayloads(body) : this.readMultiplexedPayloads(body);
+    const payloads = tty ? this.readTtyChunks(body) : this.readMultiplexedPayloads(body);
+    /**
+     * Payload boundaries have nothing to do with line boundaries, so a line can arrive in pieces --
+     * on a tty stream there is no framing at all. Each stream buffers separately, since stdout and
+     * stderr interleave and would otherwise splice their partial lines into each other.
+     */
+    const leftovers = new Map<StdStream, string>();
     for await (const { stdStream, text } of payloads) {
-      for (const line of text.split("\n")) {
+      const lines = ((leftovers.get(stdStream) ?? "") + text).split("\n");
+      leftovers.set(stdStream, lines.pop() ?? "");
+      for (const line of lines) {
         if (line.length > 0) {
           yield this.readLogLine(stdStream, line);
         }
+      }
+    }
+    /**
+     * Unlike a truncated JSON object, a trailing line with no final newline is still a whole line:
+     * the container simply exited without one.
+     */
+    for (const [stdStream, rest] of leftovers) {
+      if (rest.length > 0) {
+        yield this.readLogLine(stdStream, rest);
       }
     }
   }
@@ -119,12 +139,17 @@ export class DockerSocket {
   }
 
   private async *readLines(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
-    let pending = "";
+    let leftovers = "";
     const decoder = new TextDecoder();
     for await (const chunk of body) {
-      pending += decoder.decode(chunk, { stream: true });
-      const lines = pending.split("\n");
-      pending = lines.pop() ?? "";
+      leftovers += decoder.decode(chunk, { stream: true });
+
+      // jsonl, so each line is 1 json object
+      const lines = leftovers.split("\n");
+      // the fully formed lines are ready to be processed upstream
+      // any leftovers belong to the upcoming chunk
+      leftovers = lines.pop() ?? "";
+
       for (const line of lines) {
         if (line.trim().length > 0) {
           yield line;
@@ -133,10 +158,13 @@ export class DockerSocket {
     }
   }
 
-  private async *readTtyPayloads(body: ReadableStream<Uint8Array>): AsyncGenerator<Internal.Payload> {
+  private async *readTtyChunks(body: ReadableStream<Uint8Array>): AsyncGenerator<Internal.Payload> {
     const decoder = new TextDecoder();
     for await (const chunk of body) {
-      yield { stdStream: StdStream.out, text: decoder.decode(chunk, { stream: true }) };
+      yield {
+        stdStream: StdStream.out,
+        text: decoder.decode(chunk, { stream: true }),
+      };
     }
   }
 

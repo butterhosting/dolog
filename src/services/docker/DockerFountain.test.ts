@@ -29,7 +29,7 @@ describe(DockerFountain.name, () => {
     });
 
     // when
-    const events = await firstValueFrom(fountain.initialize().pipe(take(1), toArray()));
+    const events = await firstValueFrom(fountain.stream().pipe(take(1), toArray()));
     // then (the log arrives on its own -- dolog did not witness this container start)
     expect(events).toEqual([expect.objectContaining({ type: ContainerEvent.Type.log, container, message: "listening on 3000" })]);
   });
@@ -44,7 +44,7 @@ describe(DockerFountain.name, () => {
     });
 
     // when
-    const events = await firstValueFrom(fountain.initialize().pipe(take(2), toArray()));
+    const events = await firstValueFrom(fountain.stream().pipe(take(2), toArray()));
     // then
     expect(events).toEqual([
       expect.objectContaining({ type: ContainerEvent.Type.start, container }),
@@ -66,7 +66,7 @@ describe(DockerFountain.name, () => {
     });
 
     // when
-    const events = await firstValueFrom(fountain.initialize().pipe(take(2), toArray()));
+    const events = await firstValueFrom(fountain.stream().pipe(take(2), toArray()));
     // then (the real start survives, and its logs are followed exactly once)
     expect(events).toEqual([
       expect.objectContaining({ type: ContainerEvent.Type.start }),
@@ -89,14 +89,14 @@ describe(DockerFountain.name, () => {
     });
 
     // when
-    const events = await firstValueFrom(fountain.initialize().pipe(take(1), toArray()));
+    const events = await firstValueFrom(fountain.stream().pipe(take(1), toArray()));
     // then (the broken stream is swallowed, the healthy one keeps flowing)
     expect(events).toEqual([expect.objectContaining({ container: healthy, message: "still here" })]);
   });
 
   it("should hand out the same stream every time it is initialized", () => {
     // then
-    expect(fountain.initialize()).toBe(fountain.initialize());
+    expect(fountain.stream()).toBe(fountain.stream());
   });
 });
 

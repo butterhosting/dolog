@@ -24,36 +24,40 @@ export class DockerFountain {
 
   public constructor(private readonly dockerSocket: DockerSocket) {}
 
-  public initialize(): Observable<ContainerEvent> {
-    this.events ??= defer(() => this.beginListening()).pipe(share({ resetOnRefCountZero: false }));
-    return this.events;
-  }
-
-  private beginListening(): Observable<ContainerEvent> {
-    const streaming = new Set<string>();
-    /**
-     * The listing and the event stream are opened concurrently, so a container starting in that
-     * window shows up in both. Attaching twice would duplicate every one of its log lines.
-     */
-    const follow = (container: Container): Observable<ContainerEvent.Log> => {
-      if (streaming.has(container.id)) {
-        return EMPTY;
-      }
-      streaming.add(container.id);
-      return this.logs(container);
-    };
-    return merge(
-      this.alreadyRunning().pipe(mergeMap(follow)),
-      this.lifecycle().pipe(
-        mergeMap((event) => {
-          if (event.type === ContainerEvent.Type.stop) {
-            streaming.delete(event.container.id);
-            return of(event);
+  public stream(): Observable<ContainerEvent> {
+    if (!this.events) {
+      this.events = defer(() => {
+        const containersBeingFollowed = new Set<string>();
+        /**
+         * The listing and the event stream are opened concurrently, so a container starting in that
+         * window shows up in both. Attaching twice would duplicate every one of its log lines.
+         */
+        const follow = (container: Container): Observable<ContainerEvent.Log> => {
+          if (containersBeingFollowed.has(container.id)) {
+            return EMPTY;
           }
-          return merge(of(event), follow(event.container));
+          containersBeingFollowed.add(container.id);
+          return this.logs(container);
+        };
+        return merge(
+          this.alreadyRunning().pipe(mergeMap(follow)),
+          this.lifecycle().pipe(
+            mergeMap((event) => {
+              if (event.type === ContainerEvent.Type.stop) {
+                containersBeingFollowed.delete(event.container.id);
+                return of(event);
+              }
+              return merge(of(event), follow(event.container));
+            }),
+          ),
+        );
+      }).pipe(
+        share({
+          resetOnRefCountZero: false,
         }),
-      ),
-    );
+      );
+    }
+    return this.events;
   }
 
   /**

@@ -62,6 +62,47 @@ describe(DockerSocket.name, () => {
       ]);
     });
 
+    it("should reassemble a line split across chunks of a tty stream", async () => {
+      // given (a tty stream has no framing at all, so a chunk can end anywhere)
+      respondWithLogs(streamOf(encode(`${TIMESTAMP} hello `), encode(`world\n`)), { tty: true });
+      // when
+      const lines = await readLogs();
+      // then (one line, and its timestamp survived -- it only appeared in the first chunk)
+      expect(lines).toEqual([{ stdStream: StdStream.out, timestamp: "2026-08-01T10:11:12.13Z", message: "hello world" }]);
+    });
+
+    it("should reassemble a line split across two frames", async () => {
+      // given (docker splits a long line once it outgrows its read buffer)
+      respondWithLogs(streamOf(frame(1, `${TIMESTAMP} hello `), frame(1, `world\n`)));
+      // when
+      const lines = await readLogs();
+      // then
+      expect(lines.map(({ message }) => message)).toEqual(["hello world"]);
+    });
+
+    it("should not splice stdout and stderr into each other while both are mid-line", async () => {
+      // given (a half-written stdout line, a whole stderr line, then the rest of the stdout line)
+      respondWithLogs(
+        streamOf(frame(1, `${TIMESTAMP} out-start `), frame(2, `${TIMESTAMP} err whole\n`), frame(1, `out-end\n`)),
+      );
+      // when
+      const lines = await readLogs();
+      // then (stderr came through untouched, and stdout rejoined its own halves)
+      expect(lines).toEqual([
+        { stdStream: StdStream.err, timestamp: "2026-08-01T10:11:12.13Z", message: "err whole" },
+        { stdStream: StdStream.out, timestamp: "2026-08-01T10:11:12.13Z", message: "out-start out-end" },
+      ]);
+    });
+
+    it("should still emit a trailing line that never got its newline", async () => {
+      // given (the container exited without a final newline)
+      respondWithLogs(streamOf(frame(1, `${TIMESTAMP} no trailing newline`)));
+      // when
+      const lines = await readLogs();
+      // then
+      expect(lines.map(({ message }) => message)).toEqual(["no trailing newline"]);
+    });
+
     it("should keep a line that has no parsable timestamp", async () => {
       // given
       respondWithLogs(streamOf(frame(1, "no timestamp here\n")));
