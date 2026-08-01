@@ -14,7 +14,6 @@ import z from "zod/v4";
 export class DockerSocket {
   private static readonly LABEL_COMPOSE_PROJECT = "com.docker.compose.project";
   private static readonly LABEL_SWARM_STACK = "com.docker.stack.namespace";
-  private static readonly FRAME_HEADER_BYTES = 8;
 
   public constructor(private readonly env: Env.Private) {}
 
@@ -172,8 +171,8 @@ export class DockerSocket {
    * Non-TTY containers interleave stdout and stderr on one connection, each payload prefixed by an
    * 8-byte header, consisting of std-stream type (out/err), three padding bytes, and a big-endian payload length
    *
-   * byte#   0       1  2  3        4  5  6  7          8 ─────────► 8+size
-   *       ┌───────┬──────────────┬───────────────────┬──────────────────────────┐
+   * byte#   0       1  2  3        4  5  6  7          8              8+size-1
+   *       ┌─↓─────┬─↓────────────┬─↓─────────────────┬─↓──────────────↓─────────┐
    *       │ 02    │ 00 00 00     │ 00 00 00 06       │ 6f 68 20 6e 6f 0a        │
    *       └───────┴──────────────┴───────────────────┴──────────────────────────┘
    *          │          │                │                       │
@@ -181,11 +180,21 @@ export class DockerSocket {
    *     1=stdout     (unused)           = 6                    = "oh no\n"
    *     2=stderr
    *
-   * Obviously, HTTP chunk boundaries occur at random positions, so ???
+   * These frames (like the one above) are interleaved for stdout/stderr, and so you must actually calculate
+   * where the payload of the current frame ends: anything after that will be part of the next frame
+   *
+   *     0                        8           8+6                       8+6+8       8+6+8+14
+   *   ┌─↓──────────────────────┬─↓─────────┬─↓───────────────────────┬─↓─────────┬─↓──
+   *   │ STDOUT; payload_size=6 │ <payload> │ STDERR; payload_size=14 │ <payload> │ ~~~~~~
+   *   └────────────────────────┴───────────┴─────────────────────────┴───────────┴──────────
+   *
+   * So the determination of frame boundaries is fully arithmetic.
+   * Plus, top of that, HTTP chunk boundaries occur at random positions...
    */
   private async *readMultiplexedPayloads(body: ReadableStream<Uint8Array>): AsyncGenerator<Internal.Payload> {
-    const headerBytes = DockerSocket.FRAME_HEADER_BYTES;
+    const FRAME_HEADER_BYTES = 8;
     const decoder = new TextDecoder();
+
     let buffer: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
     for await (const chunk of body) {
       /**
@@ -195,14 +204,14 @@ export class DockerSocket {
        */
       let offset = 0;
       buffer = buffer.length === 0 ? chunk : this.concat(buffer, chunk);
-      while (buffer.length - offset >= headerBytes) {
-        const header = new DataView(buffer.buffer, buffer.byteOffset + offset, headerBytes);
+      while (buffer.length - offset >= FRAME_HEADER_BYTES) {
+        const header = new DataView(buffer.buffer, buffer.byteOffset + offset, FRAME_HEADER_BYTES);
         const size = header.getUint32(4, false);
-        if (buffer.length - offset < headerBytes + size) {
+        if (buffer.length - offset < FRAME_HEADER_BYTES + size) {
           break;
         }
         const stdStream = buffer[offset] === 2 ? StdStream.err : StdStream.out;
-        const start = offset + headerBytes;
+        const start = offset + FRAME_HEADER_BYTES;
         yield {
           stdStream,
           text: decoder.decode(buffer.subarray(start, start + size)),
