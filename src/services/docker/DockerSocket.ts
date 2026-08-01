@@ -169,8 +169,19 @@ export class DockerSocket {
   }
 
   /**
-   * Non-TTY containers interleave stdout and stderr on one connection, each chunk prefixed by an
-   * 8-byte header: a stream descriptor, three padding bytes, then a big-endian payload length.
+   * Non-TTY containers interleave stdout and stderr on one connection, each payload prefixed by an
+   * 8-byte header, consisting of std-stream type (out/err), three padding bytes, and a big-endian payload length
+   *
+   * byte#   0       1  2  3        4  5  6  7          8 ─────────► 8+size
+   *       ┌───────┬──────────────┬───────────────────┬──────────────────────────┐
+   *       │ 02    │ 00 00 00     │ 00 00 00 06       │ 6f 68 20 6e 6f 0a        │
+   *       └───────┴──────────────┴───────────────────┴──────────────────────────┘
+   *          │          │                │                       │
+   *       stream     padding        size (big-endian)       payload (6 bytes)
+   *     1=stdout     (unused)           = 6                    = "oh no\n"
+   *     2=stderr
+   *
+   * Obviously, HTTP chunk boundaries occur at random positions, so ???
    */
   private async *readMultiplexedPayloads(body: ReadableStream<Uint8Array>): AsyncGenerator<Internal.Payload> {
     const headerBytes = DockerSocket.FRAME_HEADER_BYTES;
