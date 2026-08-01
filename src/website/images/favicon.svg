@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" viewBox="0 0 64 64" version="1.1" xmlns="http://www.w3.org/2000/svg">
+    <title>book</title>
+    <g fill="none" fill-rule="evenodd">
+        <rect fill="#4647d2" x="8" y="6" width="48" height="52" rx="6"></rect>
+        <path d="M20,6 L20,58" stroke="#ffffff" stroke-width="3" stroke-opacity="0.45"></path>
+        <path d="M29,20 L47,20 M29,30 L47,30 M29,40 L40,40" stroke="#ffffff" stroke-width="4" stroke-linecap="round"></path>
+    </g>
+</svg>

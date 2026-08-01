@@ -1,0 +1,5 @@
+{
+  "entry": ["src/website/index.tsx"],
+  "project": ["src/**/*.{ts,tsx,css}", "e2e/**/*.ts"],
+  "ignoreDependencies": ["bun-plugin-tailwind"]
+}

@@ -1,0 +1,171 @@
+#!/bin/sh
+set -eu
+
+usage() {
+    printf "Usage: %s <command> [arguments]\n" "$(basename "$0")"
+    printf "\nCommands:\n"
+    printf "  image create [options]    Build a production Docker image\n"
+    printf "  version list              List all available versions\n"
+    exit 1
+}
+
+require_commands() {
+    for cmd in "$@"; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            printf "Error: required command not found: %s\n" "$cmd"
+            exit 1
+        fi
+    done
+}
+
+cmd_image_create() {
+    stage="prod"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --stage)
+                if [ $# -lt 2 ] || [ -z "$2" ] || case "$2" in -*) true;; *) false;; esac; then
+                    printf "Error: --stage requires a value\n"
+                    exit 1
+                fi
+                stage="$2"
+                shift 2
+                ;;
+            *)
+                printf "Error: unknown option '%s'\n\n" "$1"
+                usage
+                ;;
+        esac
+    done
+
+    # Validate stage
+    if [ ! -f ".env.${stage}" ]; then
+        printf "Error: no .env.%s file found (available:" "$stage"
+        for f in .env.*; do
+            printf " %s" "${f#.env.}"
+        done
+        printf ")\n"
+        exit 1
+    fi
+
+    tmpfile="./dist/dolog.Dockerfile"
+    mkdir -p ./dist
+
+    dolog_root=$(grep '^X_DOLOG_ROOT=' ".env.${stage}" | cut -d= -f2-)
+    if [ -z "$dolog_root" ]; then
+        printf "Error: X_DOLOG_ROOT not found in .env.%s\n" "$stage"
+        exit 1
+    fi
+
+    commit=$(git rev-parse HEAD)
+
+    # Determine version from git tags
+    exact_tag=$(git tag --points-at HEAD | head -n 1)
+    if [ -n "$exact_tag" ]; then
+        version="$exact_tag"
+    else
+        closest_tag=$(git describe --tags --abbrev=0 2>/dev/null || true)
+        if [ -n "$closest_tag" ]; then
+            version="${closest_tag}-snapshot"
+        else
+            version="0.0.0"
+        fi
+    fi
+
+    # Builder stage (shared)
+    cat > "$tmpfile" <<'EOF'
+FROM oven/bun:alpine AS builder
+WORKDIR /app
+COPY package.json bun.lock* tsconfig.json bunfig.toml bun-env.d.ts drizzle.config.ts .env.* ./
+ARG DOLOG_VERSION
+ARG DOLOG_COMMIT
+RUN bun -e "const p='./package.json'; const j=await Bun.file(p).json(); j.version='$DOLOG_VERSION'; j.commit='$DOLOG_COMMIT'; await Bun.write(p, JSON.stringify(j, null, 2))"
+RUN bun install --frozen-lockfile --production
+COPY src/ src/
+
+FROM oven/bun:alpine
+RUN apk update && apk add --no-cache bash sqlite
+EOF
+    # Check if dolog_root is an absolute path
+    case "$dolog_root" in
+        /*) is_absolute=true ;;
+        *) is_absolute=false ;;
+    esac
+
+    if [ "$is_absolute" = true ]; then
+        printf "RUN apk add --no-cache su-exec\n" >> "$tmpfile"
+        printf "RUN mkdir -p %s && chown bun:bun %s\n" "$dolog_root" "$dolog_root" >> "$tmpfile"
+        cat >> "$tmpfile" <<ENTRY_EOF
+RUN printf '#!/bin/sh\nchown -R bun:bun ${dolog_root}\nexec su-exec bun "\$@"\n' > /entrypoint.sh && chmod +x /entrypoint.sh
+ENTRY_EOF
+    fi
+
+    cat >> "$tmpfile" <<'EOF'
+WORKDIR /app
+COPY --from=builder --chown=bun:bun /app .
+EOF
+
+    if [ "$is_absolute" = true ]; then
+        printf 'ENTRYPOINT ["/entrypoint.sh"]\n' >> "$tmpfile"
+    else
+        printf "USER bun\n" >> "$tmpfile"
+    fi
+
+    cat >> "$tmpfile" <<EOF
+EXPOSE 3000
+CMD ["bun", "start:${stage}"]
+EOF
+    printf "____________________\n%s\n--------------------\n" "$(cat $tmpfile)"
+
+    tag="dolog:${version}"
+    old_image_id=$(docker images -q "$tag" 2>/dev/null || true)
+    old_latest_id=$(docker images -q dolog:latest 2>/dev/null || true)
+
+    printf "Building image > %s\n" "$tag"
+    docker build -f "$tmpfile" --build-arg DOLOG_VERSION="$version" --build-arg DOLOG_COMMIT="$commit" -t "$tag" -t dolog:latest .
+    if [ -n "$old_image_id" ]; then
+        docker rmi "$old_image_id" >/dev/null 2>&1 || true
+    fi
+    if [ -n "$old_latest_id" ]; then
+        docker rmi "$old_latest_id" >/dev/null 2>&1 || true
+    fi
+    printf "Created image > %s\n" "$tag"
+}
+
+cmd_version_list() {
+    git --no-pager tag --sort=-version:refname 2>/dev/null || true
+}
+
+# --- routing ---
+
+require_commands git docker
+
+if [ $# -lt 1 ]; then
+    usage
+fi
+
+command="$1"
+shift
+
+case "$command" in
+    image)
+        if [ $# -lt 1 ] || [ "$1" != "create" ]; then
+            printf "Error: expected 'image create'\n\n"
+            usage
+        fi
+        shift
+        cmd_image_create "$@"
+        ;;
+    version)
+        if [ $# -lt 1 ] || [ "$1" != "list" ]; then
+            printf "Error: expected 'version list'\n\n"
+            usage
+        fi
+        shift
+        cmd_version_list "$@"
+        ;;
+    *)
+        printf "Error: unknown command '%s'\n\n" "$command"
+        usage
+        ;;
+esac

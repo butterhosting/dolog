@@ -1,0 +1,57 @@
+import { Container } from "@/models/Container";
+import { ContainerEvent } from "@/models/ContainerEvent";
+import { Temporal } from "@js-temporal/polyfill";
+
+type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } : T;
+
+export namespace TestFixture {
+  export function container(overrides: DeepPartial<Container> = {}): Container {
+    const defaults: Container = {
+      id: Bun.randomUUIDv7(),
+      object: "container",
+      name: "web",
+      group: "shop",
+    };
+    return deepMerge(defaults, overrides);
+  }
+
+  export function logEvent(overrides: DeepPartial<ContainerEvent.Log> = {}): ContainerEvent.Log {
+    const defaults: ContainerEvent.Log = {
+      type: ContainerEvent.Type.log,
+      timestamp: Temporal.Now.instant(),
+      container: container(),
+      stream: ContainerEvent.Stream.stdout,
+      message: "GET / 200",
+    };
+    return deepMerge(defaults, overrides);
+  }
+
+  export function startEvent(overrides: DeepPartial<ContainerEvent.Start> = {}): ContainerEvent.Start {
+    const defaults: ContainerEvent.Start = {
+      type: ContainerEvent.Type.start,
+      timestamp: Temporal.Now.instant(),
+      container: container(),
+    };
+    return deepMerge(defaults, overrides);
+  }
+
+  function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype;
+  }
+
+  function deepMerge<T extends object>(target: T, source: DeepPartial<T>): T {
+    const result = { ...target } as Record<string, unknown>;
+    for (const key in source) {
+      const sourceVal = (source as Record<string, unknown>)[key];
+      const targetVal = result[key];
+      if (sourceVal !== undefined) {
+        if (isPlainObject(targetVal) && isPlainObject(sourceVal)) {
+          result[key] = deepMerge(targetVal, sourceVal);
+        } else {
+          result[key] = sourceVal;
+        }
+      }
+    }
+    return result as T;
+  }
+}

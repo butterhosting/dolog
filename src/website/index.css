@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+/**
+ * Theme settings and variables
+ * https://tailwindcss.com/docs/theme#theme-variable-namespaces
+ */
+@theme {
+    /* DESKTOP FIRST / PART A -> https://stackoverflow.com/a/79607480 */
+    --breakpoint-*: initial;
+    /* Colors */
+    --color-c-accent: #4647d2;
+    --color-c-error: #d5000d;
+    --color-c-dark-full: #2d2c32;
+    --color-c-dark-half: #6c6b72;
+}
+
+/* DESKTOP FIRST / PART B -> https://stackoverflow.com/a/79607480 */
+@custom-variant 2xl (@media (max-width: 1535px));
+@custom-variant xl (@media (max-width: 1279px));
+@custom-variant lg (@media (max-width: 1023px));
+@custom-variant md (@media (max-width: 767px));
+@custom-variant sm (@media (max-width: 639px));
+
+/**
+ * Default styling and global css rules
+ */
+@layer base {
+    html {
+        font-size: 14px;
+    }
+    body {
+        @apply relative min-w-[320px] min-h-screen text-c-dark-full;
+        font-family:
+            system-ui,
+            -apple-system,
+            "Segoe UI",
+            sans-serif;
+        background-color: rgb(252, 252, 252);
+    }
+    #root {
+        @apply min-h-screen flex flex-col w-full max-w-4xl px-3 mx-auto;
+    }
+}
