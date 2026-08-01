@@ -195,20 +195,18 @@ export class DockerSocket {
     const FRAME_HEADER_BYTES = 8;
     const decoder = new TextDecoder();
 
+    // Remember: our `buffer: Uint8Array` is a window into an underlying `ArrayBufferLike` memory pool of unspecified dimension
+    // - as long as we only work via our given `buffer` window, everything is fine
+    // - but if we want to construct a secondary view, mapped onto the same underlying memory pool,
+    //   then we should take the `byteOffset` into account, that we were handed alongside with our original window
     let buffer: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
     for await (const chunk of body) {
-      /**
-       * Walked with an offset rather than re-slicing per frame: a chatty container packs thousands
-       * of tiny frames into one chunk, and copying the remainder each time makes a single chunk
-       * quadratic -- enough to wedge the process outright.
-       */
-      let offset = 0;
       buffer = buffer.length === 0 ? chunk : this.concat(buffer, chunk);
-      // Remember: our `buffer: Uint8Array` is a window into an underlying `ArrayBufferLike` memory pool of unspecified dimension
-      // - as long as we only work via our given `buffer` window, everything is fine
-      // - but if we want to construct a secondary view, mapped onto the same underlying memory pool,
-      //   then we should take the `byteOffset` into account, that we were handed alongside with our original window
 
+      // The implementation below is important for performance:
+      // - a chunk is likely to contain many many payloads
+      // - the while loop below parses all of them, before loading the next chunk
+      let offset = 0;
       while (buffer.length - offset >= FRAME_HEADER_BYTES) {
         const header = new DataView(
           buffer.buffer, // References to that memory pool of unspecified dimension
@@ -230,6 +228,9 @@ export class DockerSocket {
         };
         offset = payloadEnd;
       }
+
+      // What's left in the buffer is unusable at this point, because bytes are missing
+      // So we put these leftovers into position for the upcoming chunk
       buffer = offset === 0 ? buffer : buffer.slice(offset);
     }
   }
