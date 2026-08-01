@@ -14,7 +14,6 @@ describe(DockerFountain.name, () => {
   beforeEach(async () => {
     context = await TestEnvironment.initialize();
     fountain = new DockerFountain(context.dockerSocketMock.cast());
-    context.dockerSocketMock.hasTty.mockResolvedValue(false);
     context.dockerSocketMock.listRunningContainers.mockResolvedValue([]);
     context.dockerSocketMock.streamLifecycle.mockImplementation(silent);
     context.dockerSocketMock.streamLogs.mockImplementation(silent);

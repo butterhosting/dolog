@@ -30,15 +30,6 @@ export class DockerSocket {
     );
   }
 
-  /**
-   * Containers started with a TTY emit a raw byte stream; all others emit Docker's multiplexed
-   * framing. There is no way to tell from the log stream itself, so it has to be asked up front.
-   */
-  public async hasTty(id: string): Promise<boolean> {
-    const response = await this.request(`/containers/${id}/json`);
-    return Internal.Inspection.parse(await response.json()).Config.Tty;
-  }
-
   public async *streamLifecycle(signal: AbortSignal): AsyncGenerator<DockerSocket.Lifecycle> {
     const filters = JSON.stringify({ type: ["container"], event: ["start", "die"] });
     const response = await this.request(`/events?filters=${encodeURIComponent(filters)}`, signal);
@@ -57,10 +48,8 @@ export class DockerSocket {
     }
   }
 
-  /**
-   * Follows a container's logs from now on. The stream ends by itself when the container dies.
-   */
-  public async *streamLogs(id: string, tty: boolean, signal: AbortSignal): AsyncGenerator<DockerSocket.LogLine> {
+  public async *streamLogs(id: string, signal: AbortSignal): AsyncGenerator<DockerSocket.LogLine> {
+    const tty = await this.hasTty(id, signal);
     const path = `/containers/${id}/logs?follow=1&stdout=1&stderr=1&timestamps=1&tail=0`;
     const response = await this.request(path, signal);
     const body = this.readBody(response, path);
@@ -72,6 +61,15 @@ export class DockerSocket {
         }
       }
     }
+  }
+
+  /**
+   * Containers started with a TTY emit a raw byte stream; all others emit Docker's multiplexed
+   * framing. There is no way to tell from the log stream itself, so it has to be asked up front.
+   */
+  private async hasTty(id: string, signal: AbortSignal): Promise<boolean> {
+    const response = await this.request(`/containers/${id}/json`, signal);
+    return Internal.Inspection.parse(await response.json()).Config.Tty;
   }
 
   private async request(path: string, signal?: AbortSignal): Promise<Response> {

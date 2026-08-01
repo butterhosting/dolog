@@ -98,8 +98,7 @@ export class DockerFountain {
    * One container's logs failing must not take the fountain down with it.
    */
   private logs(container: Container): Observable<ContainerEvent.Log> {
-    return defer(() => this.dockerSocket.hasTty(container.id)).pipe(
-      mergeMap((tty) => this.abortable((signal) => this.dockerSocket.streamLogs(container.id, tty, signal))),
+    return this.abortable((signal) => this.dockerSocket.streamLogs(container.id, signal)).pipe(
       map(({ stdStream, timestamp, message }): ContainerEvent.Log => ({
         object: "container_event",
         type: ContainerEvent.Type.log as const,

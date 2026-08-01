@@ -77,7 +77,6 @@ export namespace TestEnvironment {
     // Dependencies
     const dockerSocketMock = registerMockObject<DockerSocket>({
       listRunningContainers: mock(),
-      hasTty: mock(),
       streamLifecycle: mock(),
       streamLogs: mock(),
     });

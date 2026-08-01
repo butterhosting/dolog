@@ -21,7 +21,7 @@ describe(DockerSocket.name, () => {
   describe("streamLogs", () => {
     it("should split stdout and stderr apart and lift docker's timestamp prefix out", async () => {
       // given
-      respondWith(streamOf(frame(1, `${TIMESTAMP} GET / 200\n`), frame(2, `${TIMESTAMP} boom\n`)));
+      respondWithLogs(streamOf(frame(1, `${TIMESTAMP} GET / 200\n`), frame(2, `${TIMESTAMP} boom\n`)));
       // when
       const lines = await readLogs();
       // then
@@ -34,7 +34,7 @@ describe(DockerSocket.name, () => {
     it("should reassemble a frame that arrives across several chunks", async () => {
       // given
       const whole = frame(1, `${TIMESTAMP} hello world\n`);
-      respondWith(streamOf(whole.subarray(0, 3), whole.subarray(3, 20), whole.subarray(20)));
+      respondWithLogs(streamOf(whole.subarray(0, 3), whole.subarray(3, 20), whole.subarray(20)));
       // when
       const lines = await readLogs();
       // then
@@ -43,7 +43,7 @@ describe(DockerSocket.name, () => {
 
     it("should hold back a frame whose payload never completes", async () => {
       // given (the header promises more bytes than ever arrive)
-      respondWith(streamOf(frame(1, `${TIMESTAMP} hello\n`).subarray(0, 12)));
+      respondWithLogs(streamOf(frame(1, `${TIMESTAMP} hello\n`).subarray(0, 12)));
       // when
       const lines = await readLogs();
       // then
@@ -51,10 +51,10 @@ describe(DockerSocket.name, () => {
     });
 
     it("should read a tty container's stream as raw stdout", async () => {
-      // given (no frame headers at all)
-      respondWith(streamOf(encode(`${TIMESTAMP} first\n${TIMESTAMP} second\n`)));
+      // given (the container reports a tty, so its stream carries no frame headers)
+      respondWithLogs(streamOf(encode(`${TIMESTAMP} first\n${TIMESTAMP} second\n`)), { tty: true });
       // when
-      const lines = await readLogs({ tty: true });
+      const lines = await readLogs();
       // then
       expect(lines).toEqual([
         { stdStream: StdStream.out, timestamp: "2026-08-01T10:11:12.13Z", message: "first" },
@@ -64,7 +64,7 @@ describe(DockerSocket.name, () => {
 
     it("should keep a line that has no parsable timestamp", async () => {
       // given
-      respondWith(streamOf(frame(1, "no timestamp here\n")));
+      respondWithLogs(streamOf(frame(1, "no timestamp here\n")));
       // when
       const lines = await readLogs();
       // then
@@ -106,15 +106,6 @@ describe(DockerSocket.name, () => {
         { name: "one", group: "shop" },
         { name: "two", group: undefined },
       ]);
-    });
-  });
-
-  describe("hasTty", () => {
-    it("should read the tty flag off the container's config", async () => {
-      // given
-      respondWith(Response.json({ Config: { Tty: true } }));
-      // then
-      expect(await socket.hasTty("abc")).toBe(true);
     });
   });
 
@@ -160,8 +151,8 @@ describe(DockerSocket.name, () => {
     });
   });
 
-  async function readLogs({ tty = false }: { tty?: boolean } = {}) {
-    const lines = await collect(socket.streamLogs("abc", tty, new AbortController().signal));
+  async function readLogs() {
+    const lines = await collect(socket.streamLogs("abc", new AbortController().signal));
     return lines.map(({ stdStream, timestamp, message }) => ({ stdStream, timestamp: timestamp.toString(), message }));
   }
 });
@@ -169,6 +160,17 @@ describe(DockerSocket.name, () => {
 function respondWith(body: ReadableStream<Uint8Array> | Response) {
   const response = body instanceof Response ? body : new Response(body, { status: 200 });
   spyOn(globalThis, "fetch").mockResolvedValue(response);
+}
+
+/**
+ * `streamLogs` inspects the container for its tty flag before opening the log stream, so these two
+ * calls have to be answered separately.
+ */
+function respondWithLogs(body: ReadableStream<Uint8Array>, { tty = false }: { tty?: boolean } = {}) {
+  const handler = async (input: URL | RequestInfo) => {
+    return `${input}`.includes("/logs") ? new Response(body, { status: 200 }) : Response.json({ Config: { Tty: tty } });
+  };
+  spyOn(globalThis, "fetch").mockImplementation(handler as typeof fetch);
 }
 
 function lifecycle(overrides: Record<string, string>): string {
