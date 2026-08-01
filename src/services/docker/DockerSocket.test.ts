@@ -120,10 +120,10 @@ describe(DockerSocket.name, () => {
       expect(requested.find((url) => url.includes("/logs"))).toContain("timestamps=1");
     });
 
-    it("should keep the timestamp of every line when one payload carries several", async () => {
-      // given (only the FIRST line of a continuation payload repeats a timestamp; the rest are real)
+    it("should give each line its own timestamp, since docker emits one frame per line", async () => {
+      // given (even a single write of "one\ntwo\n" comes back as two separately stamped frames)
       const other = "2026-08-01T22:33:44.000000000Z";
-      respondWithLogs(streamOf(frame(1, `${TIMESTAMP} one\n${other} two\n`)));
+      respondWithLogs(streamOf(frame(1, `${TIMESTAMP} one\n`), frame(1, `${other} two\n`)));
       // when
       const lines = await readLogs();
       // then
@@ -134,8 +134,11 @@ describe(DockerSocket.name, () => {
     });
 
     it("should not splice stdout and stderr into each other while both are mid-line", async () => {
-      // given (a half-written stdout line, a whole stderr line, then the rest of the stdout line)
-      respondWithLogs(streamOf(frame(1, `${TIMESTAMP} out-start `), frame(2, `${TIMESTAMP} err whole\n`), frame(1, `out-end\n`)));
+      // given (a half-written stdout line, a whole stderr line, then the rest of the stdout line --
+      // every frame carries a timestamp, continuations repeating the one of the line they finish)
+      respondWithLogs(
+        streamOf(frame(1, `${TIMESTAMP} out-start `), frame(2, `${TIMESTAMP} err whole\n`), frame(1, `${TIMESTAMP} out-end\n`)),
+      );
       // when
       const lines = await readLogs();
       // then (stderr came through untouched, and stdout rejoined its own halves)

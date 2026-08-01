@@ -6,10 +6,7 @@ import { Temporal } from "@js-temporal/polyfill";
 import z from "zod/v4";
 
 /**
- * Transport for the Docker Engine API over its unix socket. Knows about HTTP, JSON and Docker's
- * stream framing; knows nothing about throttling, retries or what any of it means.
- *
- * Bun's `fetch` speaks unix sockets natively, so no docker client library is involved.
+ * Interacts with the Docker Engine API, directly via the unix socket
  */
 export class DockerSocket {
   private static readonly LABEL_COMPOSE_PROJECT = "com.docker.compose.project";
@@ -51,43 +48,56 @@ export class DockerSocket {
   }
 
   public async *streamLogs(id: string, signal: AbortSignal): AsyncGenerator<DockerSocket.LogLine> {
-    // Containers started with a TTY emit a raw byte stream; all others emit Docker's multiplexed
-    // framing. There is no way to tell from the log stream itself, so it has to be asked up front.
-    //
-    // Containers are usually started without an interactive shell, so non-TTY is the overwhelmingly "normal" case
+    // Containers started with a TTY emit a raw byte stream for their logs; all others emit Docker's
+    // multiplexed framing. There is no way to tell from the log stream itself, so it has to be asked up front.
+    // Containers are usually started without an interactive shell, so non-TTY is the overwhelmingly "normal" case.
     const tty = await this.hasTty(id, signal);
 
-    // For the log stream of TTY containers, timestamp placement cannot be unambiguously separated from log bytes
-    // so it's better not to request them, and rely on arrival time for TTY containers
+    // Timestamps are only requested for the (non-TTY) framed stream.
+    // That's because Docker cuts a log message once it passes 16KB, and stamps every piece it cuts:
+    //  - The framed Non-TTY stream says where each piece begins, so those repeated stamps can be dropped again.
+    //  - TTY containers (with their "simple" stream), on the other hand, leave timestamps stranded mid-message,
+    //    indistinguishable from what the container itself wrote.
     const path = `/containers/${id}/logs?follow=1&stdout=1&stderr=1&timestamps=${tty ? 0 : 1}&tail=0`;
     const response = await this.request(path, signal);
     const body = this.readBody(response, path);
     const frames = tty ? this.streamTtyContainerLogs(body) : this.streamInterleavedNonTtyContainerLogs(body);
 
     const leftoversMap = new Map<StreamVariant, string>();
-    for await (const { streamVariant, data } of frames) {
+    for await (let { streamVariant, data } of frames) {
       const leftovers = leftoversMap.get(streamVariant) ?? "";
-      
-      /**
-       * A frame resuming an unfinished line repeats that line's timestamp, which would otherwise be
-       * spliced into the middle of the message. The carried half already holds the real one.
-       */
-      const continuation = !tty && leftovers.length > 0;
-      const lines = (leftovers + (continuation ? this.splitTimestamp(data).rest : data)).split("\n");
+
+      // Timestamps were only requested for the framed stream; TTY falls back to arrival time
+      let timestamp = Temporal.Now.instant();
+      if (!tty) {
+        const split = this.splitTimestamp(data);
+        data = split.actualData;
+        timestamp = split.timestamp ?? timestamp;
+      }
+
+      // TODO: we hope to find a newline sometime in the log stream, otherwise below is a memory leak ...
+      const lines = (leftovers + data).split("\n");
       leftoversMap.set(streamVariant, lines.pop() ?? "");
+
       for (const line of lines) {
         if (line.length > 0) {
-          yield this.readLogLine(streamVariant, line, tty);
+          yield {
+            streamVariant,
+            timestamp,
+            message: this.dropCarriageReturn(line),
+          };
         }
       }
     }
-    /**
-     * Unlike a truncated JSON object, a trailing line with no final newline is still a whole line:
-     * the container simply exited without one.
-     */
+    // Unlike a truncated JSON object, a trailing line with no final newline is still a whole line:
+    // the container simply exited without one.
     for (const [streamVariant, rest] of leftoversMap) {
       if (rest.length > 0) {
-        yield this.readLogLine(streamVariant, rest, tty);
+        yield {
+          streamVariant,
+          timestamp: Temporal.Now.instant(),
+          message: this.dropCarriageReturn(rest),
+        };
       }
     }
   }
@@ -97,6 +107,9 @@ export class DockerSocket {
     return Internal.Inspection.parse(await response.json()).Config.Tty;
   }
 
+  /**
+   * TTY containers yield a simple continuous log stream for stdout only
+   */
   private async *streamTtyContainerLogs(body: ReadableStream<Uint8Array>): AsyncGenerator<Internal.Frame> {
     const decoder = new TextDecoder();
     for await (const chunk of body) {
@@ -162,9 +175,10 @@ export class DockerSocket {
 
         const payloadStart = offset + FRAME_HEADER_BYTES;
         const payloadEnd = payloadStart + headerPayloadSize;
+        const payload = decoder.decode(buffer.subarray(payloadStart, payloadEnd));
         yield {
           streamVariant: headerStreamVariant,
-          data: decoder.decode(buffer.subarray(payloadStart, payloadEnd)),
+          data: payload,
         };
         offset = payloadEnd;
       }
@@ -201,23 +215,6 @@ export class DockerSocket {
     return response.body;
   }
 
-  /**
-   * Only a framed stream was asked for timestamps, so only there is a leading instant docker's
-   * rather than the container's own output. A line that should carry one but doesn't is still worth
-   * keeping, so it falls back to arrival time too.
-   */
-  private readLogLine(streamVariant: StreamVariant, line: string, tty: boolean): DockerSocket.LogLine {
-    if (tty) {
-      return { streamVariant, timestamp: Temporal.Now.instant(), message: this.dropCarriageReturn(line) };
-    }
-    const { timestamp, rest } = this.splitTimestamp(line);
-    return { streamVariant, timestamp: timestamp ?? Temporal.Now.instant(), message: this.dropCarriageReturn(rest) };
-  }
-
-  /**
-   * A pty translates every newline into a carriage return plus a newline, so a tty container's
-   * lines arrive with a trailing `\r` that the container never wrote.
-   */
   private dropCarriageReturn(line: string): string {
     return line.endsWith("\r") ? line.slice(0, -1) : line;
   }
@@ -226,16 +223,16 @@ export class DockerSocket {
    * Docker's `timestamps=1` prefixes an RFC3339Nano instant and a single space onto every payload
    * it emits.
    */
-  private splitTimestamp(text: string): { timestamp?: Temporal.Instant; rest: string } {
-    const separator = text.indexOf(" ");
+  private splitTimestamp(data: string): { timestamp?: Temporal.Instant; actualData: string } {
+    const separator = data.indexOf(" ");
     if (separator > 0) {
       try {
-        return { timestamp: Temporal.Instant.from(text.slice(0, separator)), rest: text.slice(separator + 1) };
+        return { timestamp: Temporal.Instant.from(data.slice(0, separator)), actualData: data.slice(separator + 1) };
       } catch {
         // not a timestamp after all
       }
     }
-    return { rest: text };
+    return { actualData: data };
   }
 
   private async *readLines(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
@@ -244,10 +241,9 @@ export class DockerSocket {
     for await (const chunk of body) {
       leftovers += decoder.decode(chunk, { stream: true });
 
-      // jsonl, so each line is 1 json object
-      const lines = leftovers.split("\n");
       // the fully formed lines are ready to be processed upstream
       // any leftovers belong to the upcoming chunk
+      const lines = leftovers.split("\n");
       leftovers = lines.pop() ?? "";
 
       for (const line of lines) {
