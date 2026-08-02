@@ -3,7 +3,7 @@ import { $container, $containerEvent } from "@/drizzle/schema";
 import { Sqlite } from "@/drizzle/sqlite";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
-import { asc, eq, inArray, notExists, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lte, notExists, sql } from "drizzle-orm";
 import { BehaviorSubject, Observable } from "rxjs";
 
 /** Rows per insert statement, kept well inside SQLite's cap on bound values per statement. */
@@ -84,6 +84,42 @@ export class ContainerEventRepository {
     });
     const model = ContainerEventConverter.containerFromDatabase(container);
     return rows.map((row) => ContainerEventConverter.fromDatabase(row, model));
+  }
+
+  /**
+   * Caps how much history any one container may hold, so a chatty neighbour cannot evict everyone
+   * else's. A global size cap alone has exactly that failure: a container at the throttle ceiling
+   * produces events all day and would come to occupy the entire budget, leaving a quiet service
+   * with no history at all on the day it finally breaks.
+   *
+   * Counted in events rather than bytes, because both the count and the delete then ride the
+   * `(container, id)` index -- and "keep the last N lines" is a sentence an operator can hold in
+   * their head, where "keep 20MB" is not.
+   */
+  public async pruneToEventsPerContainer(maxEvents: number): Promise<{ events: number }> {
+    const containers = this.sqlite.select({ id: $container.id }).from($container).all();
+    let events = 0;
+    for (const { id } of containers) {
+      // the newest event beyond the ones we are keeping; everything at or below it is surplus
+      const [surplus] = this.sqlite
+        .select({ id: $containerEvent.id })
+        .from($containerEvent)
+        .where(eq($containerEvent.container, id))
+        .orderBy(desc($containerEvent.id))
+        .limit(1)
+        .offset(maxEvents)
+        .all();
+      if (!surplus) {
+        continue;
+      }
+      const deleted = this.sqlite
+        .delete($containerEvent)
+        .where(and(eq($containerEvent.container, id), lte($containerEvent.id, surplus.id)))
+        .returning({ id: $containerEvent.id })
+        .all();
+      events += deleted.length;
+    }
+    return { events };
   }
 
   /**

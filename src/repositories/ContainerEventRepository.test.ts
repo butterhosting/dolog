@@ -74,6 +74,38 @@ describe(ContainerEventRepository.name, () => {
     expect(await containers()).toEqual([after]);
   });
 
+  it("should keep only the newest events per container, independently of each other", async () => {
+    // given (one chatty container and one quiet one)
+    const chatty = TestFixture.container({ name: "chatty" });
+    const quiet = TestFixture.container({ name: "quiet" });
+    await repository.append([
+      ...Array.from({ length: 100 }, (_, i) => TestFixture.logEvent({ container: chatty, line: `chatty ${i}` })),
+      ...Array.from({ length: 3 }, (_, i) => TestFixture.logEvent({ container: quiet, line: `quiet ${i}` })),
+    ]);
+
+    // when
+    const pruned = await repository.pruneToEventsPerContainer(10);
+    // then (the quiet one is untouched -- its own history is not the chatty one's to spend)
+    expect(pruned.events).toEqual(90);
+    expect(await repository.findEvents(quiet.id, 1_000)).toHaveLength(3);
+    const remaining = await repository.findEvents(chatty.id, 1_000);
+    expect(remaining).toHaveLength(10);
+    expect(remaining.at(0)).toEqual(expect.objectContaining({ line: "chatty 90" } satisfies Partial<ContainerEvent>));
+    expect(remaining.at(-1)).toEqual(expect.objectContaining({ line: "chatty 99" } satisfies Partial<ContainerEvent>));
+  });
+
+  it("should leave a container alone while it is under its own cap", async () => {
+    // given
+    const container = TestFixture.container();
+    await repository.append(Array.from({ length: 5 }, () => TestFixture.logEvent({ container })));
+
+    // when
+    const pruned = await repository.pruneToEventsPerContainer(10);
+    // then
+    expect(pruned.events).toEqual(0);
+    expect(await repository.findEvents(container.id, 1_000)).toHaveLength(5);
+  });
+
   it("should do nothing while the database fits the budget", async () => {
     // given
     const container = TestFixture.container();

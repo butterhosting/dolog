@@ -65,6 +65,7 @@ export namespace TestEnvironment {
       X_DOLOG_DOCKER_SOCKET: "/var/run/docker.sock",
       X_DOLOG_THROTTLE_LOGS_PER_SECOND: "5",
       X_DOLOG_RETENTION_MAX_MEGABYTES: "1",
+      X_DOLOG_RETENTION_MAX_EVENTS_PER_CONTAINER: "100000",
     });
     const patchEnvironmentVariables = (environment: Record<string, string>) => {
       Object.assign(Bun.env, environment);
