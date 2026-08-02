@@ -9,7 +9,7 @@ import { Yexception } from "yexception";
 import { Logger } from "./Logger";
 import { Middleware } from "./middleware/Middleware";
 import { Throughput } from "./models/Throughput";
-import { ContainerService } from "./services/ContainerService";
+import { LogService } from "./services/LogService";
 import { Socket } from "./socket/Socket";
 import { SocketService } from "./socket/SocketService";
 
@@ -18,7 +18,7 @@ export class Server {
 
   public constructor(
     private readonly env: Env.Private,
-    private readonly containerService: ContainerService,
+    private readonly containerService: LogService,
     private readonly socketService: SocketService,
     private readonly middleware: Middleware,
   ) {}

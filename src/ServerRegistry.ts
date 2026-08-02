@@ -3,9 +3,11 @@ import { Env } from "./Env";
 import { LoggingMiddleware } from "./middleware/logging/LoggingMiddleware";
 import { Middleware } from "./middleware/Middleware";
 import { Server } from "./Server";
-import { ContainerService } from "./services/ContainerService";
-import { FountainService } from "./services/streaming/FountainService";
+import { AlertingService } from "./services/AlertingService";
+import { LogService } from "./services/LogService";
+import { RetentionService } from "./services/RetentionService";
 import { DockerSocket } from "./services/streaming/DockerSocket";
+import { Fountain } from "./services/streaming/Fountain";
 import { ThrottleService } from "./services/streaming/ThrottleService";
 import { SocketService } from "./socket/SocketService";
 
@@ -20,16 +22,18 @@ export class ServerRegistry {
     // Services
     const { dockerSocket } = this.register({ DockerSocket }, [env]);
     const { throttleService } = this.register({ ThrottleService }, [env]);
-    const { fountainService } = this.register({ FountainService }, [dockerSocket, throttleService]);
-    const { containerService } = this.register({ ContainerService }, [fountainService]);
-    const { socketService } = this.register({ SocketService }, []);
+    const { fountain } = this.register({ Fountain }, [dockerSocket, throttleService]);
+    const { retentionService } = this.register({ RetentionService }, [fountain]);
+    const { alertingService } = this.register({ AlertingService }, [fountain]);
+    const { logService } = this.register({ LogService }, [fountain]);
 
     // Middleware
     const { loggingMiddleware } = this.register({ LoggingMiddleware }, []);
     const { middleware } = this.register({ Middleware }, [loggingMiddleware]);
 
     // Server
-    this.register({ Server }, [env, containerService, socketService, middleware]);
+    const { socketService } = this.register({ SocketService }, []);
+    this.register({ Server }, [env, logService, socketService, middleware]);
   }
 
   public get(env: "env"): Env.Private;

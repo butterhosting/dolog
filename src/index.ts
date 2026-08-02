@@ -4,7 +4,7 @@ import { Env } from "./Env";
 import { Logger } from "./Logger";
 import { Server } from "./Server";
 import { ServerRegistry } from "./ServerRegistry";
-import { ContainerService } from "./services/ContainerService";
+import { LogService } from "./services/LogService";
 
 /**
  * Initialize the logger
@@ -32,7 +32,7 @@ const registry = await ServerRegistry.bootstrap(env);
  */
 const log = new Logger(__filename);
 registry
-  .get(ContainerService)
+  .get(LogService)
   .activateFountain()
   .subscribe({
     next: (event) => console.log(ContainerEventPrinter.format(event)),

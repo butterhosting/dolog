@@ -18,17 +18,17 @@ const RECONNECT_DELAY_MS = 2_000;
  *
  * Log messages are throttled per container, see the {@link ThrottleService}
  */
-export class FountainService {
+export class Fountain {
   private readonly log = new Logger(__filename);
-  private stream?: Observable<DologEvent>;
+  private throttledStream?: Observable<DologEvent>;
 
   public constructor(
     private readonly dockerSocket: DockerSocket,
     private readonly throttleService: ThrottleService,
   ) {}
 
-  public activate(): Observable<DologEvent> {
-    this.stream ??= defer(() => this.rawSocketStream()).pipe(
+  public stream(): Observable<DologEvent> {
+    this.throttledStream ??= defer(() => this.rawSocketStream()).pipe(
       this.throttleService.groupAndThrottleByContainer(),
       share({
         // `resetOnRefCountZero: false` keeps the socket connections open even when no one is listening.
@@ -37,7 +37,7 @@ export class FountainService {
         resetOnRefCountZero: false,
       }),
     );
-    return this.stream;
+    return this.throttledStream;
   }
 
   public throughputs(): Observable<Throughput[]> {
