@@ -8,7 +8,7 @@ import { firstValueFrom } from "rxjs";
 import { Yexception } from "yexception";
 import { Logger } from "./Logger";
 import { Middleware } from "./middleware/Middleware";
-import { ContainerOverview } from "./models/ContainerOverview";
+import { ContainerRM } from "./models/ContainerRM";
 import { ContainerService } from "./services/ContainerService";
 import { Throughput } from "./models/Throughput";
 import { LogService } from "./services/LogService";
@@ -104,7 +104,7 @@ export class Server {
          */
         "/internal-api/containers": {
           GET: this.handleRoute(async () => {
-            const overview: ContainerOverview[] = await this.containerService.list();
+            const overview: ContainerRM[] = await this.containerService.list();
             return Response.json(overview);
           }),
         },

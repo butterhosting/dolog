@@ -1,4 +1,4 @@
-import { ContainerOverview } from "@/models/ContainerOverview";
+import { ContainerRM } from "@/models/ContainerRM";
 import { ServerMessage } from "@/socket/ServerMessage";
 import { Temporal } from "@js-temporal/polyfill";
 import clsx from "clsx";
@@ -60,7 +60,7 @@ export function containersPage() {
       )}
       <div className="grid grid-cols-3 lg:grid-cols-2 sm:grid-cols-1 gap-4">
         {overview.map((entry) => (
-          <Internal.Card key={entry.container.id} entry={entry} />
+          <Internal.Card key={entry.id} entry={entry} />
         ))}
       </div>
     </Frame>
@@ -68,16 +68,16 @@ export function containersPage() {
 }
 
 namespace Internal {
-  export function Card({ entry }: { entry: ContainerOverview }) {
-    const { container, running, logsPerSecond, throttling, lastSeen } = entry;
+  export function Card({ entry }: { entry: ContainerRM }) {
+    const { id, name, group, running, logsPerSecond, throttling, lastSeen } = entry;
     return (
-      <Link to={Route.containerLogs(container.id)}>
+      <Link to={Route.containerLogs(id)}>
         <Paper className="px-5 py-4 h-full flex flex-col gap-1 hover:shadow-xl transition-shadow">
           <div className="flex items-baseline gap-2">
-            <span className={clsx("font-bold truncate", running ? "text-c-accent" : "text-c-dark-half")}>{container.name}</span>
+            <span className={clsx("font-bold truncate", running ? "text-c-accent" : "text-c-dark-half")}>{name}</span>
             {!running && <span className="text-xs tracking-wide text-c-dark-half shrink-0">STOPPED</span>}
           </div>
-          {container.group && <span className="text-xs text-c-dark-half truncate">{container.group}</span>}
+          {group && <span className="text-xs text-c-dark-half truncate">{group}</span>}
           <div className="mt-2 flex items-baseline gap-2">
             <span className="font-mono text-sm">{logsPerSecond}</span>
             <span className="text-xs text-c-dark-half">logs/s</span>

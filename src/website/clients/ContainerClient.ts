@@ -1,13 +1,13 @@
 import { ContainerEvent } from "@/models/ContainerEvent";
-import { ContainerOverview } from "@/models/ContainerOverview";
+import { ContainerRM } from "@/models/ContainerRM";
 import { Yesttp } from "yesttp";
 
 export class ContainerClient {
   public constructor(private readonly yesttp: Yesttp) {}
 
-  public async overview(): Promise<ContainerOverview[]> {
+  public async overview(): Promise<ContainerRM[]> {
     const { json } = await this.yesttp.get<unknown[]>("/containers");
-    return json.map(ContainerOverview.parse);
+    return json.map(ContainerRM.parse);
   }
 
   /**
@@ -16,9 +16,7 @@ export class ContainerClient {
    */
   public async events(containerId: string, before?: number): Promise<ContainerClient.Page> {
     const query = before === undefined ? "" : `?before=${before}`;
-    const { json } = await this.yesttp.get<{ events: unknown[]; olderCursor: number | null }>(
-      `/containers/${containerId}/events${query}`,
-    );
+    const { json } = await this.yesttp.get<{ events: unknown[]; olderCursor: number | null }>(`/containers/${containerId}/events${query}`);
     return {
       events: json.events.map(ContainerEvent.parse),
       olderCursor: json.olderCursor,

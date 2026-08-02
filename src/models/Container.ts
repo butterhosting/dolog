@@ -5,10 +5,6 @@ export type Container = {
   id: string;
   object: "container";
   name: string;
-  /**
-   * The umbrella a container belongs to: the compose project or the swarm stack.
-   * Standalone containers have none.
-   */
   group?: string;
 };
 

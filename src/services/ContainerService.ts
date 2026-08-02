@@ -1,6 +1,6 @@
 import { Logger } from "@/Logger";
 import { Container } from "@/models/Container";
-import { ContainerOverview } from "@/models/ContainerOverview";
+import { ContainerRM } from "@/models/ContainerRM";
 import { Throughput } from "@/models/Throughput";
 import { ContainerEventRepository } from "@/repositories/ContainerEventRepository";
 import { SocketService } from "@/socket/SocketService";
@@ -39,7 +39,7 @@ export class ContainerService {
     return this.throughputs;
   }
 
-  public async list(): Promise<ContainerOverview[]> {
+  public async list(): Promise<ContainerRM[]> {
     const [running, recorded, throughputs] = await Promise.all([
       this.dockerSocket.listRunningContainers().catch(() => [] as Container[]),
       this.containerEventRepository.listOverview(),
@@ -52,9 +52,8 @@ export class ContainerService {
 
     return (
       [...merged.values()]
-        .map((container) => ({
-          object: "container_overview" as const,
-          container,
+        .map((container): ContainerRM => ({
+          ...container,
           running: running.some((candidate) => candidate.id === container.id),
           lastSeen: seen.get(container.id) ?? null,
           logsPerSecond: rate.get(container.id)?.logsPerSecond ?? 0,
