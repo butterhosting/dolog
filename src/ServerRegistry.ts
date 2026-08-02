@@ -4,9 +4,9 @@ import { LoggingMiddleware } from "./middleware/logging/LoggingMiddleware";
 import { Middleware } from "./middleware/Middleware";
 import { Server } from "./Server";
 import { ContainerService } from "./services/ContainerService";
-import { DockerFountain } from "./services/docker/DockerFountain";
-import { DockerSocket } from "./services/docker/DockerSocket";
-import { ThrottleService } from "./services/ThrottleService";
+import { Fountain } from "./services/streaming/Fountain";
+import { DockerSocket } from "./services/streaming/DockerSocket";
+import { ThrottleService } from "./services/streaming/ThrottleService";
 import { SocketService } from "./socket/SocketService";
 
 export class ServerRegistry {
@@ -17,14 +17,12 @@ export class ServerRegistry {
   private readonly registry: Record<string, any> = {};
 
   private constructor(private readonly env: Env.Private) {
-    // Docker
-    const { dockerSocket } = this.register({ DockerSocket }, [env]);
-    const { dockerFountain } = this.register({ DockerFountain }, [dockerSocket]);
-
     // Services
-    const { socketService } = this.register({ SocketService }, []);
+    const { dockerSocket } = this.register({ DockerSocket }, [env]);
     const { throttleService } = this.register({ ThrottleService }, [env]);
-    const { containerService } = this.register({ ContainerService }, [dockerFountain, throttleService]);
+    const { fountain } = this.register({ Fountain }, [dockerSocket, throttleService]);
+    const { containerService } = this.register({ ContainerService }, [fountain]);
+    const { socketService } = this.register({ SocketService }, []);
 
     // Middleware
     const { loggingMiddleware } = this.register({ LoggingMiddleware }, []);

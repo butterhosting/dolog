@@ -3,61 +3,78 @@ import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { catchError, defer, EMPTY, from, map, merge, mergeMap, Observable, of, repeat, retry, share, timer } from "rxjs";
 import { DockerSocket } from "./DockerSocket";
+import { ThrottleService } from "./ThrottleService";
+import { DologEvent } from "@/models/DologEvent";
+import { Throughput } from "@/models/Throughput";
 
 const RECONNECT_DELAY_MS = 2_000;
 
 /**
- * The single source of container events. Turned on once, it emits for the lifetime of the process:
+ * Our single source of continuous events.
+ *
+ * Once this fountain is turned on, it emits for the lifetime of the process:
  * containers that come online start producing logs, containers that die stop, and a dead socket is
  * retried until it comes back.
  *
- * The stream reports only what actually happened while it was listening. Containers that were
- * already up get their logs followed but no `start` -- dolog did not witness them start, and
- * inventing one would date it to boot time rather than to the event. Ask `DockerSocket` directly
- * for a point-in-time view of what is running.
- *
- * It never emits `throttle` events -- that is the throttler's job, downstream.
+ * Log messages are throttled per container, see the {@link ThrottleService}
  */
-export class DockerFountain {
+export class Fountain {
   private readonly log = new Logger(__filename);
-  private events?: Observable<ContainerEvent>;
+  private stream?: Observable<DologEvent>;
 
-  public constructor(private readonly dockerSocket: DockerSocket) {}
+  public constructor(
+    private readonly dockerSocket: DockerSocket,
+    private readonly throttleService: ThrottleService,
+  ) {}
 
-  public stream(): Observable<ContainerEvent> {
-    if (!this.events) {
-      this.events = defer(() => {
-        const containersBeingFollowed = new Set<string>();
-        /**
-         * The listing and the event stream are opened concurrently, so a container starting in that
-         * window shows up in both. Attaching twice would duplicate every one of its log lines.
-         */
-        const follow = (container: Container): Observable<ContainerEvent.Log> => {
-          if (containersBeingFollowed.has(container.id)) {
-            return EMPTY;
+  public activate(): Observable<DologEvent> {
+    /**
+     * `resetOnRefCountZero: false` keeps the socket connections open even when no one is listening.
+     * Without it, a momentary gap between subscribers would re-run the `defer`: every container
+     * re-listed and re-attached, and both this class's and the throttler's state rebuilt.
+     */
+    this.stream ??= defer(() => this.rawSocketStream()).pipe(
+      this.throttleService.groupAndThrottleByContainer(),
+      share({
+        resetOnRefCountZero: false,
+      }),
+    );
+    return this.stream;
+  }
+
+  /**
+   * A live reading per container, kept as a side effect of throttling. Surfaced here because the
+   * fountain owns the throttler; nothing downstream needs to know it exists.
+   */
+  public throughput(): Throughput[] {
+    return this.throttleService.throughputOverview();
+  }
+
+  private rawSocketStream(): Observable<ContainerEvent> {
+    const containersBeingFollowed = new Set<string>();
+    /**
+     * The listing and the event stream are opened concurrently, so a container starting in that
+     * window shows up in both. Attaching twice would duplicate every one of its log lines.
+     */
+    const follow = (container: Container): Observable<ContainerEvent.Log> => {
+      if (containersBeingFollowed.has(container.id)) {
+        return EMPTY;
+      }
+      containersBeingFollowed.add(container.id);
+      return this.logs(container);
+    };
+    return merge(
+      this.alreadyRunning().pipe(mergeMap(follow)),
+      this.lifecycle().pipe(
+        mergeMap((event) => {
+          if (event.type === ContainerEvent.Type.stop) {
+            containersBeingFollowed.delete(event.container.id);
+            return of(event);
           }
-          containersBeingFollowed.add(container.id);
-          return this.logs(container);
-        };
-        return merge(
-          this.alreadyRunning().pipe(mergeMap(follow)),
-          this.lifecycle().pipe(
-            mergeMap((event) => {
-              if (event.type === ContainerEvent.Type.stop) {
-                containersBeingFollowed.delete(event.container.id);
-                return of(event);
-              }
-              return merge(of(event), follow(event.container));
-            }),
-          ),
-        );
-      }).pipe(
-        share({
-          resetOnRefCountZero: false,
+          return merge(of(event), follow(event.container));
         }),
-      );
-    }
-    return this.events;
+      ),
+    );
   }
 
   /**
@@ -102,7 +119,7 @@ export class DockerFountain {
    * One container's logs failing must not take the fountain down with it.
    */
   private logs(container: Container): Observable<ContainerEvent.Log> {
-    return this.abortable((signal) => this.dockerSocket.streamLogs(container.id, signal)).pipe(
+    return this.abortable((signal) => this.dockerSocket.streamLogLines(container.id, signal)).pipe(
       map(({ streamVariant, timestamp, message }): ContainerEvent.Log => ({
         object: "container_event",
         type: ContainerEvent.Type.log as const,

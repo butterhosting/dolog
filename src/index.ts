@@ -33,7 +33,7 @@ const registry = await ServerRegistry.bootstrap(env);
 const log = new Logger(__filename);
 registry
   .get(ContainerService)
-  .initializeStream()
+  .activateFountain()
   .subscribe({
     next: (event) => console.log(ContainerEventPrinter.format(event)),
     error: (error) => log.error("The container event stream died", error),

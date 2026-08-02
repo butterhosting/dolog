@@ -47,7 +47,7 @@ export class DockerSocket {
     }
   }
 
-  public async *streamLogs(id: string, signal: AbortSignal): AsyncGenerator<DockerSocket.LogLine> {
+  public async *streamLogLines(id: string, signal: AbortSignal): AsyncGenerator<DockerSocket.LogLine> {
     // Containers started with a TTY emit a raw byte stream for their logs; all others emit Docker's
     // multiplexed framing. There is no way to tell from the log stream itself, so it has to be asked up front.
     // Containers are usually started without an interactive shell, so non-TTY is the overwhelmingly "normal" case.

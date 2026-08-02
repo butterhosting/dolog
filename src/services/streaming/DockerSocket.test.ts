@@ -247,7 +247,7 @@ describe(DockerSocket.name, () => {
   });
 
   async function readLogs() {
-    const lines = await collect(socket.streamLogs("abc", new AbortController().signal));
+    const lines = await collect(socket.streamLogLines("abc", new AbortController().signal));
     return lines.map(({ streamVariant, timestamp, message }) => ({ streamVariant, timestamp: timestamp.toString(), message }));
   }
 });

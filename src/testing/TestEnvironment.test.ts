@@ -1,4 +1,4 @@
-import { DockerSocket } from "@/services/docker/DockerSocket";
+import { DockerSocket } from "@/services/streaming/DockerSocket";
 import { Env } from "@/Env";
 import { Logger } from "@/Logger";
 import { LogLevel } from "@/models/internal/LogLevel";
@@ -78,7 +78,7 @@ export namespace TestEnvironment {
     const dockerSocketMock = registerMockObject<DockerSocket>({
       listRunningContainers: mock(),
       streamLifecycles: mock(),
-      streamLogs: mock(),
+      streamLogLines: mock(),
     });
 
     return {

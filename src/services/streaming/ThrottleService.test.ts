@@ -29,7 +29,7 @@ describe(ThrottleService.name, () => {
 
     scheduler.run(({ cold, expectObservable }) => {
       // when
-      const throttled = service.throttle(cold("(abc)", events));
+      const throttled = cold("(abc)", events).pipe(service.groupAndThrottleByContainer());
       // then
       expectObservable(throttled, "^ 1500ms !").toBe("(abc)", events);
     });
@@ -50,7 +50,7 @@ describe(ThrottleService.name, () => {
 
     scheduler.run(({ cold, expectObservable }) => {
       // when
-      const throttled = service.throttle(cold("(abcdefg)", events));
+      const throttled = cold("(abcdefg)", events).pipe(service.groupAndThrottleByContainer());
       // then (the first five pass immediately, the other two surface as a single fold at 1000ms)
       expectObservable(throttled, "^ 1500ms !").toBe("(abcde) 993ms t", {
         ...events,
@@ -79,7 +79,7 @@ describe(ThrottleService.name, () => {
 
     scheduler.run(({ cold, expectObservable }) => {
       // when
-      const throttled = service.throttle(cold("(sabcdef)", events));
+      const throttled = cold("(sabcdef)", events).pipe(service.groupAndThrottleByContainer());
       // then (the start survives, only the sixth log is folded)
       expectObservable(throttled, "^ 1500ms !").toBe("(sabcde) 992ms t", {
         ...events,
@@ -103,7 +103,7 @@ describe(ThrottleService.name, () => {
 
     scheduler.run(({ cold, expectObservable }) => {
       // when
-      const throttled = service.throttle(cold("(abcxyz)", events));
+      const throttled = cold("(abcxyz)", events).pipe(service.groupAndThrottleByContainer());
       // then (nothing is folded, because neither container spent more than three of its five)
       expectObservable(throttled, "^ 1500ms !").toBe("(abcxyz)", events);
     });
@@ -117,9 +117,9 @@ describe(ThrottleService.name, () => {
 
     scheduler.run(({ cold, expectObservable }) => {
       // when
-      const throttled = service.throttle(cold("(ab)", events));
+      const throttled = cold("(ab)", events).pipe(service.groupAndThrottleByContainer());
       expectObservable(throttled, "^ 1500ms !").toBe("(ab)", events);
-      scheduler.schedule(() => snapshots.push(service.dashboard()), 1100);
+      scheduler.schedule(() => snapshots.push(service.throughputOverview()), 1100);
     });
 
     // then ("hello" and "world" are 5 bytes each)
@@ -141,12 +141,12 @@ describe(ThrottleService.name, () => {
 
     scheduler.run(({ cold, expectObservable }) => {
       // when
-      const throttled = service.throttle(cold("a", events));
+      const throttled = cold("a", events).pipe(service.groupAndThrottleByContainer());
       expectObservable(throttled, "^ 1500ms !").toBe("a", events);
     });
 
     // then (the subscription ended, so the dashboard entry went with it)
-    expect(service.dashboard()).toEqual([]);
+    expect(service.throughputOverview()).toEqual([]);
   });
 });
 

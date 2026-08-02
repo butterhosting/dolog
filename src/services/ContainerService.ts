@@ -1,25 +1,16 @@
 import { DologEvent } from "@/models/DologEvent";
 import { Throughput } from "@/models/Throughput";
-import { Observable, share } from "rxjs";
-import { DockerFountain } from "./docker/DockerFountain";
-import { ThrottleService } from "./ThrottleService";
+import { Observable } from "rxjs";
+import { Fountain } from "./streaming/Fountain";
 
 export class ContainerService {
-  private events?: Observable<DologEvent>;
+  public constructor(private readonly fountain: Fountain) {}
 
-  public constructor(
-    private readonly dockerFountain: DockerFountain,
-    private readonly throttleService: ThrottleService,
-  ) {}
-
-  public initializeStream(): Observable<DologEvent> {
-    this.events ??= this.throttleService //
-      .throttle(this.dockerFountain.stream())
-      .pipe(share({ resetOnRefCountZero: false }));
-    return this.events;
+  public activateFountain(): Observable<DologEvent> {
+    return this.fountain.activate();
   }
 
   public throughput(): Throughput[] {
-    return this.throttleService.dashboard();
+    return this.fountain.throughput();
   }
 }

@@ -17,6 +17,7 @@ import {
   mergeMap,
   Observable,
   of,
+  pipe,
   Subject,
   takeUntil,
 } from "rxjs";
@@ -29,16 +30,19 @@ export class ThrottleService {
 
   public constructor(private readonly env: Env.Private) {}
 
-  public throttle(events: Observable<ContainerEvent>): Observable<DologEvent> {
-    return events.pipe(
-      groupBy((event) => event.container.id, {
+  /**
+   * Transforms an Observable<ContainerEvent> into a (throttled) Observable<DologEvent>
+   */
+  public groupAndThrottleByContainer() {
+    return pipe(
+      groupBy((event: ContainerEvent) => event.container.id, {
         duration: (group) => group.pipe(debounceTime(IDLE_EVICTION_MS)),
       }),
       mergeMap((group) => this.throttleContainer(group)),
     );
   }
 
-  public dashboard(): Throughput[] {
+  public throughputOverview(): Throughput[] {
     return [...this.throughput.values()];
   }
 
