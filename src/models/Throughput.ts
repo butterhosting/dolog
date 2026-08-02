@@ -11,8 +11,7 @@ export type Throughput = {
   container: Container;
   logsPerSecond: number;
   bytesPerSecond: number;
-  foldedPerSecond: number;
-  measured: Temporal.Instant;
+  timestamp: Temporal.Instant;
 };
 
 export namespace Throughput {

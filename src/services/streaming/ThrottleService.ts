@@ -59,32 +59,43 @@ export class ThrottleService {
    * containers therefore see no added latency at all.
    */
   private throttleContainer(group: GroupedObservable<string, ContainerEvent>): Observable<DologEvent> {
-    const limit = this.env.X_DOLOG_THROTTLE_LOGS_PER_SECOND;
-    const closed = new Subject<void>();
-    const window = { container: undefined as Container | undefined, logs: 0, bytes: 0, folded: 0 };
+    const rateLimit = this.env.X_DOLOG_THROTTLE_LOGS_PER_SECOND;
+    const stopWatchingThisContainer = new Subject<void>();
 
-    const passed = group.pipe(
+    const window = {
+      container: undefined as Container | undefined,
+      logs: 0,
+      bytes: 0,
+      folded: 0,
+    };
+
+    const allowedEvents: Observable<ContainerEvent> = group.pipe(
       mergeMap((event) => {
         window.container = event.container;
-        if (event.type !== ContainerEvent.Type.log) {
-          return of(event);
+        switch (event.type) {
+          case ContainerEvent.Type.start:
+          case ContainerEvent.Type.stop: {
+            return of(event);
+          }
+          case ContainerEvent.Type.log: {
+            window.logs += 1;
+            window.bytes += Buffer.byteLength(event.message);
+            if (window.logs > rateLimit) {
+              window.folded += 1;
+              return EMPTY;
+            }
+            return of(event);
+          }
         }
-        window.logs += 1;
-        window.bytes += Buffer.byteLength(event.message);
-        if (window.logs > limit) {
-          window.folded += 1;
-          return EMPTY;
-        }
-        return of(event);
       }),
       finalize(() => {
-        closed.next();
-        closed.complete();
+        stopWatchingThisContainer.next();
+        stopWatchingThisContainer.complete();
       }),
     );
 
-    const windows: Observable<ThrottleEvent> = interval(this.WINDOW_MS).pipe(
-      takeUntil(closed),
+    const throttleEvents: Observable<ThrottleEvent> = interval(this.WINDOW_MS).pipe(
+      takeUntil(stopWatchingThisContainer),
       mergeMap(() => {
         const { container, logs, bytes, folded } = window;
         window.logs = 0;
@@ -93,28 +104,29 @@ export class ThrottleService {
         if (!container) {
           return EMPTY;
         }
-        const measured = Temporal.Now.instant();
+
+        const now = Temporal.Now.instant();
         this.throughput.set(container.id, {
           object: "throughput",
           container,
           logsPerSecond: logs,
           bytesPerSecond: bytes,
-          foldedPerSecond: folded,
-          measured,
+          timestamp: now,
         });
         if (folded === 0) {
           return EMPTY;
         }
+
         return of<ThrottleEvent>({
           object: "throttle_event",
-          timestamp: measured,
+          timestamp: now,
           container,
           foldCount: folded,
         });
       }),
     );
 
-    return merge(passed, windows).pipe(
+    return merge(allowedEvents, throttleEvents).pipe(
       finalize(() => {
         if (window.container) {
           this.throughput.delete(window.container.id);
