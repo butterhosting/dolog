@@ -22,13 +22,19 @@ import {
   takeUntil,
 } from "rxjs";
 
-const WINDOW_MS = 1_000;
-const IDLE_EVICTION_MS = 5 * 60 * 1_000;
-
 export class ThrottleService {
   private readonly throughput = new Map<string, Throughput>();
+  private readonly WINDOW_MS: number;
+  private readonly IDLE_EVICTION_MS: number;
 
-  public constructor(private readonly env: Env.Private) {}
+  public constructor(private readonly env: Env.Private) {
+    this.WINDOW_MS = 1_000;
+    this.IDLE_EVICTION_MS = 60 * 1_000;
+  }
+
+  public throughputOverview(): Throughput[] {
+    return [...this.throughput.values()];
+  }
 
   /**
    * Transforms an Observable<ContainerEvent> into a (throttled) Observable<DologEvent>
@@ -36,14 +42,15 @@ export class ThrottleService {
   public groupAndThrottleByContainer() {
     return pipe(
       groupBy((event: ContainerEvent) => event.container.id, {
-        duration: (group) => group.pipe(debounceTime(IDLE_EVICTION_MS)),
+        // we set a `duration`, otherwise every container creates its own group
+        // and every created group stays alive forever ... thats a bit expensive
+        // because each group has a periodic timer for calculating throughputs,
+        // so if we dont clean up container groups after some time, we'll forever
+        // accumulate periodic timers for each container, including all historic ones
+        duration: (group) => group.pipe(debounceTime(this.IDLE_EVICTION_MS)),
       }),
       mergeMap((group) => this.throttleContainer(group)),
     );
-  }
-
-  public throughputOverview(): Throughput[] {
-    return [...this.throughput.values()];
   }
 
   /**
@@ -76,7 +83,7 @@ export class ThrottleService {
       }),
     );
 
-    const windows: Observable<ThrottleEvent> = interval(WINDOW_MS).pipe(
+    const windows: Observable<ThrottleEvent> = interval(this.WINDOW_MS).pipe(
       takeUntil(closed),
       mergeMap(() => {
         const { container, logs, bytes, folded } = window;
