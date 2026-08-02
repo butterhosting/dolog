@@ -114,12 +114,15 @@ describe(ThrottleService.name, () => {
     const container = TestFixture.container();
     const events = { a: log(container, "hello"), b: log(container, "world") };
     const snapshots: Throughput[][] = [];
+    let latest: Throughput[] = [];
+    service.throughputs().subscribe((t) => (latest = t));
 
     scheduler.run(({ cold, expectObservable }) => {
       // when
       const throttled = cold("(ab)", events).pipe(service.groupAndThrottleByContainer());
       expectObservable(throttled, "^ 1500ms !").toBe("(ab)", events);
-      scheduler.schedule(() => snapshots.push(service.throughputOverview()), 1100);
+      // sampled mid-flight: the teardown at 1500ms empties the overview again
+      scheduler.schedule(() => snapshots.push(latest), 1100);
     });
 
     // then ("hello" and "world" are 5 bytes each, and nothing was over budget)
@@ -139,6 +142,8 @@ describe(ThrottleService.name, () => {
     const container = TestFixture.container();
     const events = Object.fromEntries("abcdefg".split("").map((k, i) => [k, log(container, `${i}`)]));
     const snapshots: Throughput[][] = [];
+    let latest: Throughput[] = [];
+    service.throughputs().subscribe((t) => (latest = t));
 
     scheduler.run(({ cold, expectObservable }) => {
       // when
@@ -147,7 +152,7 @@ describe(ThrottleService.name, () => {
         ...events,
         t: expect.objectContaining({ object: "throttle_event" }) as ThrottleEvent,
       });
-      scheduler.schedule(() => snapshots.push(service.throughputOverview()), 1100);
+      scheduler.schedule(() => snapshots.push(latest), 1100);
     });
 
     // then (the reading says so too, not just the event)
@@ -158,15 +163,17 @@ describe(ThrottleService.name, () => {
     // given
     const container = TestFixture.container();
     const events = { a: log(container, "hello") };
+    let latest: Throughput[] = [];
 
     scheduler.run(({ cold, expectObservable }) => {
       // when
       const throttled = cold("a", events).pipe(service.groupAndThrottleByContainer());
       expectObservable(throttled, "^ 1500ms !").toBe("a", events);
+      service.throughputs().subscribe((t) => (latest = t));
     });
 
     // then (the subscription ended, so the dashboard entry went with it)
-    expect(service.throughputOverview()).toEqual([]);
+    expect(latest).toEqual([]);
   });
 });
 

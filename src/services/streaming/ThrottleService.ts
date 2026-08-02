@@ -7,6 +7,7 @@ import { Throughput } from "@/models/Throughput";
 import { Temporal } from "@js-temporal/polyfill";
 import { Buffer } from "buffer";
 import {
+  BehaviorSubject,
   debounceTime,
   EMPTY,
   finalize,
@@ -24,7 +25,7 @@ import {
 
 export class ThrottleService {
   private readonly throughputOverview = new Map<string, Throughput>();
-  private readonly throughputOverviewSubject = new Subject<Throughput[]>();
+  private readonly throughputOverviewSubject = new BehaviorSubject<Throughput[]>([]);
 
   private readonly WINDOW_MS: number;
   private readonly IDLE_EVICTION_MS: number;

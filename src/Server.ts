@@ -4,6 +4,7 @@ import index from "@/website/index.html";
 import { Temporal } from "@js-temporal/polyfill";
 import { ErrorLike } from "bun";
 import { randomUUID } from "crypto";
+import { firstValueFrom } from "rxjs";
 import { Yexception } from "yexception";
 import { Logger } from "./Logger";
 import { Middleware } from "./middleware/Middleware";
@@ -92,8 +93,9 @@ export class Server {
          * Containers
          */
         "/internal-api/containers/throughput": {
-          GET: this.handleRoute(() => {
-            const throughput: Throughput[] = this.containerService.throughput();
+          GET: this.handleRoute(async () => {
+            // the throughput stream replays its latest reading, so this resolves immediately
+            const throughput: Throughput[] = await firstValueFrom(this.containerService.throughputs());
             return Response.json(throughput);
           }),
         },
