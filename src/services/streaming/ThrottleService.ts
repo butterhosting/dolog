@@ -72,7 +72,7 @@ export class ThrottleService {
       folded: 0,
     };
 
-    const allowedEvents: Observable<ContainerEvent> = group.pipe(
+    const allowedContainerEvents: Observable<ContainerEvent> = group.pipe(
       mergeMap((event) => {
         window.container = event.container;
         switch (event.type) {
@@ -142,6 +142,6 @@ export class ThrottleService {
       }),
     );
 
-    return merge(allowedEvents, throttleEvents);
+    return merge(allowedContainerEvents, throttleEvents);
   }
 }
