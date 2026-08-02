@@ -23,7 +23,7 @@ export namespace TestFixture {
       timestamp: Temporal.Now.instant(),
       container: container(),
       streamVariant: StreamVariant.stdout,
-      message: "GET / 200",
+      line: "GET / 200",
     };
     return deepMerge(defaults, overrides);
   }

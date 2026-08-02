@@ -113,13 +113,13 @@ export class Fountain {
    */
   private logs(container: Container): Observable<ContainerEvent.Log> {
     return this.abortable((signal) => this.dockerSocket.streamLogLines(container.id, signal)).pipe(
-      map(({ streamVariant, timestamp, message }): ContainerEvent.Log => ({
+      map(({ streamVariant, timestamp, line }): ContainerEvent.Log => ({
         object: "container_event",
         type: ContainerEvent.Type.log,
         timestamp,
         container,
         streamVariant,
-        message,
+        line,
       })),
       catchError((error) => {
         this.log.warn(`Stopped following logs for ${container.name}`, error);

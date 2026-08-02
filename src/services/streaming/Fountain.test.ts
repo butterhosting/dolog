@@ -25,14 +25,16 @@ describe(Fountain.name, () => {
     const container = TestFixture.container();
     context.dockerSocketMock.listRunningContainers.mockResolvedValue([container]);
     context.dockerSocketMock.streamLogLines.mockImplementation(async function* () {
-      yield { streamVariant: StreamVariant.stdout, timestamp: Temporal.Now.instant(), message: "listening on 3000" };
+      yield { streamVariant: StreamVariant.stdout, timestamp: Temporal.Now.instant(), line: "listening on 3000" };
       await never();
     });
 
     // when
     const events = await firstValueFrom(fountain.stream().pipe(take(1), toArray()));
     // then (the log arrives on its own -- dolog did not witness this container start)
-    expect(events).toEqual([expect.objectContaining({ type: ContainerEvent.Type.log, container, message: "listening on 3000" })]);
+    expect(events).toEqual([
+      expect.objectContaining({ type: ContainerEvent.Type.log, container, line: "listening on 3000" } satisfies Partial<ContainerEvent>),
+    ]);
   });
 
   it("should map docker's lifecycle events onto start and stop", async () => {
@@ -48,8 +50,8 @@ describe(Fountain.name, () => {
     const events = await firstValueFrom(fountain.stream().pipe(take(2), toArray()));
     // then
     expect(events).toEqual([
-      expect.objectContaining({ type: ContainerEvent.Type.start, container }),
-      expect.objectContaining({ type: ContainerEvent.Type.stop, container }),
+      expect.objectContaining({ type: ContainerEvent.Type.start, container } satisfies Partial<ContainerEvent>),
+      expect.objectContaining({ type: ContainerEvent.Type.stop, container } satisfies Partial<ContainerEvent>),
     ]);
   });
 
@@ -62,7 +64,7 @@ describe(Fountain.name, () => {
       await never();
     });
     context.dockerSocketMock.streamLogLines.mockImplementation(async function* () {
-      yield { streamVariant: StreamVariant.stdout, timestamp: Temporal.Now.instant(), message: "once" };
+      yield { streamVariant: StreamVariant.stdout, timestamp: Temporal.Now.instant(), line: "once" };
       await never();
     });
 
@@ -70,8 +72,8 @@ describe(Fountain.name, () => {
     const events = await firstValueFrom(fountain.stream().pipe(take(2), toArray()));
     // then (the real start survives, and its logs are followed exactly once)
     expect(events).toEqual([
-      expect.objectContaining({ type: ContainerEvent.Type.start }),
-      expect.objectContaining({ type: ContainerEvent.Type.log, message: "once" }),
+      expect.objectContaining({ type: ContainerEvent.Type.start } satisfies Partial<ContainerEvent>),
+      expect.objectContaining({ type: ContainerEvent.Type.log, line: "once" } satisfies Partial<ContainerEvent>),
     ]);
     expect(context.dockerSocketMock.streamLogLines).toHaveBeenCalledTimes(1);
   });
@@ -85,14 +87,14 @@ describe(Fountain.name, () => {
       if (id === broken.id) {
         throw new Error("stream exploded");
       }
-      yield { streamVariant: StreamVariant.stdout, timestamp: Temporal.Now.instant(), message: "still here" };
+      yield { streamVariant: StreamVariant.stdout, timestamp: Temporal.Now.instant(), line: "still here" };
       await never();
     });
 
     // when
     const events = await firstValueFrom(fountain.stream().pipe(take(1), toArray()));
     // then (the broken stream is swallowed, the healthy one keeps flowing)
-    expect(events).toEqual([expect.objectContaining({ container: healthy, message: "still here" })]);
+    expect(events).toEqual([expect.objectContaining({ container: healthy, line: "still here" } satisfies Partial<ContainerEvent>)]);
   });
 
   it("should hand out the same stream every time it is initialized", () => {

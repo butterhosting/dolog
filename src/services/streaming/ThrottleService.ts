@@ -82,7 +82,7 @@ export class ThrottleService {
           }
           case ContainerEvent.Type.log: {
             window.logs += 1;
-            window.bytes += Buffer.byteLength(event.message);
+            window.bytes += Buffer.byteLength(event.line);
             if (window.logs > rateLimit) {
               window.folded += 1;
               return EMPTY;

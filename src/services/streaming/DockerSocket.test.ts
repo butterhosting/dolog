@@ -1,5 +1,6 @@
 import { TestEnvironment } from "@/testing/TestEnvironment.test";
 import { beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { Yexception } from "yexception";
 import { DockerSocket } from "./DockerSocket";
 import { StreamVariant } from "@/models/StreamVariant";
 
@@ -26,8 +27,8 @@ describe(DockerSocket.name, () => {
       const lines = await readLogs();
       // then
       expect(lines).toEqual([
-        { streamVariant: StreamVariant.stdout, timestamp: "2026-08-01T10:11:12.13Z", message: "GET / 200" },
-        { streamVariant: StreamVariant.stderr, timestamp: "2026-08-01T10:11:12.13Z", message: "boom" },
+        { streamVariant: StreamVariant.stdout, timestamp: "2026-08-01T10:11:12.13Z", line: "GET / 200" },
+        { streamVariant: StreamVariant.stderr, timestamp: "2026-08-01T10:11:12.13Z", line: "boom" },
       ]);
     });
 
@@ -38,7 +39,7 @@ describe(DockerSocket.name, () => {
       // when
       const lines = await readLogs();
       // then
-      expect(lines.map(({ message }) => message)).toEqual(["hello world"]);
+      expect(lines.map(({ line }) => line)).toEqual(["hello world"]);
     });
 
     it("should hold back a frame whose payload never completes", async () => {
@@ -57,9 +58,9 @@ describe(DockerSocket.name, () => {
       // when
       const lines = await readLogs();
       // then
-      expect(lines.map(({ streamVariant, message }) => ({ streamVariant, message }))).toEqual([
-        { streamVariant: StreamVariant.stdout, message: "first" },
-        { streamVariant: StreamVariant.stdout, message: "second" },
+      expect(lines.map(({ streamVariant, line }) => ({ streamVariant, line }))).toEqual([
+        { streamVariant: StreamVariant.stdout, line: "first" },
+        { streamVariant: StreamVariant.stdout, line: "second" },
       ]);
     });
 
@@ -69,7 +70,7 @@ describe(DockerSocket.name, () => {
       // when
       const lines = await readLogs();
       // then (the \r was the terminal's, not the container's)
-      expect(lines.map(({ message }) => message)).toEqual(["first", "second"]);
+      expect(lines.map(({ line }) => line)).toEqual(["first", "second"]);
     });
 
     it("should not mistake a tty container's own output for a docker timestamp", async () => {
@@ -78,7 +79,7 @@ describe(DockerSocket.name, () => {
       // when
       const lines = await readLogs();
       // then
-      expect(lines.map(({ message }) => message)).toEqual([`${TIMESTAMP} my own timestamp`]);
+      expect(lines.map(({ line }) => line)).toEqual([`${TIMESTAMP} my own timestamp`]);
     });
 
     it("should reassemble a line split across chunks of a tty stream", async () => {
@@ -87,7 +88,7 @@ describe(DockerSocket.name, () => {
       // when
       const lines = await readLogs();
       // then
-      expect(lines.map(({ message }) => message)).toEqual(["hello world"]);
+      expect(lines.map(({ line }) => line)).toEqual(["hello world"]);
     });
 
     it("should reassemble a line split across two frames", async () => {
@@ -97,7 +98,7 @@ describe(DockerSocket.name, () => {
       // when
       const lines = await readLogs();
       // then (the repeated timestamp is dropped rather than spliced into the message)
-      expect(lines).toEqual([{ streamVariant: StreamVariant.stdout, timestamp: "2026-08-01T10:11:12.13Z", message: "hello world" }]);
+      expect(lines).toEqual([{ streamVariant: StreamVariant.stdout, timestamp: "2026-08-01T10:11:12.13Z", line: "hello world" }]);
     });
 
     it("should not request timestamps for a tty container, since they cannot be removed again", async () => {
@@ -128,8 +129,8 @@ describe(DockerSocket.name, () => {
       const lines = await readLogs();
       // then
       expect(lines).toEqual([
-        { streamVariant: StreamVariant.stdout, timestamp: "2026-08-01T10:11:12.13Z", message: "one" },
-        { streamVariant: StreamVariant.stdout, timestamp: "2026-08-01T22:33:44Z", message: "two" },
+        { streamVariant: StreamVariant.stdout, timestamp: "2026-08-01T10:11:12.13Z", line: "one" },
+        { streamVariant: StreamVariant.stdout, timestamp: "2026-08-01T22:33:44Z", line: "two" },
       ]);
     });
 
@@ -143,8 +144,8 @@ describe(DockerSocket.name, () => {
       const lines = await readLogs();
       // then (stderr came through untouched, and stdout rejoined its own halves)
       expect(lines).toEqual([
-        { streamVariant: StreamVariant.stderr, timestamp: "2026-08-01T10:11:12.13Z", message: "err whole" },
-        { streamVariant: StreamVariant.stdout, timestamp: "2026-08-01T10:11:12.13Z", message: "out-start out-end" },
+        { streamVariant: StreamVariant.stderr, timestamp: "2026-08-01T10:11:12.13Z", line: "err whole" },
+        { streamVariant: StreamVariant.stdout, timestamp: "2026-08-01T10:11:12.13Z", line: "out-start out-end" },
       ]);
     });
 
@@ -154,7 +155,7 @@ describe(DockerSocket.name, () => {
       // when
       const lines = await readLogs();
       // then
-      expect(lines.map(({ message }) => message)).toEqual(["no trailing newline"]);
+      expect(lines.map(({ line }) => line)).toEqual(["no trailing newline"]);
     });
 
     it("should keep a line that has no parsable timestamp", async () => {
@@ -163,7 +164,7 @@ describe(DockerSocket.name, () => {
       // when
       const lines = await readLogs();
       // then
-      expect(lines.map(({ message }) => message)).toEqual(["no timestamp here"]);
+      expect(lines.map(({ line }) => line)).toEqual(["no timestamp here"]);
       expect(lines.at(0)?.timestamp).toBeTruthy();
     });
   });
@@ -234,7 +235,7 @@ describe(DockerSocket.name, () => {
         expect.objectContaining({
           problem: "DockerError::unexpected_response",
           details: { path: "/containers/json", status: 500 },
-        }),
+        } satisfies Partial<Yexception>),
       );
     });
 
@@ -242,13 +243,13 @@ describe(DockerSocket.name, () => {
       // given
       spyOn(globalThis, "fetch").mockRejectedValue(new Error("ECONNREFUSED"));
       // then
-      expect(socket.listRunningContainers()).rejects.toEqual(expect.objectContaining({ problem: "DockerError::socket_unreachable" }));
+      expect(socket.listRunningContainers()).rejects.toEqual(expect.objectContaining({ problem: "DockerError::socket_unreachable" } satisfies Partial<Yexception>));
     });
   });
 
   async function readLogs() {
     const lines = await collect(socket.streamLogLines("abc", new AbortController().signal));
-    return lines.map(({ streamVariant, timestamp, message }) => ({ streamVariant, timestamp: timestamp.toString(), message }));
+    return lines.map(({ streamVariant, timestamp, line }) => ({ streamVariant, timestamp: timestamp.toString(), line }));
   }
 });
 

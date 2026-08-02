@@ -84,7 +84,7 @@ export class DockerSocket {
           yield {
             streamVariant,
             timestamp,
-            message: this.dropCarriageReturn(line),
+            line: this.dropCarriageReturn(line),
           };
         }
       }
@@ -96,7 +96,7 @@ export class DockerSocket {
         yield {
           streamVariant,
           timestamp: Temporal.Now.instant(),
-          message: this.dropCarriageReturn(rest),
+          line: this.dropCarriageReturn(rest),
         };
       }
     }
@@ -266,7 +266,7 @@ export namespace DockerSocket {
   export type LogLine = {
     streamVariant: StreamVariant;
     timestamp: Temporal.Instant;
-    message: string;
+    line: string;
   };
 
   export type Lifecycle = {

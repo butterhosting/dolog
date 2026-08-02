@@ -57,15 +57,3 @@ export class RetentionService {
     });
   }
 }
-
-/**
-
-create table event (
-  id text primary key, // uuidv7 for sortability
-  container_id text not null,
-  container_name text not null,
-  container_group text,
-
-)
-
- */

@@ -31,7 +31,7 @@ export namespace ContainerEvent {
   export type Log = Common & {
     type: Type.log;
     streamVariant: StreamVariant;
-    message: string;
+    line: string;
   };
 
   export type LogThrottle = Common & {
@@ -40,6 +40,7 @@ export namespace ContainerEvent {
   };
 
   const common = {
+    object: z.literal("container_event"),
     timestamp: z.string().transform(ZodParser.instant),
     container: Container.parse.SCHEMA,
   };
@@ -50,24 +51,20 @@ export namespace ContainerEvent {
         z.object({
           ...common,
           type: z.literal(Type.start),
-          object: z.literal("container_event"),
         }),
         z.object({
           ...common,
           type: z.literal(Type.stop),
-          object: z.literal("container_event"),
         }),
         z.object({
           ...common,
           type: z.literal(Type.log),
-          object: z.literal("container_event"),
           streamVariant: z.enum(StreamVariant),
-          message: z.string(),
+          line: z.string(),
         }),
         z.object({
           ...common,
           type: z.literal(Type.log_throttle),
-          object: z.literal("container_event"),
           foldCount: z.number(),
         }),
       ]),

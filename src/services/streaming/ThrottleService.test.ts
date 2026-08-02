@@ -58,7 +58,7 @@ describe(ThrottleService.name, () => {
           type: ContainerEvent.Type.log_throttle,
           container,
           foldCount: 2,
-        }) as ContainerEvent.LogThrottle,
+        } satisfies Partial<ContainerEvent>) as ContainerEvent.LogThrottle,
       });
     });
   });
@@ -83,7 +83,7 @@ describe(ThrottleService.name, () => {
       // then (the start survives, only the sixth log is folded)
       expectObservable(throttled, "^ 1500ms !").toBe("(sabcde) 992ms t", {
         ...events,
-        t: expect.objectContaining({ foldCount: 1 }) as ContainerEvent,
+        t: expect.objectContaining({ foldCount: 1 } satisfies Partial<ContainerEvent>) as ContainerEvent,
       });
     });
   });
@@ -133,7 +133,7 @@ describe(ThrottleService.name, () => {
         throttling: false,
         logsPerSecond: 2,
         bytesPerSecond: 10,
-      }),
+      } satisfies Partial<Throughput>),
     ]);
   });
 
@@ -153,13 +153,13 @@ describe(ThrottleService.name, () => {
         t: expect.objectContaining({
           object: "container_event",
           type: ContainerEvent.Type.log_throttle,
-        }) as ContainerEvent.LogThrottle,
+        } satisfies Partial<ContainerEvent>) as ContainerEvent.LogThrottle,
       });
       scheduler.schedule(() => snapshots.push(latest), 1100);
     });
 
     // then (the reading says so too, not just the event)
-    expect(snapshots.at(0)).toEqual([expect.objectContaining({ container, throttling: true })]);
+    expect(snapshots.at(0)).toEqual([expect.objectContaining({ container, throttling: true } satisfies Partial<Throughput>)]);
   });
 
   it("should forget a container once its stream is gone", () => {
@@ -180,6 +180,6 @@ describe(ThrottleService.name, () => {
   });
 });
 
-function log(container: ReturnType<typeof TestFixture.container>, message: string): ContainerEvent.Log {
-  return TestFixture.logEvent({ container, message });
+function log(container: ReturnType<typeof TestFixture.container>, line: string): ContainerEvent.Log {
+  return TestFixture.logEvent({ container, line });
 }
