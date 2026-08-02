@@ -1,4 +1,6 @@
 import { Class } from "@/types/Class";
+import { Sqlite } from "./drizzle/sqlite";
+import { ContainerEventRepository } from "./repositories/ContainerEventRepository";
 import { Env } from "./Env";
 import { LoggingMiddleware } from "./middleware/logging/LoggingMiddleware";
 import { Middleware } from "./middleware/Middleware";
@@ -12,20 +14,26 @@ import { ThrottleService } from "./services/streaming/ThrottleService";
 import { SocketService } from "./socket/SocketService";
 
 export class ServerRegistry {
-  public static async bootstrap(env: Env.Private): Promise<ServerRegistry> {
-    return new ServerRegistry(env);
+  public static async bootstrap(env: Env.Private, sqlite: Sqlite): Promise<ServerRegistry> {
+    return new ServerRegistry(env, sqlite);
   }
 
   private readonly registry: Record<string, any> = {};
 
-  private constructor(private readonly env: Env.Private) {
+  private constructor(
+    private readonly env: Env.Private,
+    private readonly sqlite: Sqlite,
+  ) {
+    // Repositories
+    const { containerEventRepository } = this.register({ ContainerEventRepository }, [sqlite]);
+
     // Services
     const { dockerSocket } = this.register({ DockerSocket }, [env]);
     const { throttleService } = this.register({ ThrottleService }, [env]);
     const { fountain } = this.register({ Fountain }, [dockerSocket, throttleService]);
-    this.register({ RetentionService }, [fountain]);
+    this.register({ RetentionService }, [fountain, env, containerEventRepository]);
     this.register({ AlertingService }, [fountain]);
-    const { logService } = this.register({ LogService }, [fountain]);
+    const { logService } = this.register({ LogService }, [fountain, containerEventRepository]);
 
     // Middleware
     const { loggingMiddleware } = this.register({ LoggingMiddleware }, []);
@@ -36,9 +44,13 @@ export class ServerRegistry {
     this.register({ Server }, [env, logService, socketService, middleware]);
   }
 
+  public get(sqlite: "sqlite"): Sqlite;
   public get(env: "env"): Env.Private;
   public get<T>(klass: Class<T>): T;
-  public get<T>(klass: "env" | Class<T>): Env.Private | T {
+  public get<T>(klass: "sqlite" | "env" | Class<T>): Sqlite | Env.Private | T {
+    if (klass === "sqlite") {
+      return this.sqlite;
+    }
     if (klass === "env") {
       return this.env;
     }

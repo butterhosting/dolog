@@ -38,6 +38,27 @@ export namespace TestFixture {
     return deepMerge(defaults, overrides);
   }
 
+  export function stopEvent(overrides: DeepPartial<ContainerEvent.Stop> = {}): ContainerEvent.Stop {
+    const defaults: ContainerEvent.Stop = {
+      object: "container_event",
+      type: ContainerEvent.Type.stop,
+      timestamp: Temporal.Now.instant(),
+      container: container(),
+    };
+    return deepMerge(defaults, overrides);
+  }
+
+  export function logThrottleEvent(overrides: DeepPartial<ContainerEvent.LogThrottle> = {}): ContainerEvent.LogThrottle {
+    const defaults: ContainerEvent.LogThrottle = {
+      object: "container_event",
+      type: ContainerEvent.Type.log_throttle,
+      timestamp: Temporal.Now.instant(),
+      container: container(),
+      foldCount: 3,
+    };
+    return deepMerge(defaults, overrides);
+  }
+
   function isPlainObject(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype;
   }

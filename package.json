@@ -7,21 +7,23 @@
   "main": "src/index.ts",
   "module": "src/index.ts",
   "scripts": {
-    "install:browsers": "playwright install chromium --with-deps",
     "dev": "bun start:dev",
-    "tc": "bunx tsc --noEmit",
-    "lint": "bunx tsc --noEmit -p tsconfig.lint.json && bunx knip-bun",
-    "test:unit": "bun test",
+    "drizzle": "sh -c ': \"${1:?Please pass a migration name}\"; bunx drizzle-kit generate --name=$1 --custom' _",
     "e2e": "playwright test --ui",
     "e2e:headless": "playwright test --max-failures 1 --reporter github",
+    "install:browsers": "playwright install chromium --with-deps",
+    "lint": "bunx tsc --noEmit -p tsconfig.lint.json && bunx knip-bun",
     "start:dev": "bun --env-file=.env.dev --hot src/index.ts",
     "start:e2e": "bun --env-file=.env.e2e src/index.ts",
-    "start:prod": "bun --env-file=.env.prod src/index.ts"
+    "start:prod": "bun --env-file=.env.prod src/index.ts",
+    "tc": "bunx tsc --noEmit",
+    "test:unit": "bun test"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
     "bun-plugin-tailwind": "^0.1.2",
     "clsx": "^2.1.1",
+    "drizzle-orm": "^0.45.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router": "^8.3.0",
@@ -38,6 +40,7 @@
     "@types/node": "^26.1.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "drizzle-kit": "^0.31.10",
     "knip": "^6.31.0",
     "typescript": "^7.0.2"
   }

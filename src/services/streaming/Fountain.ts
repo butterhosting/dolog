@@ -19,15 +19,15 @@ const RECONNECT_DELAY_MS = 2_000;
  */
 export class Fountain {
   private readonly log = new Logger(__filename);
-  private throttledStream?: Observable<ContainerEvent>;
+  private events?: Observable<ContainerEvent>;
 
   public constructor(
     private readonly dockerSocket: DockerSocket,
     private readonly throttleService: ThrottleService,
   ) {}
 
-  public stream(): Observable<ContainerEvent> {
-    this.throttledStream ??= defer(() => this.rawSocketStream()).pipe(
+  public streamEvents(): Observable<ContainerEvent> {
+    this.events ??= defer(() => this.rawSocketStream()).pipe(
       this.throttleService.groupAndThrottleByContainer(),
       share({
         // `resetOnRefCountZero: false` keeps the socket connections open even when no one is listening.
@@ -36,11 +36,11 @@ export class Fountain {
         resetOnRefCountZero: false,
       }),
     );
-    return this.throttledStream;
+    return this.events;
   }
 
-  public throughputs(): Observable<Throughput[]> {
-    return this.throttleService.throughputs();
+  public streamThroughputs(): Observable<Throughput[]> {
+    return this.throttleService.streamThroughputs();
   }
 
   private rawSocketStream(): Observable<ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log> {
@@ -60,11 +60,14 @@ export class Fountain {
       this.alreadyRunning().pipe(mergeMap(follow)),
       this.lifecycle().pipe(
         mergeMap((event) => {
-          if (event.type === ContainerEvent.Type.stop) {
-            containersBeingFollowed.delete(event.container.id);
-            return of(event);
+          switch (event.type) {
+            case ContainerEvent.Type.stop: {
+              containersBeingFollowed.delete(event.container.id);
+              return of(event);
+            }
+            case ContainerEvent.Type.start:
+              return merge(of(event), follow(event.container));
           }
-          return merge(of(event), follow(event.container));
         }),
       ),
     );

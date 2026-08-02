@@ -1,10 +1,13 @@
 import { DockerSocket } from "@/services/streaming/DockerSocket";
+import { Sqlite } from "@/drizzle/sqlite";
 import { Env } from "@/Env";
+import { ContainerEventRepository } from "@/repositories/ContainerEventRepository";
 import { Logger } from "@/Logger";
 import { LogLevel } from "@/models/internal/LogLevel";
 import { OmitBetter } from "@/types/OmitBetter";
 import { jest, mock, Mock } from "bun:test";
-import { join } from "path";
+import { mkdir, rm } from "fs/promises";
+import { dirname, join } from "path";
 
 export namespace TestEnvironment {
   type Mocked<T> = {
@@ -15,6 +18,8 @@ export namespace TestEnvironment {
 
   export interface Context {
     env: Env.Private;
+    sqlite: Sqlite;
+    containerEventRepository: ContainerEventRepository;
     patchEnvironmentVariables(environment: Record<string, string>): void;
     dockerSocketMock: Mocked<DockerSocket>;
   }
@@ -59,6 +64,7 @@ export namespace TestEnvironment {
       X_DOLOG_LOGGING: LogLevel.warn,
       X_DOLOG_DOCKER_SOCKET: "/var/run/docker.sock",
       X_DOLOG_THROTTLE_LOGS_PER_SECOND: "5",
+      X_DOLOG_RETENTION_MAX_MEGABYTES: "1",
     });
     const patchEnvironmentVariables = (environment: Record<string, string>) => {
       Object.assign(Bun.env, environment);
@@ -66,6 +72,15 @@ export namespace TestEnvironment {
 
     // Initialize the logger
     Logger.initialize(env);
+
+    // Setup filesystem
+    await mkdir(dirname(env.X_DOLOG_DATABASE), { recursive: true });
+    // WAL keeps two sidecar files; leaving them behind would pair a stale journal with a fresh database
+    await Promise.all([`${env.X_DOLOG_DATABASE}`, `${env.X_DOLOG_DATABASE}-wal`, `${env.X_DOLOG_DATABASE}-shm`].map((file) => rm(file, { force: true })));
+
+    // Setup SQLite
+    const sqlite = await Sqlite.initialize(env);
+    cleanupTasks.push(() => sqlite.close());
 
     // Mock registration
     function registerMockObject<T>(mockObject: OmitBetter<Mocked<T>, "cast">): Mocked<T> {
@@ -83,6 +98,8 @@ export namespace TestEnvironment {
 
     return {
       env,
+      sqlite,
+      containerEventRepository: new ContainerEventRepository(sqlite),
       patchEnvironmentVariables,
       dockerSocketMock,
     };

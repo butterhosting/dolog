@@ -23,7 +23,7 @@ export class Server {
     private readonly middleware: Middleware,
   ) {}
 
-  public listen() {
+  public initialize() {
     const server: Bun.Server<Socket.Context> = Bun.serve({
       development: this.env.O_DOLOG_STAGE === "dev",
       /**
@@ -95,7 +95,7 @@ export class Server {
         "/internal-api/containers/throughput": {
           GET: this.handleRoute(async () => {
             // the throughput stream replays its latest reading, so this resolves immediately
-            const throughput: Throughput[] = await firstValueFrom(this.logService.throughputOverview());
+            const throughput: Throughput[] = await firstValueFrom(this.logService.streamThroughputs());
             return Response.json(throughput);
           }),
         },

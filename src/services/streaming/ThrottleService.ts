@@ -22,25 +22,21 @@ import {
 } from "rxjs";
 
 export class ThrottleService {
+  private readonly throughputs = new BehaviorSubject<Throughput[]>([]);
   private readonly throughputOverview = new Map<string, Throughput>();
-  private readonly throughputOverviewSubject = new BehaviorSubject<Throughput[]>([]);
 
-  private readonly WINDOW_MS: number;
-  private readonly IDLE_EVICTION_MS: number;
+  public constructor(private readonly env: Env.Private) {}
 
-  public constructor(private readonly env: Env.Private) {
-    this.WINDOW_MS = 1_000;
-    this.IDLE_EVICTION_MS = 60 * 1_000;
-  }
-
-  public throughputs(): Observable<Throughput[]> {
-    return this.throughputOverviewSubject;
+  public streamThroughputs(): Observable<Throughput[]> {
+    return this.throughputs;
   }
 
   /**
    * Transforms an Observable<ContainerEvent> into a (throttled) Observable<DologEvent>
    */
   public groupAndThrottleByContainer() {
+    const IDLE_EVICTION_MS = 60 * 1_000;
+
     return pipe(
       groupBy((event: ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log) => event.container.id, {
         // we set a `duration`, otherwise every container creates its own group
@@ -48,7 +44,7 @@ export class ThrottleService {
         // because each group has a periodic timer for calculating throughputs,
         // so if we dont clean up container groups after some time, we'll forever
         // accumulate periodic timers for each container, including all historic ones
-        duration: (group) => group.pipe(debounceTime(this.IDLE_EVICTION_MS)),
+        duration: (group) => group.pipe(debounceTime(IDLE_EVICTION_MS)),
       }),
       mergeMap((group) => this.throttleContainer(group)),
     );
@@ -62,8 +58,10 @@ export class ThrottleService {
   private throttleContainer(
     group: GroupedObservable<string, ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log>,
   ): Observable<ContainerEvent> {
-    const rateLimit = this.env.X_DOLOG_THROTTLE_LOGS_PER_SECOND;
-    const stopWatchingThisContainer = new Subject<void>();
+    const RATE_LIMIT = this.env.X_DOLOG_THROTTLE_LOGS_PER_SECOND;
+    const WINDOW_MS = 1_000;
+
+    const signalToStopWatchingThisContainer = new Subject<void>();
 
     const window = {
       container: undefined as Container | undefined,
@@ -83,7 +81,7 @@ export class ThrottleService {
           case ContainerEvent.Type.log: {
             window.logs += 1;
             window.bytes += Buffer.byteLength(event.line);
-            if (window.logs > rateLimit) {
+            if (window.logs > RATE_LIMIT) {
               window.folded += 1;
               return EMPTY;
             }
@@ -92,13 +90,13 @@ export class ThrottleService {
         }
       }),
       finalize(() => {
-        stopWatchingThisContainer.next();
-        stopWatchingThisContainer.complete();
+        signalToStopWatchingThisContainer.next();
+        signalToStopWatchingThisContainer.complete();
       }),
     );
 
-    const throttleEvents: Observable<ContainerEvent.LogThrottle> = interval(this.WINDOW_MS).pipe(
-      takeUntil(stopWatchingThisContainer),
+    const throttleEvents: Observable<ContainerEvent.LogThrottle> = interval(WINDOW_MS).pipe(
+      takeUntil(signalToStopWatchingThisContainer),
       mergeMap(() => {
         const { container, logs, bytes, folded } = window;
         window.logs = 0;
@@ -117,7 +115,7 @@ export class ThrottleService {
           bytesPerSecond: bytes,
           timestamp: now,
         });
-        this.throughputOverviewSubject.next([...this.throughputOverview.values()]);
+        this.throughputs.next([...this.throughputOverview.values()]);
         if (folded === 0) {
           return EMPTY;
         }
@@ -138,7 +136,7 @@ export class ThrottleService {
       finalize(() => {
         if (window.container) {
           this.throughputOverview.delete(window.container.id);
-          this.throughputOverviewSubject.next([...this.throughputOverview.values()]);
+          this.throughputs.next([...this.throughputOverview.values()]);
         }
       }),
     );

@@ -30,7 +30,7 @@ describe(Fountain.name, () => {
     });
 
     // when
-    const events = await firstValueFrom(fountain.stream().pipe(take(1), toArray()));
+    const events = await firstValueFrom(fountain.streamEvents().pipe(take(1), toArray()));
     // then (the log arrives on its own -- dolog did not witness this container start)
     expect(events).toEqual([
       expect.objectContaining({ type: ContainerEvent.Type.log, container, line: "listening on 3000" } satisfies Partial<ContainerEvent>),
@@ -47,7 +47,7 @@ describe(Fountain.name, () => {
     });
 
     // when
-    const events = await firstValueFrom(fountain.stream().pipe(take(2), toArray()));
+    const events = await firstValueFrom(fountain.streamEvents().pipe(take(2), toArray()));
     // then
     expect(events).toEqual([
       expect.objectContaining({ type: ContainerEvent.Type.start, container } satisfies Partial<ContainerEvent>),
@@ -69,7 +69,7 @@ describe(Fountain.name, () => {
     });
 
     // when
-    const events = await firstValueFrom(fountain.stream().pipe(take(2), toArray()));
+    const events = await firstValueFrom(fountain.streamEvents().pipe(take(2), toArray()));
     // then (the real start survives, and its logs are followed exactly once)
     expect(events).toEqual([
       expect.objectContaining({ type: ContainerEvent.Type.start } satisfies Partial<ContainerEvent>),
@@ -92,14 +92,14 @@ describe(Fountain.name, () => {
     });
 
     // when
-    const events = await firstValueFrom(fountain.stream().pipe(take(1), toArray()));
+    const events = await firstValueFrom(fountain.streamEvents().pipe(take(1), toArray()));
     // then (the broken stream is swallowed, the healthy one keeps flowing)
     expect(events).toEqual([expect.objectContaining({ container: healthy, line: "still here" } satisfies Partial<ContainerEvent>)]);
   });
 
   it("should hand out the same stream every time it is initialized", () => {
     // then
-    expect(fountain.stream()).toBe(fountain.stream());
+    expect(fountain.streamEvents()).toBe(fountain.streamEvents());
   });
 });
 

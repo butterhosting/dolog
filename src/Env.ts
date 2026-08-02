@@ -16,6 +16,7 @@ export namespace Env {
     X_DOLOG_LOGGING: z.enum(LogLevel),
     X_DOLOG_DOCKER_SOCKET: z.string(),
     X_DOLOG_THROTTLE_LOGS_PER_SECOND: z.string().regex(/^[1-9]\d*$/),
+    X_DOLOG_RETENTION_MAX_MEGABYTES: z.string().regex(/^[1-9]\d*$/),
   });
 
   export function initializePartiallyForLogger(environment = Bun.env) {
@@ -42,6 +43,8 @@ export namespace Env {
         O_DOLOG_COMMIT: packageJson.commit.slice(0, 7),
         O_DOLOG_VERSION: packageJson.version,
         X_DOLOG_THROTTLE_LOGS_PER_SECOND: Number(env.X_DOLOG_THROTTLE_LOGS_PER_SECOND),
+        X_DOLOG_RETENTION_MAX_MEGABYTES: Number(env.X_DOLOG_RETENTION_MAX_MEGABYTES),
+        X_DOLOG_DATABASE: join(env.X_DOLOG_ROOT, "data", "db.sqlite"),
       }))
       .parse(environment);
   }

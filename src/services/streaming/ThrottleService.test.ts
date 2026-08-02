@@ -115,7 +115,7 @@ describe(ThrottleService.name, () => {
     const events = { a: log(container, "hello"), b: log(container, "world") };
     const snapshots: Throughput[][] = [];
     let latest: Throughput[] = [];
-    service.throughputs().subscribe((t) => (latest = t));
+    service.streamThroughputs().subscribe((t) => (latest = t));
 
     scheduler.run(({ cold, expectObservable }) => {
       // when
@@ -143,7 +143,7 @@ describe(ThrottleService.name, () => {
     const events = Object.fromEntries("abcdefg".split("").map((k, i) => [k, log(container, `${i}`)]));
     const snapshots: Throughput[][] = [];
     let latest: Throughput[] = [];
-    service.throughputs().subscribe((t) => (latest = t));
+    service.streamThroughputs().subscribe((t) => (latest = t));
 
     scheduler.run(({ cold, expectObservable }) => {
       // when
@@ -172,7 +172,7 @@ describe(ThrottleService.name, () => {
       // when
       const throttled = cold("a", events).pipe(service.groupAndThrottleByContainer());
       expectObservable(throttled, "^ 1500ms !").toBe("a", events);
-      service.throughputs().subscribe((t) => (latest = t));
+      service.streamThroughputs().subscribe((t) => (latest = t));
     });
 
     // then (the subscription ended, so the dashboard entry went with it)

@@ -1,9 +1,12 @@
 import { mkdir } from "fs/promises";
+import { dirname } from "path";
+import { Sqlite } from "./drizzle/sqlite";
 import { Env } from "./Env";
 import { Logger } from "./Logger";
 import { Server } from "./Server";
 import { ServerRegistry } from "./ServerRegistry";
 import { RetentionService } from "./services/RetentionService";
+import { ContainerEventRepository } from "./repositories/ContainerEventRepository";
 
 /**
  * Initialize the logger
@@ -18,15 +21,21 @@ const env = Env.initialize();
 /**
  * Create the main directories
  */
-await mkdir(env.X_DOLOG_ROOT, { recursive: true });
+await mkdir(dirname(env.X_DOLOG_DATABASE), { recursive: true });
+
+/**
+ * Initialize the database
+ */
+const sqlite = await Sqlite.initialize(env);
 
 /**
  * Bootstrap the registry
  */
-const registry = await ServerRegistry.bootstrap(env);
+const registry = await ServerRegistry.bootstrap(env, sqlite);
 
 /**
  * Initialize the application
  */
 registry.get(RetentionService).initialize();
-registry.get(Server).listen();
+registry.get(ContainerEventRepository).initialize();
+registry.get(Server).initialize();
