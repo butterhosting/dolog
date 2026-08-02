@@ -1,3 +1,4 @@
+import { ClientMessage } from "@/socket/ClientMessage";
 import { ServerMessage } from "@/socket/ServerMessage";
 
 type Subscription = {
@@ -11,8 +12,31 @@ export class SocketClient {
   private readonly latestMessages: Partial<Record<ServerMessage.Type, ServerMessage>> = {};
   private socket: WebSocket | null = null;
 
+  /**
+   * Which container the server should be relaying to us. Remembered rather than only sent, because
+   * the socket reconnects on its own and the server has no memory of us after it does.
+   */
+  private watching: string | null = null;
+
+  public watch(containerId: string | null) {
+    this.watching = containerId;
+    this.send({ type: ClientMessage.Type.watch, containerId });
+  }
+
+  private send(message: ClientMessage) {
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify(message));
+    }
+  }
+
   public connect() {
     this.socket = new WebSocket("/socket");
+    this.socket.addEventListener("open", () => {
+      // re-assert our interest, since a reconnected server knows nothing about us
+      if (this.watching) {
+        this.send({ type: ClientMessage.Type.watch, containerId: this.watching });
+      }
+    });
     this.socket.addEventListener("message", ({ data }) => {
       const message = ServerMessage.parse(JSON.parse(data));
       this.latestMessages[message.type] = message;

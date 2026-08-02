@@ -6,6 +6,7 @@ import { LoggingMiddleware } from "./middleware/logging/LoggingMiddleware";
 import { Middleware } from "./middleware/Middleware";
 import { Server } from "./Server";
 import { AlertingService } from "./services/AlertingService";
+import { ContainerService } from "./services/ContainerService";
 import { LogService } from "./services/LogService";
 import { RetentionService } from "./services/RetentionService";
 import { DockerSocket } from "./services/streaming/DockerSocket";
@@ -33,15 +34,16 @@ export class ServerRegistry {
     const { fountain } = this.register({ Fountain }, [dockerSocket, throttleService]);
     this.register({ RetentionService }, [fountain, env, containerEventRepository]);
     this.register({ AlertingService }, [fountain]);
-    const { logService } = this.register({ LogService }, [fountain, containerEventRepository]);
+    const { socketService } = this.register({ SocketService }, []);
+    const { containerService } = this.register({ ContainerService }, [fountain, dockerSocket, containerEventRepository, socketService]);
+    const { logService } = this.register({ LogService }, [fountain, containerEventRepository, socketService]);
 
     // Middleware
     const { loggingMiddleware } = this.register({ LoggingMiddleware }, []);
     const { middleware } = this.register({ Middleware }, [loggingMiddleware]);
 
     // Server
-    const { socketService } = this.register({ SocketService }, []);
-    this.register({ Server }, [env, logService, socketService, middleware]);
+    this.register({ Server }, [env, containerService, logService, socketService, middleware]);
   }
 
   public get(sqlite: "sqlite"): Sqlite;

@@ -3,7 +3,8 @@ import { $container, $containerEvent } from "@/drizzle/schema";
 import { Sqlite } from "@/drizzle/sqlite";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
-import { and, asc, desc, eq, inArray, lte, notExists, sql } from "drizzle-orm";
+import { Temporal } from "@js-temporal/polyfill";
+import { and, asc, desc, eq, inArray, lt, lte, notExists, sql } from "drizzle-orm";
 import { BehaviorSubject, Observable } from "rxjs";
 
 /** Rows per insert statement, kept well inside SQLite's cap on bound values per statement. */
@@ -72,18 +73,45 @@ export class ContainerEventRepository {
     this.initialize();
   }
 
-  public async findEvents(dockerId: string, limit: number): Promise<ContainerEvent[]> {
-    const container = await this.sqlite.query.$container.findFirst({ where: eq($container.dockerId, dockerId) });
+  /**
+   * A page of history, newest first internally but handed back oldest-first so it can be rendered
+   * straight into a log view.
+   *
+   * `before` walks further back for scrolling up. The cursor is returned separately rather than read
+   * off an event, because {@link ContainerEvent} carries no row id -- live events have never been
+   * near the database.
+   */
+  public async listEvents(dockerId: string, limit: number, before?: number): Promise<ContainerEventRepository.Page> {
+    const container = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
     if (!container) {
-      return [];
+      return { events: [], olderCursor: null };
     }
-    const rows = await this.sqlite.query.$containerEvent.findMany({
-      where: eq($containerEvent.container, container.id),
-      orderBy: asc($containerEvent.id),
-      limit,
-    });
+    const rows = this.sqlite
+      .select()
+      .from($containerEvent)
+      .where(
+        before === undefined
+          ? eq($containerEvent.container, container.id)
+          : and(eq($containerEvent.container, container.id), lt($containerEvent.id, before)),
+      )
+      .orderBy(desc($containerEvent.id))
+      .limit(limit)
+      .all();
     const model = ContainerEventConverter.containerFromDatabase(container);
-    return rows.map((row) => ContainerEventConverter.fromDatabase(row, model));
+    return {
+      events: rows.reverse().map((row) => ContainerEventConverter.fromDatabase(row, model)),
+      // a short page means we reached the beginning, so there is nothing further back to ask for
+      olderCursor: rows.length === limit ? (rows.at(0)?.id ?? null) : null,
+    };
+  }
+
+  /** The overview page's ordering data: who exists, and when each last said anything. */
+  public async listOverview(): Promise<{ container: Container; lastSeen: Temporal.Instant }[]> {
+    const rows = this.sqlite.select().from($container).orderBy(desc($container.lastSeen)).all();
+    return rows.map((row) => ({
+      container: ContainerEventConverter.containerFromDatabase(row),
+      lastSeen: Temporal.Instant.from(row.lastSeen),
+    }));
   }
 
   /**
@@ -227,4 +255,12 @@ export class ContainerEventRepository {
       this.containers.next(containers);
     }
   }
+}
+
+export namespace ContainerEventRepository {
+  export type Page = {
+    events: ContainerEvent[];
+    /** Pass back as `before` to fetch the page above this one; null once the start is reached. */
+    olderCursor: number | null;
+  };
 }

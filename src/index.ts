@@ -6,6 +6,8 @@ import { Logger } from "./Logger";
 import { Server } from "./Server";
 import { ServerRegistry } from "./ServerRegistry";
 import { RetentionService } from "./services/RetentionService";
+import { ContainerService } from "./services/ContainerService";
+import { LogService } from "./services/LogService";
 import { ContainerEventRepository } from "./repositories/ContainerEventRepository";
 
 /**
@@ -37,5 +39,7 @@ const registry = await ServerRegistry.bootstrap(env, sqlite);
  * Initialize the application
  */
 registry.get(RetentionService).initialize();
+registry.get(ContainerService).initialize();
+registry.get(LogService).initialize();
 registry.get(ContainerEventRepository).initialize();
 registry.get(Server).initialize();

@@ -30,7 +30,7 @@ describe(ContainerEventRepository.name, () => {
     // when
     await repository.append(events);
     // then
-    const stored = await repository.findEvents(container.id, 100);
+    const { events: stored } = await repository.listEvents(container.id, 100);
     expect(stored.map(({ type }) => type)).toEqual([
       ContainerEvent.Type.start,
       ContainerEvent.Type.log,
@@ -58,8 +58,8 @@ describe(ContainerEventRepository.name, () => {
     ]);
     // then
     expect(await containers()).toEqual([web, worker]);
-    expect(await repository.findEvents(web.id, 1_000)).toHaveLength(50);
-    expect(await repository.findEvents(worker.id, 1_000)).toHaveLength(50);
+    expect((await repository.listEvents(web.id, 1_000)).events).toHaveLength(50);
+    expect((await repository.listEvents(worker.id, 1_000)).events).toHaveLength(50);
   });
 
   it("should keep a container's identity current across batches", async () => {
@@ -87,8 +87,8 @@ describe(ContainerEventRepository.name, () => {
     const pruned = await repository.pruneToEventsPerContainer(10);
     // then (the quiet one is untouched -- its own history is not the chatty one's to spend)
     expect(pruned.events).toEqual(90);
-    expect(await repository.findEvents(quiet.id, 1_000)).toHaveLength(3);
-    const remaining = await repository.findEvents(chatty.id, 1_000);
+    expect((await repository.listEvents(quiet.id, 1_000)).events).toHaveLength(3);
+    const { events: remaining } = await repository.listEvents(chatty.id, 1_000);
     expect(remaining).toHaveLength(10);
     expect(remaining.at(0)).toEqual(expect.objectContaining({ line: "chatty 90" } satisfies Partial<ContainerEvent>));
     expect(remaining.at(-1)).toEqual(expect.objectContaining({ line: "chatty 99" } satisfies Partial<ContainerEvent>));
@@ -103,7 +103,7 @@ describe(ContainerEventRepository.name, () => {
     const pruned = await repository.pruneToEventsPerContainer(10);
     // then
     expect(pruned.events).toEqual(0);
-    expect(await repository.findEvents(container.id, 1_000)).toHaveLength(5);
+    expect((await repository.listEvents(container.id, 1_000)).events).toHaveLength(5);
   });
 
   it("should do nothing while the database fits the budget", async () => {
@@ -115,7 +115,7 @@ describe(ContainerEventRepository.name, () => {
     const pruned = await repository.pruneToSize(64 * 1024 * 1024);
     // then
     expect(pruned).toEqual({ events: 0, containers: 0 });
-    expect(await repository.findEvents(container.id, 1_000)).toHaveLength(10);
+    expect((await repository.listEvents(container.id, 1_000)).events).toHaveLength(10);
   });
 
   it("should prune the oldest events first, and forget containers left with none", async () => {
@@ -135,7 +135,7 @@ describe(ContainerEventRepository.name, () => {
     expect(pruned.containers).toEqual(1);
     expect(await containers()).toEqual([staying]);
     // whatever survived is the newest, so the very first line is long gone
-    const remaining = await repository.findEvents(staying.id, 100_000);
+    const { events: remaining } = await repository.listEvents(staying.id, 100_000);
     expect(remaining.length).toBeGreaterThan(0);
     expect(remaining.length).toBeLessThan(15_000);
     expect(remaining.at(0)).not.toEqual(expect.objectContaining({ line: "line 0 ".repeat(30) } satisfies Partial<ContainerEvent>));

@@ -8,22 +8,29 @@ import { firstValueFrom } from "rxjs";
 import { Yexception } from "yexception";
 import { Logger } from "./Logger";
 import { Middleware } from "./middleware/Middleware";
+import { ContainerOverview } from "./models/ContainerOverview";
+import { ContainerService } from "./services/ContainerService";
 import { Throughput } from "./models/Throughput";
 import { LogService } from "./services/LogService";
 import { Socket } from "./socket/Socket";
 import { SocketService } from "./socket/SocketService";
+
+const EVENT_PAGE_SIZE = 500;
 
 export class Server {
   private readonly log = new Logger(__filename);
 
   public constructor(
     private readonly env: Env.Private,
+    private readonly containerService: ContainerService,
     private readonly logService: LogService,
     private readonly socketService: SocketService,
     private readonly middleware: Middleware,
   ) {}
 
   public initialize() {
+    this.socketService.initializeByKeepingConnectionsAlive();
+
     const server: Bun.Server<Socket.Context> = Bun.serve({
       development: this.env.O_DOLOG_STAGE === "dev",
       /**
@@ -43,11 +50,14 @@ export class Server {
         return Response.json(ServerError.route_not_found().problemDetails());
       }),
       websocket: {
-        message: () => {
-          // Ignore any incoming client messages
+        message: (socket, message) => {
+          this.socketService.receive(socket, `${message}`);
         },
         open: (socket) => {
           this.socketService.registerSocket(socket);
+        },
+        pong: (socket) => {
+          this.socketService.heard(socket);
         },
         close: (socket) => {
           this.socketService.unregisterSocket(socket);
@@ -92,10 +102,24 @@ export class Server {
         /**
          * Containers
          */
+        "/internal-api/containers": {
+          GET: this.handleRoute(async () => {
+            const overview: ContainerOverview[] = await this.containerService.list();
+            return Response.json(overview);
+          }),
+        },
+        "/internal-api/containers/:id/events": {
+          GET: this.handleRoute(async ({ params, url }) => {
+            const { searchParams } = new URL(url);
+            const before = searchParams.get("before");
+            const page = await this.logService.list(params.id, EVENT_PAGE_SIZE, before ? Number(before) : undefined);
+            return Response.json(page);
+          }),
+        },
         "/internal-api/containers/throughput": {
           GET: this.handleRoute(async () => {
             // the throughput stream replays its latest reading, so this resolves immediately
-            const throughput: Throughput[] = await firstValueFrom(this.logService.streamThroughputs());
+            const throughput: Throughput[] = await firstValueFrom(this.containerService.streamThroughputs());
             return Response.json(throughput);
           }),
         },
@@ -106,11 +130,6 @@ export class Server {
        */
       error: (e) => this.handleError(e),
     });
-
-    /**
-     * Start pushing a heartbeat to every connected client
-     */
-    this.socketService.startHeartbeat();
 
     // ordinary log, so this is always printed (independent of log level)
     console.log(

@@ -1,35 +1,35 @@
+import { Logger } from "@/Logger";
 import { ContainerEvent } from "@/models/ContainerEvent";
-import { Throughput } from "@/models/Throughput";
-import { filter, Observable } from "rxjs";
-import { Fountain } from "./streaming/Fountain";
 import { ContainerEventRepository } from "@/repositories/ContainerEventRepository";
-import { Container } from "@/models/Container";
+import { SocketService } from "@/socket/SocketService";
+import { Observable } from "rxjs";
+import { Fountain } from "./streaming/Fountain";
 
 export class LogService {
+  private readonly log = new Logger(__filename);
   private readonly events: Observable<ContainerEvent>;
-  private readonly throughputs: Observable<Throughput[]>;
-  private readonly containers: Observable<Container[]>;
+  private initialized = false;
 
-  public constructor(fountain: Fountain, containerEventRepository: ContainerEventRepository) {
+  public constructor(
+    fountain: Fountain,
+    private readonly containerEventRepository: ContainerEventRepository,
+    private readonly socketService: SocketService,
+  ) {
     this.events = fountain.streamEvents();
-    this.throughputs = fountain.streamThroughputs();
-    this.containers = containerEventRepository.streamContainers();
   }
 
-  /**
-   * Everything happening to one container, for a websocket client to follow. Nothing is subscribed
-   * until a client asks, and it stops again as soon as they disconnect.
-   */
-  public streamEvents(containerId: string): Observable<ContainerEvent> {
-    return this.events.pipe(filter((event) => event.container.id === containerId));
+  public initialize() {
+    if (this.initialized) {
+      return;
+    }
+    this.initialized = true;
+    this.events.subscribe({
+      next: (event) => this.socketService.broadcastLog(event),
+      error: (error) => this.log.error("Stopped pushing log events", error),
+    });
   }
 
-  /** Every container ever recorded, republished whenever that set changes. */
-  public streamContainers(): Observable<Container[]> {
-    return this.containers;
-  }
-
-  public streamThroughputs(): Observable<Throughput[]> {
-    return this.throughputs;
+  public async list(containerId: string, limit: number, before?: number): Promise<ContainerEventRepository.Page> {
+    return await this.containerEventRepository.listEvents(containerId, limit, before);
   }
 }

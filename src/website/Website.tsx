@@ -1,8 +1,8 @@
-import { ServerMessage } from "@/socket/ServerMessage";
 import { useEffect, useState } from "react";
 import { createBrowserRouter, replace, RouterProvider } from "react-router";
 import { ClientRegistry } from "./ClientRegistry";
 import { SocketClient } from "./clients/SocketClient";
+import { containerLogsPage } from "./pages/containerLogs.page";
 import { containersPage } from "./pages/containers.page";
 import { Route } from "./Route";
 
@@ -10,6 +10,10 @@ const router = createBrowserRouter([
   {
     path: Route.containers(),
     Component: containersPage,
+  },
+  {
+    path: Route.containerLogs(),
+    Component: containerLogsPage,
   },
   {
     path: "*",
@@ -22,12 +26,7 @@ export function Website() {
   useEffect(() => {
     ClientRegistry.bootstrap().then((registry) => {
       setClientRegistry(registry);
-      const socketClient = registry.get(SocketClient);
-      socketClient.connect();
-      socketClient.subscribe({
-        type: ServerMessage.Type.heartbeat,
-        callback: ({ timestamp }) => console.log(`💓 heartbeat @ ${timestamp}`),
-      });
+      registry.get(SocketClient).connect();
     });
   }, []);
   if (clientRegistry) {
