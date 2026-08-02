@@ -4,13 +4,11 @@ import index from "@/website/index.html";
 import { Temporal } from "@js-temporal/polyfill";
 import { ErrorLike } from "bun";
 import { randomUUID } from "crypto";
-import { firstValueFrom } from "rxjs";
 import { Yexception } from "yexception";
 import { Logger } from "./Logger";
 import { Middleware } from "./middleware/Middleware";
 import { ContainerRM } from "./models/ContainerRM";
 import { ContainerService } from "./services/ContainerService";
-import { Throughput } from "./models/Throughput";
 import { LogService } from "./services/LogService";
 import { Socket } from "./socket/Socket";
 import { SocketService } from "./socket/SocketService";
@@ -29,8 +27,6 @@ export class Server {
   ) {}
 
   public initialize() {
-    this.socketService.initializeByKeepingConnectionsAlive();
-
     const server: Bun.Server<Socket.Context> = Bun.serve({
       development: this.env.O_DOLOG_STAGE === "dev",
       /**
@@ -108,19 +104,12 @@ export class Server {
             return Response.json(overview);
           }),
         },
-        "/internal-api/containers/:id/events": {
+        "/internal-api/containers/:id/logs": {
           GET: this.handleRoute(async ({ params, url }) => {
             const { searchParams } = new URL(url);
             const before = searchParams.get("before");
             const page = await this.logService.list(params.id, EVENT_PAGE_SIZE, before ? Number(before) : undefined);
             return Response.json(page);
-          }),
-        },
-        "/internal-api/containers/throughput": {
-          GET: this.handleRoute(async () => {
-            // the throughput stream replays its latest reading, so this resolves immediately
-            const throughput: Throughput[] = await firstValueFrom(this.containerService.streamThroughputs());
-            return Response.json(throughput);
           }),
         },
       },

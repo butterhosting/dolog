@@ -12,14 +12,10 @@ export class SocketClient {
   private readonly latestMessages: Partial<Record<ServerMessage.Type, ServerMessage>> = {};
   private socket: WebSocket | null = null;
 
-  /**
-   * Which container the server should be relaying to us. Remembered rather than only sent, because
-   * the socket reconnects on its own and the server has no memory of us after it does.
-   */
-  private watching: string | null = null;
+  private containerInterest: string | null = null;
 
-  public watch(containerId: string | null) {
-    this.watching = containerId;
+  public declareContainerInterest(containerId: string | null) {
+    this.containerInterest = containerId;
     this.send({ type: ClientMessage.Type.watch, containerId });
   }
 
@@ -33,8 +29,8 @@ export class SocketClient {
     this.socket = new WebSocket("/socket");
     this.socket.addEventListener("open", () => {
       // re-assert our interest, since a reconnected server knows nothing about us
-      if (this.watching) {
-        this.send({ type: ClientMessage.Type.watch, containerId: this.watching });
+      if (this.containerInterest) {
+        this.send({ type: ClientMessage.Type.watch, containerId: this.containerInterest });
       }
     });
     this.socket.addEventListener("message", ({ data }) => {

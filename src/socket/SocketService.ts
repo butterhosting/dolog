@@ -3,7 +3,7 @@ import { ClientMessage } from "./ClientMessage";
 import { ServerMessage } from "./ServerMessage";
 import { Socket } from "./Socket";
 import { ContainerEvent } from "@/models/ContainerEvent";
-import { Container } from "@/models/Container";
+import { ContainerRM } from "@/models/ContainerRM";
 
 /** Everything we track about one connected browser, so that forgetting it is a single delete. */
 type Connection = {
@@ -33,7 +33,7 @@ export class SocketService {
     }
   };
 
-  public initializeByKeepingConnectionsAlive = () => {
+  public initialize = () => {
     const KEEPALIVE_INTERVAL_MS = 25 * 1_000;
     const MISSED_PINGS_BEFORE_DROP = 2;
 
@@ -53,6 +53,10 @@ export class SocketService {
         connection.socket.ping();
       });
     }, KEEPALIVE_INTERVAL_MS);
+  };
+
+  public hasConnections = (): boolean => {
+    return this.connections.size > 0;
   };
 
   public heard = (socket: Socket) => {
@@ -92,7 +96,7 @@ export class SocketService {
     }
   };
 
-  public broadcastContainers = (containers: Container[]) => {
+  public broadcastContainers = (containers: ContainerRM[]) => {
     const message: ServerMessage = {
       type: ServerMessage.Type.containers,
       containers,

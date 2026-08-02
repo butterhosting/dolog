@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createBrowserRouter, replace, RouterProvider } from "react-router";
 import { ClientRegistry } from "./ClientRegistry";
 import { SocketClient } from "./clients/SocketClient";
-import { containerLogsPage } from "./pages/containerLogs.page";
+import { containerLogsPage } from "./pages/container.logs.page";
 import { containersPage } from "./pages/containers.page";
 import { Route } from "./Route";
 

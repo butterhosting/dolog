@@ -12,11 +12,7 @@ import { useRegistry } from "../hooks/useRegistry";
 import { useStickyScroll } from "../hooks/useStickyScroll";
 import { Route } from "../Route";
 
-/**
- * How many lines stay in the DOM. A live container would otherwise grow the page without bound, and
- * the browser starts to struggle long before the memory does.
- */
-const MAX_RENDERED = 3_000;
+const MAX_LINES_RENDERED = 50;
 
 export function containerLogsPage() {
   const { id = "" } = useParams();
@@ -41,26 +37,26 @@ export function containerLogsPage() {
     let cancelled = false;
     setLoading(true);
     setEvents([]);
-    containerClient.events(id).then((page) => {
+    containerClient.logs(id).then((page) => {
       if (cancelled) {
         return;
       }
       setEvents(page.events);
       setOlderCursor(page.olderCursor);
       setLoading(false);
-      socketClient.watch(id);
+      socketClient.declareContainerInterest(id);
     });
     const subscription = socketClient.subscribe({
       type: ServerMessage.Type.log,
       callback: ({ event }) => {
         if (event.container.id === id) {
-          setEvents((current) => [...current, event].slice(-MAX_RENDERED));
+          setEvents((current) => [...current, event].slice(-MAX_LINES_RENDERED));
         }
       },
     });
     return () => {
       cancelled = true;
-      socketClient.watch(null);
+      socketClient.declareContainerInterest(null);
       socketClient.unsubscribe(subscription);
     };
   }, [id, containerClient, socketClient]);
@@ -76,7 +72,7 @@ export function containerLogsPage() {
     }
     loadingOlder.current = true;
     const before = element.scrollHeight;
-    const page = await containerClient.events(id, olderCursor);
+    const page = await containerClient.logs(id, olderCursor);
     setEvents((current) => [...page.events, ...current]);
     setOlderCursor(page.olderCursor);
     requestAnimationFrame(() => {
@@ -163,7 +159,7 @@ namespace Internal {
       case ContainerEvent.Type.stop:
         return "▼ container stopped";
       case ContainerEvent.Type.log_throttle:
-        return `⚡ throttled, ${event.foldCount} messages dropped`;
+        return `⚡ throttled; ${event.foldCount} messages dropped`;
       case ContainerEvent.Type.log:
         return event.line;
     }

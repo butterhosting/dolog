@@ -4,7 +4,7 @@ import { ContainerRM } from "@/models/ContainerRM";
 import { Throughput } from "@/models/Throughput";
 import { ContainerEventRepository } from "@/repositories/ContainerEventRepository";
 import { SocketService } from "@/socket/SocketService";
-import { firstValueFrom, Observable } from "rxjs";
+import { auditTime, catchError, concatMap, defer, EMPTY, filter, firstValueFrom, merge, Observable } from "rxjs";
 import { DockerSocket } from "./streaming/DockerSocket";
 import { Fountain } from "./streaming/Fountain";
 
@@ -25,18 +25,30 @@ export class ContainerService {
   }
 
   public initialize() {
+    const BROADCAST_INTERVAL_MS = 1_000;
+
     if (this.initialized) {
       return;
     }
     this.initialized = true;
-    this.containers.subscribe({
-      next: (containers) => this.socketService.broadcastContainers(containers),
-      error: (error) => this.log.error("Stopped pushing container updates", error),
-    });
-  }
 
-  public streamThroughputs(): Observable<Throughput[]> {
-    return this.throughputs;
+    merge(this.containers, this.throughputs)
+      .pipe(
+        auditTime(BROADCAST_INTERVAL_MS),
+        filter(() => this.socketService.hasConnections()),
+        concatMap(() =>
+          defer(() => this.list()).pipe(
+            catchError((error) => {
+              this.log.error("Could not build the container overview", error);
+              return EMPTY;
+            }),
+          ),
+        ),
+      )
+      .subscribe({
+        next: (containers) => this.socketService.broadcastContainers(containers),
+        error: (error) => this.log.error("Stopped pushing container updates", error),
+      });
   }
 
   public async list(): Promise<ContainerRM[]> {

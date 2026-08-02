@@ -43,10 +43,6 @@ test("the container endpoints are available", async ({ page }) => {
   expect(overview.status()).toEqual(200);
   expect(await overview.json()).toBeInstanceOf(Array);
 
-  const throughput = await page.request.get("/internal-api/containers/throughput");
-  expect(throughput.status()).toEqual(200);
-  expect(await throughput.json()).toBeInstanceOf(Array);
-
   // an unknown container has no history rather than an error
   const events = await page.request.get("/internal-api/containers/does-not-exist/events");
   expect(events.status()).toEqual(200);

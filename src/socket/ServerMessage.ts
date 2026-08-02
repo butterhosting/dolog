@@ -1,5 +1,5 @@
 import { ZodParser } from "@/helpers/ZodParser";
-import { Container } from "@/models/Container";
+import { ContainerRM } from "@/models/ContainerRM";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import z from "zod/v4";
 
@@ -17,7 +17,7 @@ export namespace ServerMessage {
    */
   export type Containers = {
     type: Type.containers;
-    containers: Container[];
+    containers: ContainerRM[];
   };
 
   /** A single live event, relayed only to the sockets watching that container. */
@@ -31,7 +31,7 @@ export namespace ServerMessage {
       return z.union([
         z.object({
           type: z.literal(Type.containers),
-          containers: z.array(Container.parse.SCHEMA),
+          containers: z.array(ContainerRM.parse.SCHEMA),
         }),
         z.object({
           type: z.literal(Type.log),
