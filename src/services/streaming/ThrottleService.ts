@@ -23,7 +23,9 @@ import {
 } from "rxjs";
 
 export class ThrottleService {
-  private readonly throughput = new Map<string, Throughput>();
+  private readonly throughputOverview = new Map<string, Throughput>();
+  private readonly throughputOverviewSubject = new Subject<Throughput[]>();
+
   private readonly WINDOW_MS: number;
   private readonly IDLE_EVICTION_MS: number;
 
@@ -32,8 +34,8 @@ export class ThrottleService {
     this.IDLE_EVICTION_MS = 60 * 1_000;
   }
 
-  public throughputOverview(): Throughput[] {
-    return [...this.throughput.values()];
+  public throughputs(): Observable<Throughput[]> {
+    return this.throughputOverviewSubject;
   }
 
   /**
@@ -106,7 +108,7 @@ export class ThrottleService {
         }
 
         const now = Temporal.Now.instant();
-        this.throughput.set(container.id, {
+        this.throughputOverview.set(container.id, {
           object: "throughput",
           container,
           throttling: folded > 0,
@@ -114,6 +116,7 @@ export class ThrottleService {
           bytesPerSecond: bytes,
           timestamp: now,
         });
+        this.throughputOverviewSubject.next([...this.throughputOverview.values()]);
         if (folded === 0) {
           return EMPTY;
         }
@@ -132,7 +135,8 @@ export class ThrottleService {
        */
       finalize(() => {
         if (window.container) {
-          this.throughput.delete(window.container.id);
+          this.throughputOverview.delete(window.container.id);
+          this.throughputOverviewSubject.next([...this.throughputOverview.values()]);
         }
       }),
     );

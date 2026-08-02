@@ -1,16 +1,20 @@
 import { DologEvent } from "@/models/DologEvent";
 import { Throughput } from "@/models/Throughput";
 import { Observable } from "rxjs";
-import { Fountain } from "./streaming/Fountain";
+import { FountainService } from "./streaming/FountainService";
 
 export class ContainerService {
-  public constructor(private readonly fountain: Fountain) {}
+  private fountain!: Observable<DologEvent>;
+  private throughputs: Throughput[] = [];
 
-  public activateFountain(): Observable<DologEvent> {
-    return this.fountain.activate();
+  public constructor(private readonly fountainService: FountainService) {
+    fountainService.throughputs().subscribe((t) => {
+      this.throughputs = t;
+    });
   }
 
-  public throughput(): Throughput[] {
-    return this.fountain.throughput();
+  public activateFountain(): Observable<DologEvent> {
+    this.fountain ??= this.fountainService.activate();
+    return this.fountain;
   }
 }

@@ -4,17 +4,17 @@ import { TestFixture } from "@/testing/TestFixture.test";
 import { Temporal } from "@js-temporal/polyfill";
 import { beforeEach, describe, expect, it } from "bun:test";
 import { firstValueFrom, take, toArray } from "rxjs";
-import { Fountain } from "./Fountain";
+import { FountainService } from "./FountainService";
 import { StreamVariant } from "@/models/StreamVariant";
 import { ThrottleService } from "./ThrottleService";
 
-describe(Fountain.name, () => {
+describe(FountainService.name, () => {
   let context: TestEnvironment.Context;
-  let fountain: Fountain;
+  let fountain: FountainService;
 
   beforeEach(async () => {
     context = await TestEnvironment.initialize();
-    fountain = new Fountain(context.dockerSocketMock.cast(), new ThrottleService(context.env));
+    fountain = new FountainService(context.dockerSocketMock.cast(), new ThrottleService(context.env));
     context.dockerSocketMock.listRunningContainers.mockResolvedValue([]);
     context.dockerSocketMock.streamLifecycles.mockImplementation(silent);
     context.dockerSocketMock.streamLogLines.mockImplementation(silent);

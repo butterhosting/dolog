@@ -18,7 +18,7 @@ const RECONNECT_DELAY_MS = 2_000;
  *
  * Log messages are throttled per container, see the {@link ThrottleService}
  */
-export class Fountain {
+export class FountainService {
   private readonly log = new Logger(__filename);
   private stream?: Observable<DologEvent>;
 
@@ -28,26 +28,20 @@ export class Fountain {
   ) {}
 
   public activate(): Observable<DologEvent> {
-    /**
-     * `resetOnRefCountZero: false` keeps the socket connections open even when no one is listening.
-     * Without it, a momentary gap between subscribers would re-run the `defer`: every container
-     * re-listed and re-attached, and both this class's and the throttler's state rebuilt.
-     */
     this.stream ??= defer(() => this.rawSocketStream()).pipe(
       this.throttleService.groupAndThrottleByContainer(),
       share({
+        // `resetOnRefCountZero: false` keeps the socket connections open even when no one is listening.
+        // Without it, a momentary gap between subscribers would re-run the `defer`: every container
+        // re-listed and re-attached, and both this class's and the throttler's state rebuilt.
         resetOnRefCountZero: false,
       }),
     );
     return this.stream;
   }
 
-  /**
-   * A live reading per container, kept as a side effect of throttling. Surfaced here because the
-   * fountain owns the throttler; nothing downstream needs to know it exists.
-   */
-  public throughput(): Throughput[] {
-    return this.throttleService.throughputOverview();
+  public throughputs(): Observable<Throughput[]> {
+    return this.throttleService.throughputs();
   }
 
   private rawSocketStream(): Observable<ContainerEvent> {

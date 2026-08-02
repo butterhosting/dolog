@@ -4,7 +4,7 @@ import { LoggingMiddleware } from "./middleware/logging/LoggingMiddleware";
 import { Middleware } from "./middleware/Middleware";
 import { Server } from "./Server";
 import { ContainerService } from "./services/ContainerService";
-import { Fountain } from "./services/streaming/Fountain";
+import { FountainService } from "./services/streaming/FountainService";
 import { DockerSocket } from "./services/streaming/DockerSocket";
 import { ThrottleService } from "./services/streaming/ThrottleService";
 import { SocketService } from "./socket/SocketService";
@@ -20,8 +20,8 @@ export class ServerRegistry {
     // Services
     const { dockerSocket } = this.register({ DockerSocket }, [env]);
     const { throttleService } = this.register({ ThrottleService }, [env]);
-    const { fountain } = this.register({ Fountain }, [dockerSocket, throttleService]);
-    const { containerService } = this.register({ ContainerService }, [fountain]);
+    const { fountainService } = this.register({ FountainService }, [dockerSocket, throttleService]);
+    const { containerService } = this.register({ ContainerService }, [fountainService]);
     const { socketService } = this.register({ SocketService }, []);
 
     // Middleware
