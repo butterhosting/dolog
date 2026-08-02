@@ -9,6 +9,7 @@ import { Container } from "./Container";
 export type Throughput = {
   object: "throughput";
   container: Container;
+  throttling: boolean;
   logsPerSecond: number;
   bytesPerSecond: number;
   timestamp: Temporal.Instant;
@@ -20,10 +21,10 @@ export namespace Throughput {
       z.object({
         object: z.literal("throughput"),
         container: Container.parse.SCHEMA,
+        throttling: z.boolean(),
         logsPerSecond: z.number(),
         bytesPerSecond: z.number(),
-        foldedPerSecond: z.number(),
-        measured: z.string().transform(ZodParser.instant),
+        timestamp: z.string().transform(ZodParser.instant),
       }),
     )
     .ensureTypeMatchesSchema();

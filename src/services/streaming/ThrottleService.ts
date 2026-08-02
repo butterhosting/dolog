@@ -109,6 +109,7 @@ export class ThrottleService {
         this.throughput.set(container.id, {
           object: "throughput",
           container,
+          throttling: folded > 0,
           logsPerSecond: logs,
           bytesPerSecond: bytes,
           timestamp: now,
@@ -124,14 +125,18 @@ export class ThrottleService {
           foldCount: folded,
         });
       }),
-    );
-
-    return merge(allowedEvents, throttleEvents).pipe(
+      /**
+       * This observable owns the container's throughput entry -- it is the only thing that writes
+       * one, so it is also what removes it. It ends when the container's events do, via the
+       * `takeUntil` above.
+       */
       finalize(() => {
         if (window.container) {
           this.throughput.delete(window.container.id);
         }
       }),
     );
+
+    return merge(allowedEvents, throttleEvents);
   }
 }

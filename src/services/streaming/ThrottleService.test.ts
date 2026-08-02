@@ -122,16 +122,36 @@ describe(ThrottleService.name, () => {
       scheduler.schedule(() => snapshots.push(service.throughputOverview()), 1100);
     });
 
-    // then ("hello" and "world" are 5 bytes each)
+    // then ("hello" and "world" are 5 bytes each, and nothing was over budget)
     expect(snapshots.at(0)).toEqual([
       expect.objectContaining({
         object: "throughput",
         container,
+        throttling: false,
         logsPerSecond: 2,
         bytesPerSecond: 10,
-        foldedPerSecond: 0,
       }),
     ]);
+  });
+
+  it("should flag a container as throttling while it is over budget", () => {
+    // given (7 logs against a budget of 5)
+    const container = TestFixture.container();
+    const events = Object.fromEntries("abcdefg".split("").map((k, i) => [k, log(container, `${i}`)]));
+    const snapshots: Throughput[][] = [];
+
+    scheduler.run(({ cold, expectObservable }) => {
+      // when
+      const throttled = cold("(abcdefg)", events).pipe(service.groupAndThrottleByContainer());
+      expectObservable(throttled, "^ 1500ms !").toBe("(abcde) 993ms t", {
+        ...events,
+        t: expect.objectContaining({ object: "throttle_event" }) as ThrottleEvent,
+      });
+      scheduler.schedule(() => snapshots.push(service.throughputOverview()), 1100);
+    });
+
+    // then (the reading says so too, not just the event)
+    expect(snapshots.at(0)).toEqual([expect.objectContaining({ container, throttling: true })]);
   });
 
   it("should forget a container once its stream is gone", () => {

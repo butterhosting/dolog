@@ -38,7 +38,11 @@ export function containersPage() {
             </div>
             <Internal.Metric label="logs/s" value={`${row.logsPerSecond}`} />
             <Internal.Metric label="throughput" value={Internal.formatBytes(row.bytesPerSecond)} />
-            <Internal.Metric label="folded/s" value={`${row.foldedPerSecond}`} muted={row.foldedPerSecond === 0} />
+            {row.throttling && (
+              <span className="text-xs font-bold tracking-wide text-c-error" title="logs are being dropped">
+                THROTTLED
+              </span>
+            )}
           </div>
         ))}
         {!throughput && (
