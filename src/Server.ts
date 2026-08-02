@@ -18,7 +18,7 @@ export class Server {
 
   public constructor(
     private readonly env: Env.Private,
-    private readonly containerService: LogService,
+    private readonly logService: LogService,
     private readonly socketService: SocketService,
     private readonly middleware: Middleware,
   ) {}
@@ -95,7 +95,7 @@ export class Server {
         "/internal-api/containers/throughput": {
           GET: this.handleRoute(async () => {
             // the throughput stream replays its latest reading, so this resolves immediately
-            const throughput: Throughput[] = await firstValueFrom(this.containerService.throughputs());
+            const throughput: Throughput[] = await firstValueFrom(this.logService.throughputOverview());
             return Response.json(throughput);
           }),
         },

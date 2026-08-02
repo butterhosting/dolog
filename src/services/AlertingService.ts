@@ -8,4 +8,9 @@ export class AlertingService {
   public constructor(fountain: Fountain) {
     this.stream = fountain.stream();
   }
+
+  // TODO: match log messages against the configured rules and notify the alert destinations
+  public initialize() {
+    void this.stream;
+  }
 }

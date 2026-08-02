@@ -23,8 +23,8 @@ export class ServerRegistry {
     const { dockerSocket } = this.register({ DockerSocket }, [env]);
     const { throttleService } = this.register({ ThrottleService }, [env]);
     const { fountain } = this.register({ Fountain }, [dockerSocket, throttleService]);
-    const { retentionService } = this.register({ RetentionService }, [fountain]);
-    const { alertingService } = this.register({ AlertingService }, [fountain]);
+    this.register({ RetentionService }, [fountain]);
+    this.register({ AlertingService }, [fountain]);
     const { logService } = this.register({ LogService }, [fountain]);
 
     // Middleware

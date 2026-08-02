@@ -1,10 +1,9 @@
 import { mkdir } from "fs/promises";
-import { ContainerEventPrinter } from "./ContainerEventPrinter";
 import { Env } from "./Env";
 import { Logger } from "./Logger";
 import { Server } from "./Server";
 import { ServerRegistry } from "./ServerRegistry";
-import { LogService } from "./services/LogService";
+import { RetentionService } from "./services/RetentionService";
 
 /**
  * Initialize the logger
@@ -27,19 +26,7 @@ await mkdir(env.X_DOLOG_ROOT, { recursive: true });
 const registry = await ServerRegistry.bootstrap(env);
 
 /**
- * Turn on the fountain. The only observer for now prints to stdout; retention, alerting and the
- * frontend websocket will all attach to this same stream.
- */
-const log = new Logger(__filename);
-registry
-  .get(LogService)
-  .activateFountain()
-  .subscribe({
-    next: (event) => console.log(ContainerEventPrinter.format(event)),
-    error: (error) => log.error("The container event stream died", error),
-  });
-
-/**
  * Initialize the application
  */
+registry.get(RetentionService).initialize();
 registry.get(Server).listen();

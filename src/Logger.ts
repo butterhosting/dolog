@@ -19,11 +19,11 @@ export class Logger {
   }
 
   private readonly filename: string;
-  private readonly lazy: boolean;
+  private readonly initTiming: Logger.InitTiming;
 
-  public constructor(file: string, lazyArg?: "lazy") {
-    this.lazy = lazyArg === "lazy";
-    if (!this.lazy) {
+  public constructor(file: string, initTiming: Logger.InitTiming = "eager") {
+    this.initTiming = initTiming;
+    if (initTiming === "eager") {
       this.requireInitialization();
     }
     this.filename = basename(file);
@@ -46,14 +46,22 @@ export class Logger {
   };
 
   private log = (level: LogLevel, ...args: unknown[]) => {
-    if (this.lazy) {
+    if (this.initTiming === "lazy") {
       this.requireInitialization();
     }
     if (this.shouldLog(level)) {
       const timestamp = Temporal.Now.plainDateTimeISO(Logger.timeZone).toString({ smallestUnit: "second" }).replace("T", " ");
       const prefix = `${timestamp} [${level.toUpperCase()}] ${Logger.emojis[level]} ${this.filename} |`;
-      console[level].call(console, prefix, ...args);
+      console[level].call(console, prefix, ...this.resolve(args));
     }
+  };
+
+  private resolve = (args: unknown[]): unknown[] => {
+    if (args.length !== 1 || typeof args[0] !== "function") {
+      return args;
+    }
+    const produced = (args[0] as Logger.Lazy)();
+    return Array.isArray(produced) ? produced : [produced];
   };
 
   private requireInitialization = () => {
@@ -74,4 +82,25 @@ export class Logger {
         return [LogLevel.error].includes(level);
     }
   };
+}
+
+export namespace Logger {
+  /**
+   * When to check that {@link Logger.initialize} has run. `eager` fails at construction, which is
+   * what you want almost everywhere; `lazy` waits until something is actually logged, for the few
+   * loggers built at module scope before the application has configured anything.
+   *
+   * Unrelated to {@link Logger.Lazy}, which is about deferring a message rather than a check.
+   */
+  export type InitTiming = "eager" | "lazy";
+
+  /**
+   * Passed on its own to any of the log methods to defer the cost of building the message:
+   *
+   *     log.debug(() => `parsed ${expensiveSummary(batch)}`);
+   *     log.debug(() => ["parsed", expensiveSummary(batch)]);
+   *
+   * An array is spread as separate arguments, anything else is logged as one.
+   */
+  export type Lazy = () => unknown;
 }
