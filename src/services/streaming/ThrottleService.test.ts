@@ -5,7 +5,6 @@ import { TestFixture } from "@/testing/TestFixture.test";
 import { beforeEach, describe, expect, it } from "bun:test";
 import { TestScheduler } from "rxjs/testing";
 import { ThrottleService } from "./ThrottleService";
-import { ThrottleEvent } from "@/models/ThrottleEvent";
 
 /**
  * The throttler is built on time-based operators, so these run on rxjs' virtual clock: a "1000ms"
@@ -55,10 +54,11 @@ describe(ThrottleService.name, () => {
       expectObservable(throttled, "^ 1500ms !").toBe("(abcde) 993ms t", {
         ...events,
         t: expect.objectContaining({
-          object: "throttle_event",
+          object: "container_event",
+          type: ContainerEvent.Type.log_throttle,
           container,
           foldCount: 2,
-        }) as ThrottleEvent,
+        }) as ContainerEvent.LogThrottle,
       });
     });
   });
@@ -150,7 +150,10 @@ describe(ThrottleService.name, () => {
       const throttled = cold("(abcdefg)", events).pipe(service.groupAndThrottleByContainer());
       expectObservable(throttled, "^ 1500ms !").toBe("(abcde) 993ms t", {
         ...events,
-        t: expect.objectContaining({ object: "throttle_event" }) as ThrottleEvent,
+        t: expect.objectContaining({
+          object: "container_event",
+          type: ContainerEvent.Type.log_throttle,
+        }) as ContainerEvent.LogThrottle,
       });
       scheduler.schedule(() => snapshots.push(latest), 1100);
     });

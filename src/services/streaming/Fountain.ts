@@ -1,11 +1,10 @@
 import { Logger } from "@/Logger";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { Throughput } from "@/models/Throughput";
 import { catchError, defer, EMPTY, from, map, merge, mergeMap, Observable, of, repeat, retry, share, timer } from "rxjs";
 import { DockerSocket } from "./DockerSocket";
 import { ThrottleService } from "./ThrottleService";
-import { DologEvent } from "@/models/DologEvent";
-import { Throughput } from "@/models/Throughput";
 
 const RECONNECT_DELAY_MS = 2_000;
 
@@ -20,14 +19,14 @@ const RECONNECT_DELAY_MS = 2_000;
  */
 export class Fountain {
   private readonly log = new Logger(__filename);
-  private throttledStream?: Observable<DologEvent>;
+  private throttledStream?: Observable<ContainerEvent>;
 
   public constructor(
     private readonly dockerSocket: DockerSocket,
     private readonly throttleService: ThrottleService,
   ) {}
 
-  public stream(): Observable<DologEvent> {
+  public stream(): Observable<ContainerEvent> {
     this.throttledStream ??= defer(() => this.rawSocketStream()).pipe(
       this.throttleService.groupAndThrottleByContainer(),
       share({
@@ -44,7 +43,7 @@ export class Fountain {
     return this.throttleService.throughputs();
   }
 
-  private rawSocketStream(): Observable<ContainerEvent> {
+  private rawSocketStream(): Observable<ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log> {
     const containersBeingFollowed = new Set<string>();
     /**
      * The listing and the event stream are opened concurrently, so a container starting in that
@@ -116,7 +115,7 @@ export class Fountain {
     return this.abortable((signal) => this.dockerSocket.streamLogLines(container.id, signal)).pipe(
       map(({ streamVariant, timestamp, message }): ContainerEvent.Log => ({
         object: "container_event",
-        type: ContainerEvent.Type.log as const,
+        type: ContainerEvent.Type.log,
         timestamp,
         container,
         streamVariant,

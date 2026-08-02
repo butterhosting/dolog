@@ -1,11 +1,11 @@
 import { Logger } from "@/Logger";
-import { DologEvent } from "@/models/DologEvent";
+import { ContainerEvent } from "@/models/ContainerEvent";
 import { bufferTime, catchError, concatMap, defer, EMPTY, filter, Observable, retry } from "rxjs";
 import { Fountain } from "./streaming/Fountain";
 
 export class RetentionService {
   private readonly log = new Logger(__filename);
-  private readonly stream: Observable<DologEvent>;
+  private readonly stream: Observable<ContainerEvent>;
   private initialized = false;
 
   public constructor(fountain: Fountain) {
@@ -45,7 +45,7 @@ export class RetentionService {
     }
   }
 
-  private async persist(batch: DologEvent[]): Promise<void> {
+  private async persist(batch: ContainerEvent[]): Promise<void> {
     this.log.debug(() => {
       const perContainer = new Map<string, number>();
       batch.forEach(({ container }) => perContainer.set(container.name, (perContainer.get(container.name) ?? 0) + 1));
@@ -57,3 +57,15 @@ export class RetentionService {
     });
   }
 }
+
+/**
+
+create table event (
+  id text primary key, // uuidv7 for sortability
+  container_id text not null,
+  container_name text not null,
+  container_group text,
+
+)
+
+ */

@@ -4,13 +4,14 @@ import z from "zod/v4";
 import { Container } from "./Container";
 import { StreamVariant } from "./StreamVariant";
 
-export type ContainerEvent = ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log;
+export type ContainerEvent = ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log | ContainerEvent.LogThrottle;
 
 export namespace ContainerEvent {
   export enum Type {
     start = "start",
     stop = "stop",
     log = "log",
+    log_throttle = "log_throttle",
   }
 
   type Common = {
@@ -31,6 +32,11 @@ export namespace ContainerEvent {
     type: Type.log;
     streamVariant: StreamVariant;
     message: string;
+  };
+
+  export type LogThrottle = Common & {
+    type: Type.log_throttle;
+    foldCount: number;
   };
 
   const common = {
@@ -57,6 +63,12 @@ export namespace ContainerEvent {
           object: z.literal("container_event"),
           streamVariant: z.enum(StreamVariant),
           message: z.string(),
+        }),
+        z.object({
+          ...common,
+          type: z.literal(Type.log_throttle),
+          object: z.literal("container_event"),
+          foldCount: z.number(),
         }),
       ]),
     )

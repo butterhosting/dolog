@@ -1,10 +1,10 @@
-import { DologEvent } from "@/models/DologEvent";
+import { ContainerEvent } from "@/models/ContainerEvent";
 import { Throughput } from "@/models/Throughput";
 import { filter, Observable } from "rxjs";
 import { Fountain } from "./streaming/Fountain";
 
 export class LogService {
-  private readonly stream: Observable<DologEvent>;
+  private readonly stream: Observable<ContainerEvent>;
   private readonly throughputs: Observable<Throughput[]>;
 
   public constructor(fountain: Fountain) {
@@ -16,7 +16,7 @@ export class LogService {
    * Everything happening to one container, for a websocket client to follow. Nothing is subscribed
    * until a client asks, and it stops as soon as they disconnect.
    */
-  public liveEvents(containerId: string): Observable<DologEvent> {
+  public liveEvents(containerId: string): Observable<ContainerEvent> {
     return this.stream.pipe(filter((event) => event.container.id === containerId));
   }
 

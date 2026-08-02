@@ -39,8 +39,8 @@ describe(Fountain.name, () => {
     // given
     const container = TestFixture.container();
     context.dockerSocketMock.streamLifecycles.mockImplementation(async function* () {
-      yield { status: "start" as const, timestamp: Temporal.Now.instant(), container };
-      yield { status: "die" as const, timestamp: Temporal.Now.instant(), container };
+      yield { status: "start", timestamp: Temporal.Now.instant(), container };
+      yield { status: "die", timestamp: Temporal.Now.instant(), container };
       await never();
     });
 
@@ -58,7 +58,7 @@ describe(Fountain.name, () => {
     const container = TestFixture.container();
     context.dockerSocketMock.listRunningContainers.mockResolvedValue([container]);
     context.dockerSocketMock.streamLifecycles.mockImplementation(async function* () {
-      yield { status: "start" as const, timestamp: Temporal.Now.instant(), container };
+      yield { status: "start", timestamp: Temporal.Now.instant(), container };
       await never();
     });
     context.dockerSocketMock.streamLogLines.mockImplementation(async function* () {
