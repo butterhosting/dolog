@@ -17,12 +17,13 @@ export class LogRepository {
   private readonly log = new Logger(__filename);
   private readonly containers = new BehaviorSubject<Container[]>([]);
 
+  private readonly FLUSH_INTERVAL = Temporal.Duration.from({ seconds: 1 });
   private pending: ContainerEvent[] = [];
   private failedFlushes = 0;
 
   public constructor(
     private readonly sqlite: Sqlite,
-    private readonly flushTrigger: Observable<unknown> = interval(1000), // overridable for unit tests
+    private readonly flushTrigger: Observable<unknown> = interval(this.FLUSH_INTERVAL.total("milliseconds")), // overridable for unit tests
   ) {}
 
   public streamContainers(): Observable<Container[]> {

@@ -35,7 +35,7 @@ export class ThrottleService {
    * Transforms an Observable<ContainerEvent> into a (throttled) Observable<DologEvent>
    */
   public groupAndThrottleByContainer() {
-    const IDLE_EVICTION_MS = 60 * 1_000;
+    const IDLE_EVICTION = Temporal.Duration.from({ minutes: 1 });
 
     return pipe(
       groupBy(
@@ -49,7 +49,7 @@ export class ThrottleService {
           // because each group has a periodic timer for calculating throughputs,
           // so if we dont clean up container groups after some time, we'll forever
           // accumulate periodic timers for each container, including all historic ones
-          duration: (group) => group.pipe(debounceTime(IDLE_EVICTION_MS)),
+          duration: (group) => group.pipe(debounceTime(IDLE_EVICTION.total("milliseconds"))),
         },
       ),
       mergeMap((group) => this.throttleContainer(group)),
@@ -68,7 +68,7 @@ export class ThrottleService {
     >,
   ): Observable<ContainerEvent> {
     const RATE_LIMIT = this.env.X_DOLOG_THROTTLE_LOGS_PER_SECOND;
-    const WINDOW_MS = 1_000;
+    const WINDOW = Temporal.Duration.from({ seconds: 1 });
 
     const signalToStopWatchingThisContainer = new Subject<void>();
 
@@ -106,9 +106,7 @@ export class ThrottleService {
       }),
     );
 
-    const throttleEvents: Observable<ContainerEvent.LogThrottle> = interval(
-      WINDOW_MS,
-    ).pipe(
+    const throttleEvents: Observable<ContainerEvent.LogThrottle> = interval(WINDOW.total("milliseconds")).pipe(
       takeUntil(signalToStopWatchingThisContainer),
       mergeMap(() => {
         const { container, logs, bytes, folded } = window;

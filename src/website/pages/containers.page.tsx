@@ -1,4 +1,5 @@
 import { ServerMessage } from "@/socket/ServerMessage";
+import { Temporal } from "@js-temporal/polyfill";
 import { useEffect } from "react";
 import { useYesQuery } from "react-yesquery";
 import { ContainerClient } from "../clients/ContainerClient";
@@ -19,10 +20,10 @@ export function containersPage() {
   });
 
   useEffect(() => {
-    const POLL_INTERVAL_MS = 30_000;
+    const POLL_INTERVAL = Temporal.Duration.from({ seconds: 30 });
 
     socketClient.declareContainerInterest(null);
-    const timer = setInterval(() => void reload(), POLL_INTERVAL_MS);
+    const timer = setInterval(() => void reload(), POLL_INTERVAL.total("milliseconds"));
     const subscription = socketClient.subscribe({
       type: ServerMessage.Type.containers,
       callback: ({ containers }) => setData(containers),

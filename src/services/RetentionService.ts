@@ -5,6 +5,7 @@ import { ContainerEvent } from "@/models/ContainerEvent";
 import { LogRepository } from "@/repositories/LogRepository";
 import { catchError, concatMap, defer, EMPTY, interval, Observable, startWith } from "rxjs";
 import { Fountain } from "./streaming/Fountain";
+import { Temporal } from "@js-temporal/polyfill";
 
 export class RetentionService {
   private readonly log = new Logger(__filename);
@@ -32,9 +33,8 @@ export class RetentionService {
    */
   @Initialize
   public prunePeriodically() {
-    const PRUNE_INTERVAL_MS = 10 * 60 * 1_000;
-
-    interval(PRUNE_INTERVAL_MS)
+    const PRUNE_INTERVAL = Temporal.Duration.from({ minutes: 10 });
+    interval(PRUNE_INTERVAL.total("milliseconds"))
       .pipe(
         // so a restart with an already oversized database does not idle for a full interval first
         startWith(0),

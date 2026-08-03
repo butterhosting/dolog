@@ -1,5 +1,6 @@
 import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
+import { Temporal } from "@js-temporal/polyfill";
 import { ClientMessage } from "./ClientMessage";
 import { ServerMessage } from "./ServerMessage";
 import { Socket } from "./Socket";
@@ -39,7 +40,7 @@ export class SocketService {
    */
   @Initialize
   public keepConnectionsAlive() {
-    const KEEPALIVE_INTERVAL_MS = 25 * 1_000;
+    const KEEPALIVE_INTERVAL = Temporal.Duration.from({ seconds: 25 });
     const MISSED_PINGS_BEFORE_DROP = 2;
 
     setInterval(() => {
@@ -52,7 +53,7 @@ export class SocketService {
         connection.unanswered += 1;
         connection.socket.ping();
       });
-    }, KEEPALIVE_INTERVAL_MS);
+    }, KEEPALIVE_INTERVAL.total("milliseconds"));
   }
 
   public hasConnections = (): boolean => {

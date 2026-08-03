@@ -1,5 +1,6 @@
 import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
+import { Temporal } from "@js-temporal/polyfill";
 import { Container } from "@/models/Container";
 import { ContainerRM } from "@/models/ContainerRM";
 import { Throughput } from "@/models/Throughput";
@@ -26,11 +27,11 @@ export class ContainerService {
 
   @Initialize
   public broadcastOverviewAsItChanges() {
-    const BROADCAST_INTERVAL_MS = 1_000;
+    const BROADCAST_INTERVAL = Temporal.Duration.from({ seconds: 1 });
 
     merge(this.containers, this.throughputs)
       .pipe(
-        auditTime(BROADCAST_INTERVAL_MS),
+        auditTime(BROADCAST_INTERVAL.total("milliseconds")),
         filter(() => this.socketService.hasConnections()),
         concatMap(() =>
           defer(() => this.list()).pipe(

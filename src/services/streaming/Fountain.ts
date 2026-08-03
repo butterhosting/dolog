@@ -1,5 +1,6 @@
 import { Logger } from "@/Logger";
 import { Container } from "@/models/Container";
+import { Temporal } from "@js-temporal/polyfill";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Throughput } from "@/models/Throughput";
 import {
@@ -20,7 +21,7 @@ import {
 import { DockerSocket } from "./DockerSocket";
 import { ThrottleService } from "./ThrottleService";
 
-const RECONNECT_DELAY_MS = 2_000;
+const RECONNECT_DELAY = Temporal.Duration.from({ seconds: 2 });
 
 /**
  * Our single source of continuous events.
@@ -166,11 +167,8 @@ export class Fountain {
   }
 
   private reconnect(message: string, error?: unknown): Observable<unknown> {
-    this.log.warn(
-      `${message}, retrying in ${RECONNECT_DELAY_MS}ms`,
-      error ?? "",
-    );
-    return timer(RECONNECT_DELAY_MS);
+    this.log.warn(`${message}, retrying in ${RECONNECT_DELAY.total("seconds")}s`, error ?? "");
+    return timer(RECONNECT_DELAY.total("milliseconds"));
   }
 
   /**
