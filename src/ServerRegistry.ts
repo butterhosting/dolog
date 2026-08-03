@@ -1,9 +1,9 @@
 import { Class } from "@/types/Class";
 import { Sqlite } from "./drizzle/sqlite";
-import { ContainerEventRepository } from "./repositories/ContainerEventRepository";
 import { Env } from "./Env";
 import { LoggingMiddleware } from "./middleware/logging/LoggingMiddleware";
 import { Middleware } from "./middleware/Middleware";
+import { LogRepository } from "./repositories/LogRepository";
 import { Server } from "./Server";
 import { AlertingService } from "./services/AlertingService";
 import { ContainerService } from "./services/ContainerService";
@@ -26,17 +26,17 @@ export class ServerRegistry {
     private readonly sqlite: Sqlite,
   ) {
     // Repositories
-    const { containerEventRepository } = this.register({ ContainerEventRepository }, [sqlite]);
+    const { logRepository } = this.register({ LogRepository }, [sqlite]);
 
     // Services
     const { dockerSocket } = this.register({ DockerSocket }, [env]);
     const { throttleService } = this.register({ ThrottleService }, [env]);
     const { fountain } = this.register({ Fountain }, [dockerSocket, throttleService]);
-    this.register({ RetentionService }, [fountain, env, containerEventRepository]);
+    this.register({ RetentionService }, [fountain, env, logRepository]);
     this.register({ AlertingService }, [fountain]);
     const { socketService } = this.register({ SocketService }, []);
-    const { containerService } = this.register({ ContainerService }, [fountain, dockerSocket, containerEventRepository, socketService]);
-    const { logService } = this.register({ LogService }, [fountain, containerEventRepository, socketService]);
+    const { containerService } = this.register({ ContainerService }, [fountain, dockerSocket, logRepository, socketService]);
+    const { logService } = this.register({ LogService }, [fountain, logRepository, socketService]);
 
     // Middleware
     const { loggingMiddleware } = this.register({ LoggingMiddleware }, []);

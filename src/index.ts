@@ -8,7 +8,7 @@ import { ServerRegistry } from "./ServerRegistry";
 import { RetentionService } from "./services/RetentionService";
 import { ContainerService } from "./services/ContainerService";
 import { LogService } from "./services/LogService";
-import { ContainerEventRepository } from "./repositories/ContainerEventRepository";
+import { LogRepository } from "./repositories/LogRepository";
 import { SocketService } from "./socket/SocketService";
 
 /**
@@ -40,7 +40,7 @@ const registry = await ServerRegistry.bootstrap(env, sqlite);
  * Initialize the application
  */
 // the repository first: RetentionService starts feeding it events the moment it is initialized
-registry.get(ContainerEventRepository).initialize();
+registry.get(LogRepository).initialize();
 registry.get(RetentionService).initialize();
 registry.get(ContainerService).initialize();
 registry.get(LogService).initialize();

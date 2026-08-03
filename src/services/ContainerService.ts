@@ -2,7 +2,7 @@ import { Logger } from "@/Logger";
 import { Container } from "@/models/Container";
 import { ContainerRM } from "@/models/ContainerRM";
 import { Throughput } from "@/models/Throughput";
-import { ContainerEventRepository } from "@/repositories/ContainerEventRepository";
+import { LogRepository } from "@/repositories/LogRepository";
 import { SocketService } from "@/socket/SocketService";
 import { auditTime, catchError, concatMap, defer, EMPTY, filter, firstValueFrom, merge, Observable } from "rxjs";
 import { DockerSocket } from "./streaming/DockerSocket";
@@ -17,11 +17,11 @@ export class ContainerService {
   public constructor(
     fountain: Fountain,
     private readonly dockerSocket: DockerSocket,
-    private readonly containerEventRepository: ContainerEventRepository,
+    private readonly logRepository: LogRepository,
     private readonly socketService: SocketService,
   ) {
     this.throughputs = fountain.streamThroughputs();
-    this.containers = containerEventRepository.streamContainers();
+    this.containers = logRepository.streamContainers();
   }
 
   public initialize() {
@@ -54,7 +54,7 @@ export class ContainerService {
   public async list(): Promise<ContainerRM[]> {
     const [running, recorded, throughputs] = await Promise.all([
       this.dockerSocket.listRunningContainers().catch(() => [] as Container[]),
-      this.containerEventRepository.listOverview(),
+      this.logRepository.listContainers(),
       firstValueFrom(this.throughputs),
     ]);
     const rate = new Map(throughputs.map((throughput) => [throughput.container.id, throughput]));

@@ -5,15 +5,15 @@ import { TestEnvironment } from "@/testing/TestEnvironment.test";
 import { TestFixture } from "@/testing/TestFixture.test";
 import { beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { firstValueFrom } from "rxjs";
-import { ContainerEventRepository } from "./ContainerEventRepository";
+import { LogRepository } from "./LogRepository";
 
-describe(ContainerEventRepository.name, () => {
+describe(LogRepository.name, () => {
   let context: TestEnvironment.Context;
-  let repository: ContainerEventRepository;
+  let repository: LogRepository;
 
   beforeEach(async () => {
     context = await TestEnvironment.initialize();
-    repository = context.containerEventRepository;
+    repository = context.logRepository;
   });
 
   it("should round-trip every kind of event", async () => {
@@ -28,7 +28,7 @@ describe(ContainerEventRepository.name, () => {
     ];
 
     // when
-    await repository.append(events);
+    await write(events);
     // then
     const { events: stored } = await repository.listEvents(container.id, 100);
     expect(stored.map(({ type }) => type)).toEqual([
@@ -49,7 +49,7 @@ describe(ContainerEventRepository.name, () => {
   it("should answer with events that have been recorded but not yet written", async () => {
     // given (nothing has been flushed, so the database is still empty)
     const container = TestFixture.container();
-    repository.save(TestFixture.logEvent({ container, line: "not on disk yet" }));
+    repository.saveEvent(TestFixture.logEvent({ container, line: "not on disk yet" }));
 
     // when
     const { events } = await repository.listEvents(container.id, 100);
@@ -57,7 +57,7 @@ describe(ContainerEventRepository.name, () => {
     expect(events.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["not on disk yet"]);
 
     // and the same events are not served twice once they do land
-    await repository.flush();
+    await flush();
     const { events: afterFlush } = await repository.listEvents(container.id, 100);
     expect(afterFlush).toHaveLength(1);
   });
@@ -66,8 +66,8 @@ describe(ContainerEventRepository.name, () => {
     // given (half written, half still buffered -- the seam the reader must not see)
     const container = TestFixture.container();
     const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
-    await repository.append(all.slice(0, 5));
-    all.slice(5).forEach((event) => repository.save(event));
+    await write(all.slice(0, 5));
+    all.slice(5).forEach((event) => repository.saveEvent(event));
 
     // when
     const { events } = await repository.listEvents(container.id, 100);
@@ -79,8 +79,8 @@ describe(ContainerEventRepository.name, () => {
     // given
     const container = TestFixture.container();
     const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
-    await repository.append(all.slice(0, 5));
-    all.slice(5).forEach((event) => repository.save(event));
+    await write(all.slice(0, 5));
+    all.slice(5).forEach((event) => repository.saveEvent(event));
 
     // when (asking for what came before an event that is itself still buffered)
     const { events } = await repository.listEvents(container.id, 100, all[7]!.id);
@@ -91,17 +91,39 @@ describe(ContainerEventRepository.name, () => {
   it("should keep unwritten events when the write fails, rather than losing them", async () => {
     // given
     const container = TestFixture.container();
-    repository.save(TestFixture.logEvent({ container, line: "survives" }));
-    const broken = new Error("database is locked");
-    const append = spyOn(repository, "append").mockRejectedValueOnce(broken);
+    repository.saveEvent(TestFixture.logEvent({ container, line: "survives" }));
+    const transaction = spyOn(context.sqlite, "transaction").mockImplementationOnce(() => {
+      throw new Error("database is locked");
+    });
 
-    // when
-    await expect(repository.flush()).rejects.toThrow(broken);
-    // then (still readable, and a later flush still writes them)
-    append.mockRestore();
+    // when (a flush that fails)
+    await flush();
+    // then (still readable, and the next flush still writes them)
     expect((await repository.listEvents(container.id, 100)).events).toHaveLength(1);
-    await repository.flush();
+    transaction.mockRestore();
+    await flush();
     expect((await repository.listEvents(container.id, 100)).events).toHaveLength(1);
+  });
+
+  it("should give up on a batch the database will never accept, rather than wedging every write behind it", async () => {
+    // given (a write that fails every single time, not just once)
+    const container = TestFixture.container();
+    repository.saveEvent(TestFixture.logEvent({ container, line: "poison" }));
+    const transaction = spyOn(context.sqlite, "transaction").mockImplementation(() => {
+      throw new Error("constraint violated");
+    });
+
+    // when (flushed until it gives up)
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await flush();
+    }
+    transaction.mockRestore();
+
+    // then (the bad batch is gone, and events queued after it are written normally)
+    repository.saveEvent(TestFixture.logEvent({ container, line: "written after the bad batch" }));
+    await flush();
+    const { events } = await repository.listEvents(container.id, 100);
+    expect(events.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["written after the bad batch"]);
   });
 
   it("should record one container row however many events it produces", async () => {
@@ -110,7 +132,7 @@ describe(ContainerEventRepository.name, () => {
     const worker = TestFixture.container({ name: "worker" });
 
     // when
-    await repository.append([
+    await write([
       ...Array.from({ length: 50 }, () => TestFixture.logEvent({ container: web })),
       ...Array.from({ length: 50 }, () => TestFixture.logEvent({ container: worker })),
     ]);
@@ -126,8 +148,8 @@ describe(ContainerEventRepository.name, () => {
     const after = { ...before, name: "new-name", group: "shop" };
 
     // when
-    await repository.append([TestFixture.logEvent({ container: before })]);
-    await repository.append([TestFixture.logEvent({ container: after })]);
+    await write([TestFixture.logEvent({ container: before })]);
+    await write([TestFixture.logEvent({ container: after })]);
     // then (still one row, carrying the latest identity)
     expect(await containers()).toEqual([after]);
   });
@@ -136,7 +158,7 @@ describe(ContainerEventRepository.name, () => {
     // given (one chatty container and one quiet one)
     const chatty = TestFixture.container({ name: "chatty" });
     const quiet = TestFixture.container({ name: "quiet" });
-    await repository.append([
+    await write([
       ...Array.from({ length: 100 }, (_, i) => TestFixture.logEvent({ container: chatty, line: `chatty ${i}` })),
       ...Array.from({ length: 3 }, (_, i) => TestFixture.logEvent({ container: quiet, line: `quiet ${i}` })),
     ]);
@@ -155,7 +177,7 @@ describe(ContainerEventRepository.name, () => {
   it("should leave a container alone while it is under its own cap", async () => {
     // given
     const container = TestFixture.container();
-    await repository.append(Array.from({ length: 5 }, () => TestFixture.logEvent({ container })));
+    await write(Array.from({ length: 5 }, () => TestFixture.logEvent({ container })));
 
     // when
     const pruned = await repository.pruneToEventsPerContainer(10);
@@ -167,7 +189,7 @@ describe(ContainerEventRepository.name, () => {
   it("should do nothing while the database fits the budget", async () => {
     // given
     const container = TestFixture.container();
-    await repository.append(Array.from({ length: 10 }, () => TestFixture.logEvent({ container })));
+    await write(Array.from({ length: 10 }, () => TestFixture.logEvent({ container })));
 
     // when
     const pruned = await repository.pruneToSize(64 * 1024 * 1024);
@@ -180,11 +202,9 @@ describe(ContainerEventRepository.name, () => {
     // given (the one event of `gone` is the oldest, so it is first out)
     const gone = TestFixture.container({ name: "gone" });
     const staying = TestFixture.container({ name: "staying" });
-    await repository.append([TestFixture.logEvent({ container: gone, line: "goodbye" })]);
+    await write([TestFixture.logEvent({ container: gone, line: "goodbye" })]);
     // more than one prune chunk, so that some of them survive it
-    await repository.append(
-      Array.from({ length: 15_000 }, (_, i) => TestFixture.logEvent({ container: staying, line: `line ${i} `.repeat(30) })),
-    );
+    await write(Array.from({ length: 15_000 }, (_, i) => TestFixture.logEvent({ container: staying, line: `line ${i} `.repeat(30) })));
 
     // when (a budget well under the ~7.5 MB those events occupy, but far enough above what one
     // chunk leaves behind that the loop is not deciding on a rounding difference)
@@ -207,9 +227,9 @@ describe(ContainerEventRepository.name, () => {
     repository.streamContainers().subscribe((list) => published.push(list));
 
     // when (three batches, all from the same already-known container)
-    await repository.append([TestFixture.logEvent({ container })]);
-    await repository.append([TestFixture.logEvent({ container })]);
-    await repository.append([TestFixture.logEvent({ container })]);
+    await write([TestFixture.logEvent({ container })]);
+    await write([TestFixture.logEvent({ container })]);
+    await write([TestFixture.logEvent({ container })]);
     // then (the seed, plus one emission for the container appearing -- not one per batch)
     expect(published).toEqual([[], [container]]);
   });
@@ -217,5 +237,21 @@ describe(ContainerEventRepository.name, () => {
   /** The overview the repository publishes, which is always current after a mutation. */
   async function containers(): Promise<Container[]> {
     return await firstValueFrom(repository.streamContainers());
+  }
+
+  /**
+   * Stands in for the tick the repository flushes on, so writing is deterministic rather than a
+   * second away. The insert itself has already happened by the time `next` returns -- the wait is
+   * for the bookkeeping that follows it, which settles a microtask later.
+   */
+  async function flush(): Promise<void> {
+    context.flushTrigger.next();
+    await Bun.sleep(0);
+  }
+
+  /** Writing is a buffer plus a flush; tests that only care about the result say so in one line. */
+  async function write(events: ContainerEvent[]): Promise<void> {
+    events.forEach((event) => repository.saveEvent(event));
+    await flush();
   }
 });

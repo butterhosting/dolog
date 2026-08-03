@@ -1,7 +1,7 @@
 import { Env } from "@/Env";
 import { Logger } from "@/Logger";
 import { ContainerEvent } from "@/models/ContainerEvent";
-import { ContainerEventRepository } from "@/repositories/ContainerEventRepository";
+import { LogRepository } from "@/repositories/LogRepository";
 import { catchError, concatMap, defer, EMPTY, interval, Observable, startWith } from "rxjs";
 import { Fountain } from "./streaming/Fountain";
 
@@ -13,7 +13,7 @@ export class RetentionService {
   public constructor(
     fountain: Fountain,
     private readonly env: Env.Private,
-    private readonly repository: ContainerEventRepository,
+    private readonly logRepository: LogRepository,
   ) {
     this.events = fountain.streamEvents();
   }
@@ -28,7 +28,7 @@ export class RetentionService {
 
   private persist() {
     this.events.subscribe({
-      next: (event) => this.repository.save(event),
+      next: (event) => this.logRepository.saveEvent(event),
       error: (error) => this.log.error("Stopped recording events", error),
     });
   }
@@ -67,11 +67,11 @@ export class RetentionService {
     const perContainer = this.env.X_DOLOG_RETENTION_MAX_EVENTS_PER_CONTAINER;
     const megabytes = this.env.X_DOLOG_RETENTION_MAX_MEGABYTES;
 
-    const fairness = await this.repository.pruneToEventsPerContainer(perContainer);
+    const fairness = await this.logRepository.pruneToEventsPerContainer(perContainer);
     if (fairness.events > 0) {
       this.log.info(`Pruned ${fairness.events} events, keeping at most ${perContainer} per container`);
     }
-    const disk = await this.repository.pruneToSize(megabytes * 1024 * 1024);
+    const disk = await this.logRepository.pruneToSize(megabytes * 1024 * 1024);
     if (disk.events > 0) {
       this.log.info(`Pruned ${disk.events} events and ${disk.containers} containers to stay under ${megabytes}MB`);
     }

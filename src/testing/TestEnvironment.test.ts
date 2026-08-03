@@ -1,12 +1,13 @@
 import { DockerSocket } from "@/services/streaming/DockerSocket";
 import { Sqlite } from "@/drizzle/sqlite";
 import { Env } from "@/Env";
-import { ContainerEventRepository } from "@/repositories/ContainerEventRepository";
+import { LogRepository } from "@/repositories/LogRepository";
 import { Logger } from "@/Logger";
 import { LogLevel } from "@/models/internal/LogLevel";
 import { OmitBetter } from "@/types/OmitBetter";
 import { jest, mock, Mock } from "bun:test";
 import { mkdir, rm } from "fs/promises";
+import { Subject } from "rxjs";
 import { dirname, join } from "path";
 
 export namespace TestEnvironment {
@@ -19,7 +20,8 @@ export namespace TestEnvironment {
   export interface Context {
     env: Env.Private;
     sqlite: Sqlite;
-    containerEventRepository: ContainerEventRepository;
+    logRepository: LogRepository;
+    flushTrigger: Subject<void>;
     patchEnvironmentVariables(environment: Record<string, string>): void;
     dockerSocketMock: Mocked<DockerSocket>;
   }
@@ -77,7 +79,9 @@ export namespace TestEnvironment {
     // Setup filesystem
     await mkdir(dirname(env.X_DOLOG_DATABASE), { recursive: true });
     // WAL keeps two sidecar files; leaving them behind would pair a stale journal with a fresh database
-    await Promise.all([`${env.X_DOLOG_DATABASE}`, `${env.X_DOLOG_DATABASE}-wal`, `${env.X_DOLOG_DATABASE}-shm`].map((file) => rm(file, { force: true })));
+    await Promise.all(
+      [`${env.X_DOLOG_DATABASE}`, `${env.X_DOLOG_DATABASE}-wal`, `${env.X_DOLOG_DATABASE}-shm`].map((file) => rm(file, { force: true })),
+    );
 
     // Setup SQLite
     const sqlite = await Sqlite.initialize(env);
@@ -97,10 +101,16 @@ export namespace TestEnvironment {
       streamLogLines: mock(),
     });
 
+    /** Stands in for the clock the repository would otherwise flush on, so tests decide when. */
+    const flushTrigger = new Subject<void>();
+    const logRepository = new LogRepository(sqlite, flushTrigger);
+    logRepository.initialize();
+
     return {
       env,
       sqlite,
-      containerEventRepository: new ContainerEventRepository(sqlite),
+      logRepository,
+      flushTrigger,
       patchEnvironmentVariables,
       dockerSocketMock,
     };

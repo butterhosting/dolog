@@ -1,6 +1,6 @@
 import { Logger } from "@/Logger";
 import { ContainerEvent } from "@/models/ContainerEvent";
-import { ContainerEventRepository } from "@/repositories/ContainerEventRepository";
+import { LogRepository } from "@/repositories/LogRepository";
 import { SocketService } from "@/socket/SocketService";
 import { Observable } from "rxjs";
 import { Fountain } from "./streaming/Fountain";
@@ -12,7 +12,7 @@ export class LogService {
 
   public constructor(
     fountain: Fountain,
-    private readonly containerEventRepository: ContainerEventRepository,
+    private readonly logRepository: LogRepository,
     private readonly socketService: SocketService,
   ) {
     this.events = fountain.streamEvents();
@@ -29,7 +29,7 @@ export class LogService {
     });
   }
 
-  public async list(containerId: string, limit: number, before?: string): Promise<ContainerEventRepository.Page> {
-    return await this.containerEventRepository.listEvents(containerId, limit, before);
+  public async list(containerId: string, limit: number, before?: string): Promise<LogRepository.Page> {
+    return await this.logRepository.listEvents(containerId, limit, before);
   }
 }

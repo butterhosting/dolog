@@ -15,12 +15,8 @@ export namespace ContainerEvent {
   }
 
   type Common = {
+    id: string; // UUIDv7
     object: "container_event";
-    /**
-     * A uuidv7, minted where the event is born rather than where it is stored, so a line still on
-     * its way to the database can already be named. Being time-ordered, sorting by it sorts by age.
-     */
-    id: string;
     timestamp: Temporal.Instant;
     container: Container;
   };
@@ -45,8 +41,8 @@ export namespace ContainerEvent {
   };
 
   const common = {
+    id: z.uuidv7(),
     object: z.literal("container_event"),
-    id: z.string(),
     timestamp: z.string().transform(ZodParser.instant),
     container: Container.parse.SCHEMA,
   };
