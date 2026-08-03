@@ -68,10 +68,8 @@ export class LogRepository {
     const model = container ? ContainerEventConverter.containerFromDatabase(container) : undefined;
     const events = [...stored.map((row) => ContainerEventConverter.fromDatabase(row, model!)), ...buffered];
 
-    /**
-     * A flush landing between the two reads puts the same event in both halves, so they are merged
-     * by id rather than concatenated. Sorted rather than assumed ordered for the same reason.
-     */
+    // A flush landing between the two reads puts the same event in both halves, so they are merged
+    // by id rather than concatenated. Sorted rather than assumed ordered for the same reason.
     const merged = [...new Map(events.map((event) => [event.id, event])).values()].sort((a, b) => a.id.localeCompare(b.id));
     return {
       // either the query filled its page, or the merge produced more than was asked for
@@ -324,7 +322,6 @@ export class LogRepository {
 export namespace LogRepository {
   export type Page = {
     events: ContainerEvent[];
-    /** Whether anything remains above; the page above is asked for with the oldest event's id. */
     hasOlder: boolean;
   };
 }

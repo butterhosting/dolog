@@ -38,9 +38,13 @@ export function containerLogsPage() {
    * the reader scroll away.
    */
   const following = useRef(true);
+  /** Whether anything arrived while paused, and so whether returning to the bottom has to catch up. */
+  const missedWhilePaused = useRef(false);
+  /** What is on screen, for callbacks that would otherwise be rebuilt on every arriving line. */
+  const rendered = useRef<ContainerEvent[]>([]);
   useEffect(() => {
-    following.current = stuck;
-  }, [stuck]);
+    rendered.current = events;
+  }, [events]);
 
   /**
    * Interest is declared *before* the history is fetched, and whatever arrives meanwhile is held
@@ -69,12 +73,15 @@ export function containerLogsPage() {
           return;
         }
         /**
-         * Live lines are dropped while the reader has scrolled away, rather than appended. Keeping
-         * them would grow the list from below at the same time paging grows it from above, and the
-         * cap would then eat the very history being read. Jumping back re-fetches instead.
+         * Live lines are not appended while the reader has scrolled away: that would grow the list
+         * from below at the same time paging grows it from above, and the cap would then eat the
+         * very history being read. They are not lost either -- the server still has them, and
+         * returning to the bottom fetches whatever was missed.
          */
         if (following.current) {
           setEvents((current) => [...current, event].slice(-MAX_LINES_RENDERED));
+        } else {
+          missedWhilePaused.current = true;
         }
       },
     });
@@ -137,15 +144,47 @@ export function containerLogsPage() {
   }, [containerClient, events, id, hasOlder, ref]);
 
   /**
-   * Re-fetches rather than merely scrolling, because whatever arrived while the reader was paused was
-   * never added, and the newest lines may have been trimmed away as they paged upwards.
+   * Catches up on whatever arrived while the reader was away. Reaching the bottom by scrolling and
+   * reaching it by pressing the button are the same act, so both end here -- otherwise "at the
+   * bottom" would mean *showing everything* one way and merely *appending from now on* the other,
+   * and the difference is a silent hole in the log.
+   *
+   * Nothing arrived, nothing to do: a short glance upwards costs no request and causes no flicker.
    */
-  const jumpToLive = useCallback(async () => {
+  const rejoinLive = useCallback(async () => {
+    if (!missedWhilePaused.current) {
+      return;
+    }
+    missedWhilePaused.current = false;
     const page = await containerClient.logs(id, { limit: MAX_LINES_RENDERED });
-    setEvents(page.events);
-    setHasOlder(page.hasOlder);
+    const known = new Set(rendered.current.map((event) => event.id));
+
+    /**
+     * Sharing a line with what is already on screen means the two meet, so they are merged and the
+     * history read so far survives. Sharing none means more than a page went by while the reader was
+     * away, and the gap cannot be bridged from one request -- then the page is all we honestly have.
+     */
+    if (!page.events.some((event) => known.has(event.id))) {
+      setEvents(page.events);
+      setHasOlder(page.hasOlder);
+      return;
+    }
+    const merged = new Map(rendered.current.map((event) => [event.id, event]));
+    page.events.forEach((event) => merged.set(event.id, event));
+    setEvents([...merged.values()].sort((a, b) => a.id.localeCompare(b.id)));
+  }, [containerClient, id]);
+
+  useEffect(() => {
+    following.current = stuck;
+    if (stuck) {
+      void rejoinLive();
+    }
+  }, [stuck, rejoinLive]);
+
+  const jumpToLive = useCallback(async () => {
+    await rejoinLive();
     scrollToBottom();
-  }, [containerClient, id, scrollToBottom]);
+  }, [rejoinLive, scrollToBottom]);
 
   const handleScroll = useCallback(() => {
     onScroll();
@@ -183,9 +222,7 @@ export function containerLogsPage() {
           )}
           {!loading && events.length === 0 && <div className="text-c-dark-half py-8 text-center">No logs recorded yet</div>}
           {!loading && hasOlder && <div className="text-c-dark-half text-center pb-2">scroll up for more</div>}
-          {!loading && !hasOlder && events.length > 0 && (
-            <div className="text-c-dark-half text-center pb-2">that is the beginning</div>
-          )}
+          {!loading && !hasOlder && events.length > 0 && <div className="text-c-dark-half text-center pb-2">that is the beginning</div>}
           {events.map((event) => (
             <Internal.Line key={event.id} event={event} />
           ))}
