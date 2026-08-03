@@ -38,14 +38,20 @@ export class ThrottleService {
     const IDLE_EVICTION_MS = 60 * 1_000;
 
     return pipe(
-      groupBy((event: ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log) => event.container.id, {
-        // we set a `duration`, otherwise every container creates its own group
-        // and every created group stays alive forever ... thats a bit expensive
-        // because each group has a periodic timer for calculating throughputs,
-        // so if we dont clean up container groups after some time, we'll forever
-        // accumulate periodic timers for each container, including all historic ones
-        duration: (group) => group.pipe(debounceTime(IDLE_EVICTION_MS)),
-      }),
+      groupBy(
+        (
+          event:
+            ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log,
+        ) => event.container.id,
+        {
+          // we set a `duration`, otherwise every container creates its own group
+          // and every created group stays alive forever ... thats a bit expensive
+          // because each group has a periodic timer for calculating throughputs,
+          // so if we dont clean up container groups after some time, we'll forever
+          // accumulate periodic timers for each container, including all historic ones
+          duration: (group) => group.pipe(debounceTime(IDLE_EVICTION_MS)),
+        },
+      ),
       mergeMap((group) => this.throttleContainer(group)),
     );
   }
@@ -56,7 +62,10 @@ export class ThrottleService {
    * containers therefore see no added latency at all.
    */
   private throttleContainer(
-    group: GroupedObservable<string, ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log>,
+    group: GroupedObservable<
+      string,
+      ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log
+    >,
   ): Observable<ContainerEvent> {
     const RATE_LIMIT = this.env.X_DOLOG_THROTTLE_LOGS_PER_SECOND;
     const WINDOW_MS = 1_000;
@@ -70,7 +79,9 @@ export class ThrottleService {
       folded: 0,
     };
 
-    const allowedContainerEvents: Observable<ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log> = group.pipe(
+    const allowedContainerEvents: Observable<
+      ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log
+    > = group.pipe(
       mergeMap((event) => {
         window.container = event.container;
         switch (event.type) {
@@ -95,7 +106,9 @@ export class ThrottleService {
       }),
     );
 
-    const throttleEvents: Observable<ContainerEvent.LogThrottle> = interval(WINDOW_MS).pipe(
+    const throttleEvents: Observable<ContainerEvent.LogThrottle> = interval(
+      WINDOW_MS,
+    ).pipe(
       takeUntil(signalToStopWatchingThisContainer),
       mergeMap(() => {
         const { container, logs, bytes, folded } = window;
@@ -122,6 +135,7 @@ export class ThrottleService {
 
         return of<ContainerEvent.LogThrottle>({
           object: "container_event",
+          id: Bun.randomUUIDv7(),
           type: ContainerEvent.Type.log_throttle,
           timestamp: now,
           container,

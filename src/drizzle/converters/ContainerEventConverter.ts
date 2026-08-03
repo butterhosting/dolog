@@ -1,4 +1,5 @@
 import { $container, $containerEvent } from "@/drizzle/schema";
+import { Uuid } from "@/helpers/Uuid";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { StreamVariant } from "@/models/StreamVariant";
@@ -22,6 +23,7 @@ export namespace ContainerEventConverter {
 
   export function toDatabase(model: ContainerEvent, container: number): $NewContainerEvent {
     return {
+      id: Uuid.toBytes(model.id),
       container,
       timestamp: model.timestamp.toString(),
       type: model.type,
@@ -34,6 +36,7 @@ export namespace ContainerEventConverter {
   export function fromDatabase(db: $ContainerEvent, container: Container): ContainerEvent {
     const common = {
       object: "container_event",
+      id: Uuid.fromBytes(db.id),
       timestamp: Temporal.Instant.from(db.timestamp),
       container,
     } as const;

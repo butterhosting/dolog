@@ -29,7 +29,7 @@ export class LogService {
     });
   }
 
-  public async list(containerId: string, limit: number, before?: number): Promise<ContainerEventRepository.Page> {
+  public async list(containerId: string, limit: number, before?: string): Promise<ContainerEventRepository.Page> {
     return await this.containerEventRepository.listEvents(containerId, limit, before);
   }
 }

@@ -44,9 +44,9 @@ test("the container endpoints are available", async ({ page }) => {
   expect(await overview.json()).toBeInstanceOf(Array);
 
   // an unknown container has no history rather than an error
-  const events = await page.request.get("/internal-api/containers/does-not-exist/events");
+  const events = await page.request.get("/internal-api/containers/does-not-exist/logs");
   expect(events.status()).toEqual(200);
-  expect(await events.json()).toEqual({ events: [], olderCursor: null });
+  expect(await events.json()).toEqual({ events: [], hasOlder: false });
 });
 
 test("the health endpoint is available", async ({ page }) => {

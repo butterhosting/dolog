@@ -3,7 +3,7 @@ import { ContainerEvent } from "@/models/ContainerEvent";
 import { StreamVariant } from "@/models/StreamVariant";
 import { TestEnvironment } from "@/testing/TestEnvironment.test";
 import { TestFixture } from "@/testing/TestFixture.test";
-import { beforeEach, describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { firstValueFrom } from "rxjs";
 import { ContainerEventRepository } from "./ContainerEventRepository";
 
@@ -44,6 +44,64 @@ describe(ContainerEventRepository.name, () => {
     expect(stored.at(2)).toEqual(expect.objectContaining({ streamVariant: StreamVariant.stderr } satisfies Partial<ContainerEvent>));
     expect(stored.at(3)).toEqual(expect.objectContaining({ foldCount: 12 } satisfies Partial<ContainerEvent>));
     expect(stored.at(1)?.container).toEqual(container);
+  });
+
+  it("should answer with events that have been recorded but not yet written", async () => {
+    // given (nothing has been flushed, so the database is still empty)
+    const container = TestFixture.container();
+    repository.save(TestFixture.logEvent({ container, line: "not on disk yet" }));
+
+    // when
+    const { events } = await repository.listEvents(container.id, 100);
+    // then
+    expect(events.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["not on disk yet"]);
+
+    // and the same events are not served twice once they do land
+    await repository.flush();
+    const { events: afterFlush } = await repository.listEvents(container.id, 100);
+    expect(afterFlush).toHaveLength(1);
+  });
+
+  it("should join written and unwritten events into one uninterrupted page", async () => {
+    // given (half written, half still buffered -- the seam the reader must not see)
+    const container = TestFixture.container();
+    const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
+    await repository.append(all.slice(0, 5));
+    all.slice(5).forEach((event) => repository.save(event));
+
+    // when
+    const { events } = await repository.listEvents(container.id, 100);
+    // then
+    expect(events.map((event) => event.id)).toEqual(all.map((event) => event.id));
+  });
+
+  it("should honour the cursor across both halves", async () => {
+    // given
+    const container = TestFixture.container();
+    const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
+    await repository.append(all.slice(0, 5));
+    all.slice(5).forEach((event) => repository.save(event));
+
+    // when (asking for what came before an event that is itself still buffered)
+    const { events } = await repository.listEvents(container.id, 100, all[7]!.id);
+    // then (everything older, from both halves, and nothing at or after the cursor)
+    expect(events.map((event) => event.id)).toEqual(all.slice(0, 7).map((event) => event.id));
+  });
+
+  it("should keep unwritten events when the write fails, rather than losing them", async () => {
+    // given
+    const container = TestFixture.container();
+    repository.save(TestFixture.logEvent({ container, line: "survives" }));
+    const broken = new Error("database is locked");
+    const append = spyOn(repository, "append").mockRejectedValueOnce(broken);
+
+    // when
+    await expect(repository.flush()).rejects.toThrow(broken);
+    // then (still readable, and a later flush still writes them)
+    append.mockRestore();
+    expect((await repository.listEvents(container.id, 100)).events).toHaveLength(1);
+    await repository.flush();
+    expect((await repository.listEvents(container.id, 100)).events).toHaveLength(1);
   });
 
   it("should record one container row however many events it produces", async () => {
@@ -128,8 +186,9 @@ describe(ContainerEventRepository.name, () => {
       Array.from({ length: 15_000 }, (_, i) => TestFixture.logEvent({ container: staying, line: `line ${i} `.repeat(30) })),
     );
 
-    // when (a budget well under what those events occupy, but above an empty database's floor)
-    const pruned = await repository.pruneToSize(3 * 1024 * 1024);
+    // when (a budget well under the ~7.5 MB those events occupy, but far enough above what one
+    // chunk leaves behind that the loop is not deciding on a rounding difference)
+    const pruned = await repository.pruneToSize(5 * 1024 * 1024);
     // then
     expect(pruned.events).toBeGreaterThan(0);
     expect(pruned.containers).toEqual(1);

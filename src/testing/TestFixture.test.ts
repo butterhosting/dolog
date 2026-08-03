@@ -19,6 +19,7 @@ export namespace TestFixture {
   export function logEvent(overrides: DeepPartial<ContainerEvent.Log> = {}): ContainerEvent.Log {
     const defaults: ContainerEvent.Log = {
       object: "container_event",
+      id: Bun.randomUUIDv7(),
       type: ContainerEvent.Type.log,
       timestamp: Temporal.Now.instant(),
       container: container(),
@@ -31,6 +32,7 @@ export namespace TestFixture {
   export function startEvent(overrides: DeepPartial<ContainerEvent.Start> = {}): ContainerEvent.Start {
     const defaults: ContainerEvent.Start = {
       object: "container_event",
+      id: Bun.randomUUIDv7(),
       type: ContainerEvent.Type.start,
       timestamp: Temporal.Now.instant(),
       container: container(),
@@ -41,6 +43,7 @@ export namespace TestFixture {
   export function stopEvent(overrides: DeepPartial<ContainerEvent.Stop> = {}): ContainerEvent.Stop {
     const defaults: ContainerEvent.Stop = {
       object: "container_event",
+      id: Bun.randomUUIDv7(),
       type: ContainerEvent.Type.stop,
       timestamp: Temporal.Now.instant(),
       container: container(),
@@ -51,6 +54,7 @@ export namespace TestFixture {
   export function logThrottleEvent(overrides: DeepPartial<ContainerEvent.LogThrottle> = {}): ContainerEvent.LogThrottle {
     const defaults: ContainerEvent.LogThrottle = {
       object: "container_event",
+      id: Bun.randomUUIDv7(),
       type: ContainerEvent.Type.log_throttle,
       timestamp: Temporal.Now.instant(),
       container: container(),

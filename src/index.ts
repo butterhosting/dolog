@@ -39,8 +39,9 @@ const registry = await ServerRegistry.bootstrap(env, sqlite);
 /**
  * Initialize the application
  */
-registry.get(RetentionService).initialize();
+// the repository first: RetentionService starts feeding it events the moment it is initialized
 registry.get(ContainerEventRepository).initialize();
+registry.get(RetentionService).initialize();
 registry.get(ContainerService).initialize();
 registry.get(LogService).initialize();
 registry.get(SocketService).initialize();

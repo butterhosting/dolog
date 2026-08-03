@@ -1,26 +1,99 @@
+import { Logger } from "@/Logger";
 import { ContainerEventConverter } from "@/drizzle/converters/ContainerEventConverter";
 import { $container, $containerEvent } from "@/drizzle/schema";
 import { Sqlite } from "@/drizzle/sqlite";
+import { Uuid } from "@/helpers/Uuid";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Temporal } from "@js-temporal/polyfill";
 import { and, asc, desc, eq, inArray, lt, lte, notExists, sql } from "drizzle-orm";
-import { BehaviorSubject, Observable } from "rxjs";
+import { BehaviorSubject, catchError, concatMap, defer, EMPTY, interval, Observable, retry } from "rxjs";
 
-/** Rows per insert statement, kept well inside SQLite's cap on bound values per statement. */
-const INSERT_CHUNK = 1_000;
-
+/**
+ * Recent events are held in memory until they are flushed, and queries answer from both halves.
+ */
 export class ContainerEventRepository {
+  private readonly log = new Logger(__filename);
   private readonly containers = new BehaviorSubject<Container[]>([]);
+  private pending: ContainerEvent[] = [];
+  private flushing = false;
 
   public constructor(private readonly sqlite: Sqlite) {}
 
   public initialize(): void {
     this.publishContainers();
+    this.flushPeriodically();
   }
 
   public streamContainers(): Observable<Container[]> {
     return this.containers;
+  }
+
+  /**
+   * To-be-persisted events are temporarily buffered before being batch-inserted
+   */
+  public save(event: ContainerEvent): void {
+    this.pending.push(event);
+    this.enforceCeiling();
+  }
+
+  private flushPeriodically(): void {
+    const FLUSH_INTERVAL_MS = 1_000;
+    const RETRY_DELAY_MS = 2_000;
+    const RETRY_COUNT = 2;
+
+    if (this.flushing) {
+      return;
+    }
+    this.flushing = true;
+
+    interval(FLUSH_INTERVAL_MS)
+      .pipe(
+        // `concatMap` keeps writes in order and stops them overlapping: the next flush waits for the
+        // current one to land. `defer` matters here: without it `flush` would be called once up
+        // front, and a retry would re-subscribe to a promise that had already settled
+        concatMap(() =>
+          defer(() => this.flush()).pipe(
+            retry({ count: RETRY_COUNT, delay: RETRY_DELAY_MS }),
+            // Failing is not allowed to error the stream. Left unhandled it would end this
+            // subscription silently, and writing would simply stop. The events stay buffered, so
+            // the next tick tries again with them still in hand
+            catchError((error) => {
+              this.log.error(`Could not flush after ${RETRY_COUNT} retries; the events stay buffered`, error);
+              return EMPTY;
+            }),
+          ),
+        ),
+      )
+      .subscribe({
+        error: (error) => this.log.error("Stopped writing buffered events", error),
+      });
+  }
+
+  public async flush(): Promise<void> {
+    if (this.pending.length === 0) {
+      return;
+    }
+    const batch = this.pending;
+    this.pending = [];
+    try {
+      await this.append(batch);
+    } catch (error) {
+      this.pending = batch.concat(this.pending);
+      this.enforceCeiling();
+      throw error;
+    }
+  }
+
+  private enforceCeiling(): void {
+    const PENDING_CEILING = 50_000;
+
+    if (this.pending.length <= PENDING_CEILING) {
+      return;
+    }
+    const discarded = this.pending.length - PENDING_CEILING;
+    this.pending = this.pending.slice(discarded);
+    this.log.error(`Discarded ${discarded} unwritten events; the buffer is full at ${PENDING_CEILING}`);
   }
 
   /**
@@ -31,6 +104,8 @@ export class ContainerEventRepository {
    * hands us a batch, and a busy container contributes hundreds of rows to it.
    */
   public async append(events: ContainerEvent[]): Promise<void> {
+    const INSERT_CHUNK = 1_000;
+
     if (events.length === 0) {
       return;
     }
@@ -70,38 +145,51 @@ export class ContainerEventRepository {
           .run();
       }
     });
-    this.initialize();
+    // a write may have introduced a container, or renamed one
+    this.publishContainers();
   }
 
   /**
    * A page of history, newest first internally but handed back oldest-first so it can be rendered
    * straight into a log view.
    *
-   * `before` walks further back for scrolling up. The cursor is returned separately rather than read
-   * off an event, because {@link ContainerEvent} carries no row id -- live events have never been
-   * near the database.
+   * `before` walks further back for scrolling up, and is simply the id of the oldest event already
+   * held. No cursor is handed out alongside the page: a caller reads it off whichever event it is
+   * currently showing, so what it asks for cannot drift away from what it displays.
+   *
+   * Unwritten events are part of the answer, and not only for the newest page: a reader whose oldest
+   * line is still buffered has everything just above it buffered too.
    */
-  public async listEvents(dockerId: string, limit: number, before?: number): Promise<ContainerEventRepository.Page> {
+  public async listEvents(dockerId: string, limit: number, before?: string): Promise<ContainerEventRepository.Page> {
     const container = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
-    if (!container) {
-      return { events: [], olderCursor: null };
-    }
-    const rows = this.sqlite
-      .select()
-      .from($containerEvent)
-      .where(
-        before === undefined
-          ? eq($containerEvent.container, container.id)
-          : and(eq($containerEvent.container, container.id), lt($containerEvent.id, before)),
-      )
-      .orderBy(desc($containerEvent.id))
-      .limit(limit)
-      .all();
-    const model = ContainerEventConverter.containerFromDatabase(container);
+    const stored = !container
+      ? []
+      : this.sqlite
+          .select()
+          .from($containerEvent)
+          .where(
+            before === undefined
+              ? eq($containerEvent.container, container.id)
+              : and(eq($containerEvent.container, container.id), lt($containerEvent.id, Uuid.toBytes(before))),
+          )
+          .orderBy(desc($containerEvent.id))
+          .limit(limit)
+          .all();
+
+    // uuidv7s are time-ordered, so comparing them as text is comparing them by age
+    const buffered = this.pending.filter((event) => event.container.id === dockerId && (before === undefined || event.id < before));
+    const model = container ? ContainerEventConverter.containerFromDatabase(container) : undefined;
+    const events = [...stored.map((row) => ContainerEventConverter.fromDatabase(row, model!)), ...buffered];
+
+    /**
+     * A flush landing between the two reads puts the same event in both halves, so they are merged
+     * by id rather than concatenated. Sorted rather than assumed ordered for the same reason.
+     */
+    const merged = [...new Map(events.map((event) => [event.id, event])).values()].sort((a, b) => a.id.localeCompare(b.id));
     return {
-      events: rows.reverse().map((row) => ContainerEventConverter.fromDatabase(row, model)),
-      // a short page means we reached the beginning, so there is nothing further back to ask for
-      olderCursor: rows.length === limit ? (rows.at(0)?.id ?? null) : null,
+      // either the query filled its page, or the merge produced more than was asked for
+      hasOlder: stored.length === limit || merged.length > limit,
+      events: merged.slice(-limit),
     };
   }
 
@@ -228,7 +316,8 @@ export class ContainerEventRepository {
       )
       .returning({ id: $container.id })
       .all();
-    this.initialize();
+    // pruning may have forgotten a container entirely
+    this.publishContainers();
     return deleted.length;
   }
 
@@ -260,7 +349,7 @@ export class ContainerEventRepository {
 export namespace ContainerEventRepository {
   export type Page = {
     events: ContainerEvent[];
-    /** Pass back as `before` to fetch the page above this one; null once the start is reached. */
-    olderCursor: number | null;
+    /** Whether anything remains above; the page above is asked for with the oldest event's id. */
+    hasOlder: boolean;
   };
 }

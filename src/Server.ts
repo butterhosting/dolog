@@ -13,7 +13,8 @@ import { LogService } from "./services/LogService";
 import { Socket } from "./socket/Socket";
 import { SocketService } from "./socket/SocketService";
 
-const EVENT_PAGE_SIZE = 500;
+/** Upper bound on what one request may ask for, so a client cannot make us build an enormous page. */
+const MAX_LOGS_PER_PAGE = 500;
 
 export class Server {
   private readonly log = new Logger(__filename);
@@ -108,7 +109,9 @@ export class Server {
           GET: this.handleRoute(async ({ params, url }) => {
             const { searchParams } = new URL(url);
             const before = searchParams.get("before");
-            const page = await this.logService.list(params.id, EVENT_PAGE_SIZE, before ? Number(before) : undefined);
+            // the caller knows how many will still fit on its screen; we only cap it
+            const limit = Math.min(Number(searchParams.get("limit")) || MAX_LOGS_PER_PAGE, MAX_LOGS_PER_PAGE);
+            const page = await this.logService.list(params.id, limit, before ?? undefined);
             return Response.json(page);
           }),
         },

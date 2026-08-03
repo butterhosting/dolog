@@ -2,7 +2,21 @@ import { Logger } from "@/Logger";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Throughput } from "@/models/Throughput";
-import { catchError, defer, EMPTY, from, map, merge, mergeMap, Observable, of, repeat, retry, share, timer } from "rxjs";
+import {
+  catchError,
+  defer,
+  EMPTY,
+  from,
+  map,
+  merge,
+  mergeMap,
+  Observable,
+  of,
+  repeat,
+  retry,
+  share,
+  timer,
+} from "rxjs";
 import { DockerSocket } from "./DockerSocket";
 import { ThrottleService } from "./ThrottleService";
 
@@ -43,7 +57,9 @@ export class Fountain {
     return this.throttleService.streamThroughputs();
   }
 
-  private rawSocketStream(): Observable<ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log> {
+  private rawSocketStream(): Observable<
+    ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log
+  > {
     const containersBeingFollowed = new Set<string>();
     /**
      * The listing and the event stream are opened concurrently, so a container starting in that
@@ -80,7 +96,10 @@ export class Fountain {
    */
   private alreadyRunning(): Observable<Container> {
     return defer(() => this.dockerSocket.listRunningContainers()).pipe(
-      retry({ delay: (error) => this.reconnect("Could not list running containers", error) }),
+      retry({
+        delay: (error) =>
+          this.reconnect("Could not list running containers", error),
+      }),
       mergeMap((containers) => from(containers)),
     );
   }
@@ -90,23 +109,35 @@ export class Fountain {
    * this observable never terminates, which is what keeps the fountain running.
    */
   private lifecycle(): Observable<ContainerEvent.Start | ContainerEvent.Stop> {
-    return this.abortable((signal) => this.dockerSocket.streamLifecycles(signal)).pipe(
-      map(({ status, timestamp, container }): ContainerEvent.Start | ContainerEvent.Stop => {
-        return status === "start"
-          ? {
-              type: ContainerEvent.Type.start,
-              object: "container_event",
-              timestamp,
-              container,
-            }
-          : {
-              type: ContainerEvent.Type.stop,
-              object: "container_event",
-              timestamp,
-              container,
-            };
+    return this.abortable((signal) =>
+      this.dockerSocket.streamLifecycles(signal),
+    ).pipe(
+      map(
+        ({
+          status,
+          timestamp,
+          container,
+        }): ContainerEvent.Start | ContainerEvent.Stop => {
+          return status === "start"
+            ? {
+                type: ContainerEvent.Type.start,
+                object: "container_event",
+                id: Bun.randomUUIDv7(),
+                timestamp,
+                container,
+              }
+            : {
+                type: ContainerEvent.Type.stop,
+                object: "container_event",
+                id: Bun.randomUUIDv7(),
+                timestamp,
+                container,
+              };
+        },
+      ),
+      retry({
+        delay: (error) => this.reconnect("Docker event stream failed", error),
       }),
-      retry({ delay: (error) => this.reconnect("Docker event stream failed", error) }),
       repeat({ delay: () => this.reconnect("Docker event stream closed") }),
     );
   }
@@ -115,9 +146,12 @@ export class Fountain {
    * One container's logs failing must not take the fountain down with it.
    */
   private logs(container: Container): Observable<ContainerEvent.Log> {
-    return this.abortable((signal) => this.dockerSocket.streamLogLines(container.id, signal)).pipe(
+    return this.abortable((signal) =>
+      this.dockerSocket.streamLogLines(container.id, signal),
+    ).pipe(
       map(({ streamVariant, timestamp, line }): ContainerEvent.Log => ({
         object: "container_event",
+        id: Bun.randomUUIDv7(),
         type: ContainerEvent.Type.log,
         timestamp,
         container,
@@ -132,7 +166,10 @@ export class Fountain {
   }
 
   private reconnect(message: string, error?: unknown): Observable<unknown> {
-    this.log.warn(`${message}, retrying in ${RECONNECT_DELAY_MS}ms`, error ?? "");
+    this.log.warn(
+      `${message}, retrying in ${RECONNECT_DELAY_MS}ms`,
+      error ?? "",
+    );
     return timer(RECONNECT_DELAY_MS);
   }
 
@@ -140,7 +177,9 @@ export class Fountain {
    * Bridges an async generator into an Observable, wiring unsubscription to an AbortSignal so that
    * tearing down the stream also closes the underlying HTTP request to the socket.
    */
-  private abortable<T>(generate: (signal: AbortSignal) => AsyncGenerator<T>): Observable<T> {
+  private abortable<T>(
+    generate: (signal: AbortSignal) => AsyncGenerator<T>,
+  ): Observable<T> {
     return new Observable<T>((subscriber) => {
       const controller = new AbortController();
       void (async () => {

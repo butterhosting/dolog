@@ -62,17 +62,14 @@ export class ContainerService {
     const merged = new Map(running.map((container) => [container.id, container]));
     recorded.forEach(({ container }) => merged.set(container.id, merged.get(container.id) ?? container));
 
-    return (
-      [...merged.values()]
-        .map((container): ContainerRM => ({
-          ...container,
-          running: running.some((candidate) => candidate.id === container.id),
-          lastSeen: seen.get(container.id) ?? null,
-          logsPerSecond: rate.get(container.id)?.logsPerSecond ?? 0,
-          throttling: rate.get(container.id)?.throttling ?? false,
-        }))
-        // most recently heard from first, and anything still silent after them
-        .sort((a, b) => (b.lastSeen?.epochMilliseconds ?? 0) - (a.lastSeen?.epochMilliseconds ?? 0))
-    );
+    return [...merged.values()]
+      .map((container): ContainerRM => ({
+        ...container,
+        running: running.some((candidate) => candidate.id === container.id),
+        lastSeen: seen.get(container.id) ?? null,
+        logsPerSecond: rate.get(container.id)?.logsPerSecond ?? 0,
+        throttling: rate.get(container.id)?.throttling ?? false,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   }
 }
