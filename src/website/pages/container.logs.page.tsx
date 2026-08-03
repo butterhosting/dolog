@@ -13,11 +13,14 @@ import { useStickyScroll } from "../hooks/useStickyScroll";
 import { Route } from "../Route";
 
 /**
- * How many lines are kept while following the live feed, and how many are fetched per page on the
- * way back. Purely a performance knob: paging back grows the list beyond this and nothing is
- * discarded until the reader returns to the bottom, so it never limits how far back they can go.
+ * How many lines a request asks for, and how many the live feed keeps -- following holds one page.
+ *
+ * Deliberately not a cap on what is rendered: paging back adds a page at a time and discards
+ * nothing, so the list grows for as long as the reader keeps climbing and only returns to one page
+ * once they rejoin the live feed. Bounding that too would mean being able to fetch *forward* when
+ * they scroll down again, which needs an `after` cursor the API does not have.
  */
-const MAX_LINES_RENDERED = 300;
+const LINES_PER_PAGE = 300;
 
 export function containerLogsPage() {
   const { id = "" } = useParams();
@@ -79,7 +82,7 @@ export function containerLogsPage() {
          * returning to the bottom fetches whatever was missed.
          */
         if (following.current) {
-          setEvents((current) => [...current, event].slice(-MAX_LINES_RENDERED));
+          setEvents((current) => [...current, event].slice(-LINES_PER_PAGE));
         } else {
           missedWhilePaused.current = true;
         }
@@ -87,14 +90,14 @@ export function containerLogsPage() {
     });
     socketClient.declareContainerInterest(id);
 
-    containerClient.logs(id, { limit: MAX_LINES_RENDERED }).then((page) => {
+    containerClient.logs(id, { limit: LINES_PER_PAGE }).then((page) => {
       if (cancelled) {
         return;
       }
       // the tail of the page and the head of the buffer overlap, so anything already shown is dropped
       const shown = new Set(page.events.map((event) => event.id));
       const missed = arrivedDuringFetch.filter((event) => !shown.has(event.id));
-      setEvents([...page.events, ...missed].slice(-MAX_LINES_RENDERED));
+      setEvents([...page.events, ...missed].slice(-LINES_PER_PAGE));
       setHasOlder(page.hasOlder);
       setLoading(false);
       historyLoaded = true;
@@ -124,7 +127,7 @@ export function containerLogsPage() {
      * A stored one used to drift: trimming the list while tailing moved the top of the screen
      * forward while the cursor stayed put, and resuming from it skipped everything in between.
      */
-    const page = await containerClient.logs(id, { limit: MAX_LINES_RENDERED, before: oldest.id });
+    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, before: oldest.id });
     setHasOlder(page.hasOlder);
 
     /**
@@ -156,7 +159,7 @@ export function containerLogsPage() {
       return;
     }
     missedWhilePaused.current = false;
-    const page = await containerClient.logs(id, { limit: MAX_LINES_RENDERED });
+    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE });
     const known = new Set(rendered.current.map((event) => event.id));
 
     /**
