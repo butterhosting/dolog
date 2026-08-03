@@ -74,6 +74,25 @@ export class LogRepository {
     };
   }
 
+  /**
+   * Also manually invoked after every write, so the overview reflects containers that have only just appeared
+   */
+  @Initialize
+  public publishContainers(): void {
+    const rows = this.sqlite.select().from($container).orderBy(asc($container.name)).all();
+    const containers = rows.map((row) => ContainerEventConverter.containerFromDatabase(row));
+    const previous = this.containers.value;
+    const unchanged =
+      previous.length === containers.length &&
+      previous.every((was, index) => {
+        const now = containers[index]!;
+        return was.id === now.id && was.name === now.name && was.group === now.group;
+      });
+    if (!unchanged) {
+      this.containers.next(containers);
+    }
+  }
+
   @Initialize
   public flushPeriodically(): void {
     this.flushTrigger
@@ -100,10 +119,10 @@ export class LogRepository {
 
   private async flush(): Promise<void> {
     const GIVE_UP_AFTER_FLUSHES = 5;
-
     if (this.pending.length === 0) {
       return;
     }
+
     const batch = this.pending;
     this.pending = [];
     try {
@@ -128,25 +147,8 @@ export class LogRepository {
       return;
     }
     const toBeDiscarded = this.pending.length - PENDING_CEILING;
-    this.pending = this.pending.slice(toBeDiscarded);
+    this.pending = this.pending.slice(toBeDiscarded); // FIFO buffer
     this.log.error(`Discarded ${toBeDiscarded} unwritten events; the buffer is full at ${PENDING_CEILING}`);
-  }
-
-  /** Also run after every write, so the overview reflects containers that have only just appeared. */
-  @Initialize
-  public publishContainers(): void {
-    const rows = this.sqlite.select().from($container).orderBy(asc($container.name)).all();
-    const containers = rows.map((row) => ContainerEventConverter.containerFromDatabase(row));
-    const previous = this.containers.value;
-    const unchanged =
-      previous.length === containers.length &&
-      previous.every((was, index) => {
-        const now = containers[index]!;
-        return was.id === now.id && was.name === now.name && was.group === now.group;
-      });
-    if (!unchanged) {
-      this.containers.next(containers);
-    }
   }
 
   private async batchInsert(events: ContainerEvent[]): Promise<void> {
@@ -156,29 +158,42 @@ export class LogRepository {
       return;
     }
     this.sqlite.transaction((tx) => {
-      const ids = new Map<string, number>();
+      /**
+       * One row per container rather than per event, and upserted in a single statement rather than
+       * one apiece -- a host running a hundred containers would otherwise pay a hundred statements
+       * every flush, forever, since `lastSeen` moves with every batch.
+       *
+       * Setting rather than skipping on a repeat means the newest timestamp in the batch wins, which
+       * is what `lastSeen` is supposed to be.
+       */
+      const distinct = new Map<string, { container: Container; seen: string }>();
       for (const { container, timestamp } of events) {
-        if (ids.has(container.id)) {
-          continue;
-        }
-        const seen = timestamp.toString();
-        const [row] = tx
+        distinct.set(container.id, { container, seen: timestamp.toString() });
+      }
+      const ids = new Map<string, number>();
+      const containerRows = [...distinct.values()].map(({ container, seen }) => ({
+        dockerId: container.id,
+        name: container.name,
+        groupName: container.group ?? null,
+        firstSeen: seen,
+        lastSeen: seen,
+      }));
+      for (let offset = 0; offset < containerRows.length; offset += INSERT_CHUNK) {
+        tx
           .insert($container)
-          .values({
-            dockerId: container.id,
-            name: container.name,
-            groupName: container.group ?? null,
-            firstSeen: seen,
-            lastSeen: seen,
-          })
+          .values(containerRows.slice(offset, offset + INSERT_CHUNK))
+          // `excluded` is the row we tried to insert, so one statement carries a different name and
+          // timestamp for every container. `firstSeen` is left alone: it is only true of the insert
           .onConflictDoUpdate({
             target: $container.dockerId,
-            set: { name: container.name, groupName: container.group ?? null, lastSeen: seen },
+            set: { name: sql`excluded.name`, groupName: sql`excluded.group_name`, lastSeen: sql`excluded.last_seen` },
           })
-          .returning({ id: $container.id })
-          .all();
-        ids.set(container.id, row!.id);
+          // returned in no guaranteed order, so the docker id comes back too rather than being positional
+          .returning({ id: $container.id, dockerId: $container.dockerId })
+          .all()
+          .forEach((row) => ids.set(row.dockerId, row.id));
       }
+
       // Split across statements, because SQLite caps how many values one statement may bind and a
       // single insert of the whole batch would blow past it. Still one transaction, so the batch
       // remains all-or-nothing.

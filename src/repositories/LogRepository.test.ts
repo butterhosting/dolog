@@ -1,4 +1,5 @@
 import { Container } from "@/models/Container";
+import { Temporal } from "@js-temporal/polyfill";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { StreamVariant } from "@/models/StreamVariant";
 import { TestEnvironment } from "@/testing/TestEnvironment.test";
@@ -140,6 +141,18 @@ describe(LogRepository.name, () => {
     expect(await containers()).toEqual([web, worker]);
     expect((await repository.listEvents(web.id, 1_000)).events).toHaveLength(50);
     expect((await repository.listEvents(worker.id, 1_000)).events).toHaveLength(50);
+  });
+
+  it("should record the newest timestamp in a batch as when a container was last seen", async () => {
+    // given (one batch spanning a minute -- upserting once per container must not keep the first)
+    const container = TestFixture.container();
+    const at = (iso: string) => ({ ...TestFixture.logEvent({ container }), timestamp: Temporal.Instant.from(iso) });
+
+    // when
+    await write([at("2026-08-03T12:00:00Z"), at("2026-08-03T12:00:30Z"), at("2026-08-03T12:01:00Z")]);
+    // then
+    const [recorded] = await repository.listContainers();
+    expect(recorded?.lastSeen.toString()).toEqual("2026-08-03T12:01:00Z");
   });
 
   it("should keep a container's identity current across batches", async () => {
