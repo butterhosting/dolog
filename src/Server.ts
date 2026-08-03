@@ -1,4 +1,5 @@
 import { Env } from "@/Env";
+import { Initialize } from "@/Initialize";
 import { ServerError } from "@/errors/ServerError";
 import index from "@/website/index.html";
 import { Temporal } from "@js-temporal/polyfill";
@@ -27,7 +28,8 @@ export class Server {
     private readonly middleware: Middleware,
   ) {}
 
-  public initialize() {
+  @Initialize
+  public listen() {
     const server: Bun.Server<Socket.Context> = Bun.serve({
       development: this.env.O_DOLOG_STAGE === "dev",
       /**

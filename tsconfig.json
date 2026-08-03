@@ -5,6 +5,9 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "allowJs": true,
+    // Bun emits legacy decorators whatever this says, so it is set to match rather than to choose.
+    // Left off, tsc would type-check @Initialize against the stage-3 signature Bun never passes.
+    "experimentalDecorators": true,
     "strict": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,

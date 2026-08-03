@@ -1,6 +1,7 @@
 import { DockerSocket } from "@/services/streaming/DockerSocket";
 import { Sqlite } from "@/drizzle/sqlite";
 import { Env } from "@/Env";
+import { Initialize } from "@/Initialize";
 import { LogRepository } from "@/repositories/LogRepository";
 import { Logger } from "@/Logger";
 import { LogLevel } from "@/models/internal/LogLevel";
@@ -104,7 +105,7 @@ export namespace TestEnvironment {
     /** Stands in for the clock the repository would otherwise flush on, so tests decide when. */
     const flushTrigger = new Subject<void>();
     const logRepository = new LogRepository(sqlite, flushTrigger);
-    logRepository.initialize();
+    Initialize.runAll(logRepository);
 
     return {
       env,

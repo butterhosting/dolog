@@ -1,3 +1,4 @@
+import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
 import { Container } from "@/models/Container";
 import { ContainerRM } from "@/models/ContainerRM";
@@ -12,7 +13,6 @@ export class ContainerService {
   private readonly log = new Logger(__filename);
   private readonly throughputs: Observable<Throughput[]>;
   private readonly containers: Observable<Container[]>;
-  private initialized = false;
 
   public constructor(
     fountain: Fountain,
@@ -24,13 +24,9 @@ export class ContainerService {
     this.containers = logRepository.streamContainers();
   }
 
-  public initialize() {
+  @Initialize
+  public broadcastOverviewAsItChanges() {
     const BROADCAST_INTERVAL_MS = 1_000;
-
-    if (this.initialized) {
-      return;
-    }
-    this.initialized = true;
 
     merge(this.containers, this.throughputs)
       .pipe(

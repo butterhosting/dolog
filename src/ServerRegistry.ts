@@ -1,5 +1,6 @@
 import { Class } from "@/types/Class";
 import { Sqlite } from "./drizzle/sqlite";
+import { Initialize } from "./Initialize";
 import { Env } from "./Env";
 import { LoggingMiddleware } from "./middleware/logging/LoggingMiddleware";
 import { Middleware } from "./middleware/Middleware";
@@ -44,6 +45,14 @@ export class ServerRegistry {
 
     // Server
     this.register({ Server }, [env, containerService, logService, socketService, middleware]);
+  }
+
+  /**
+   * Starts everything, in the order it was registered above -- which is dependency order, since a
+   * dependency cannot be passed to a dependent before it exists.
+   */
+  public initializeAll(): void {
+    Object.values(this.registry).forEach(Initialize.runAll);
   }
 
   public get(sqlite: "sqlite"): Sqlite;

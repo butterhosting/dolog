@@ -1,3 +1,4 @@
+import { Initialize } from "@/Initialize";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Observable } from "rxjs/internal/Observable";
 import { Fountain } from "./streaming/Fountain";
@@ -10,7 +11,8 @@ export class AlertingService {
   }
 
   // TODO: match log messages against the configured rules and notify the alert destinations
-  public initialize() {
+  @Initialize
+  public matchEventsAgainstAlertRules() {
     void this.events;
   }
 }

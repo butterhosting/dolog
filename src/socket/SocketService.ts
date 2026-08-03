@@ -1,3 +1,4 @@
+import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
 import { ClientMessage } from "./ClientMessage";
 import { ServerMessage } from "./ServerMessage";
@@ -20,7 +21,6 @@ type Connection = {
 export class SocketService {
   private readonly log = new Logger(__filename);
   private readonly connections = new Map<string, Connection>();
-  private initialized = false;
 
   public registerSocket = (socket: Socket) => {
     this.log.debug(`Socket connected: ${socket.data.clientId}`);
@@ -33,14 +33,14 @@ export class SocketService {
     }
   };
 
-  public initialize = () => {
+  /**
+   * A plain method rather than a field, so the mark lands on the prototype where {@link Initialize}
+   * looks for it.
+   */
+  @Initialize
+  public keepConnectionsAlive() {
     const KEEPALIVE_INTERVAL_MS = 25 * 1_000;
     const MISSED_PINGS_BEFORE_DROP = 2;
-
-    if (this.initialized) {
-      return;
-    }
-    this.initialized = true;
 
     setInterval(() => {
       this.connections.forEach((connection, clientId) => {
@@ -53,7 +53,7 @@ export class SocketService {
         connection.socket.ping();
       });
     }, KEEPALIVE_INTERVAL_MS);
-  };
+  }
 
   public hasConnections = (): boolean => {
     return this.connections.size > 0;

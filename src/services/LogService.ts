@@ -1,3 +1,4 @@
+import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { LogRepository } from "@/repositories/LogRepository";
@@ -8,7 +9,6 @@ import { Fountain } from "./streaming/Fountain";
 export class LogService {
   private readonly log = new Logger(__filename);
   private readonly events: Observable<ContainerEvent>;
-  private initialized = false;
 
   public constructor(
     fountain: Fountain,
@@ -18,11 +18,8 @@ export class LogService {
     this.events = fountain.streamEvents();
   }
 
-  public initialize() {
-    if (this.initialized) {
-      return;
-    }
-    this.initialized = true;
+  @Initialize
+  public pushLogsToWatchers() {
     this.events.subscribe({
       next: (event) => this.socketService.broadcastLog(event),
       error: (error) => this.log.error("Stopped pushing log events", error),

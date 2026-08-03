@@ -3,13 +3,7 @@ import { dirname } from "path";
 import { Sqlite } from "./drizzle/sqlite";
 import { Env } from "./Env";
 import { Logger } from "./Logger";
-import { Server } from "./Server";
 import { ServerRegistry } from "./ServerRegistry";
-import { RetentionService } from "./services/RetentionService";
-import { ContainerService } from "./services/ContainerService";
-import { LogService } from "./services/LogService";
-import { LogRepository } from "./repositories/LogRepository";
-import { SocketService } from "./socket/SocketService";
 
 /**
  * Initialize the logger
@@ -37,12 +31,6 @@ const sqlite = await Sqlite.initialize(env);
 const registry = await ServerRegistry.bootstrap(env, sqlite);
 
 /**
- * Initialize the application
+ * Run all initializer functions in the order their services were registered.
  */
-// the repository first: RetentionService starts feeding it events the moment it is initialized
-registry.get(LogRepository).initialize();
-registry.get(RetentionService).initialize();
-registry.get(ContainerService).initialize();
-registry.get(LogService).initialize();
-registry.get(SocketService).initialize();
-registry.get(Server).initialize();
+registry.initializeAll();

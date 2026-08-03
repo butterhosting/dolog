@@ -1,4 +1,5 @@
 import { Env } from "@/Env";
+import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { LogRepository } from "@/repositories/LogRepository";
@@ -8,7 +9,6 @@ import { Fountain } from "./streaming/Fountain";
 export class RetentionService {
   private readonly log = new Logger(__filename);
   private readonly events: Observable<ContainerEvent>;
-  private initialized = false;
 
   public constructor(
     fountain: Fountain,
@@ -18,15 +18,8 @@ export class RetentionService {
     this.events = fountain.streamEvents();
   }
 
-  public initialize() {
-    if (!this.initialized) {
-      this.initialized = true;
-      this.persist();
-      this.prunePeriodically();
-    }
-  }
-
-  private persist() {
+  @Initialize
+  public persistIncomingEvents() {
     this.events.subscribe({
       next: (event) => this.logRepository.saveEvent(event),
       error: (error) => this.log.error("Stopped recording events", error),
@@ -37,7 +30,8 @@ export class RetentionService {
    * Size rather than age, because disk is what actually runs out: the ceiling holds however chatty
    * the host turns out to be, and no single container can spend the whole budget.
    */
-  private prunePeriodically() {
+  @Initialize
+  public prunePeriodically() {
     const PRUNE_INTERVAL_MS = 10 * 60 * 1_000;
 
     interval(PRUNE_INTERVAL_MS)

@@ -1,3 +1,4 @@
+import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
 import { ContainerEventConverter } from "@/drizzle/converters/ContainerEventConverter";
 import { $container, $containerEvent } from "@/drizzle/schema";
@@ -17,18 +18,12 @@ export class LogRepository {
   private readonly containers = new BehaviorSubject<Container[]>([]);
 
   private pending: ContainerEvent[] = [];
-  private flushing = false;
   private failedFlushes = 0;
 
   public constructor(
     private readonly sqlite: Sqlite,
     private readonly flushTrigger: Observable<unknown> = interval(1000), // overridable for unit tests
   ) {}
-
-  public initialize(): void {
-    this.publishContainers();
-    this.flushPeriodically();
-  }
 
   public streamContainers(): Observable<Container[]> {
     return this.containers;
@@ -78,12 +73,8 @@ export class LogRepository {
     };
   }
 
-  private flushPeriodically(): void {
-    if (this.flushing) {
-      return;
-    }
-    this.flushing = true;
-
+  @Initialize
+  public flushPeriodically(): void {
     this.flushTrigger
       .pipe(
         // `concatMap` keeps writes in order and stops them overlapping: the next flush waits for the
@@ -140,7 +131,9 @@ export class LogRepository {
     this.log.error(`Discarded ${toBeDiscarded} unwritten events; the buffer is full at ${PENDING_CEILING}`);
   }
 
-  private publishContainers(): void {
+  /** Also run after every write, so the overview reflects containers that have only just appeared. */
+  @Initialize
+  public publishContainers(): void {
     const rows = this.sqlite.select().from($container).orderBy(asc($container.name)).all();
     const containers = rows.map((row) => ContainerEventConverter.containerFromDatabase(row));
     const previous = this.containers.value;
