@@ -40,7 +40,7 @@ export class LogRepository {
 
   public saveEvent(event: ContainerEvent): void {
     this.pending.push(event);
-    this.enforceCeiling();
+    this.enforceCeilingToBuffer();
   }
 
   public async listEvents(dockerId: string, limit: number, before?: string): Promise<LogRepository.Page> {
@@ -132,7 +132,7 @@ export class LogRepository {
       this.failedFlushes += 1;
       if (this.failedFlushes < GIVE_UP_AFTER_FLUSHES) {
         this.pending = batch.concat(this.pending);
-        this.enforceCeiling();
+        this.enforceCeilingToBuffer();
       } else {
         this.failedFlushes = 0;
         this.log.error(`Gave up on ${batch.length} events after ${GIVE_UP_AFTER_FLUSHES} failed flushes; discarding them`, error);
@@ -141,7 +141,7 @@ export class LogRepository {
     }
   }
 
-  private enforceCeiling(): void {
+  private enforceCeilingToBuffer(): void {
     const PENDING_CEILING = 50_000;
     if (this.pending.length <= PENDING_CEILING) {
       return;
@@ -158,14 +158,6 @@ export class LogRepository {
       return;
     }
     this.sqlite.transaction((tx) => {
-      /**
-       * One row per container rather than per event, and upserted in a single statement rather than
-       * one apiece -- a host running a hundred containers would otherwise pay a hundred statements
-       * every flush, forever, since `lastSeen` moves with every batch.
-       *
-       * Setting rather than skipping on a repeat means the newest timestamp in the batch wins, which
-       * is what `lastSeen` is supposed to be.
-       */
       const distinct = new Map<string, { container: Container; seen: string }>();
       for (const { container, timestamp } of events) {
         distinct.set(container.id, { container, seen: timestamp.toString() });
@@ -179,8 +171,7 @@ export class LogRepository {
         lastSeen: seen,
       }));
       for (let offset = 0; offset < containerRows.length; offset += INSERT_CHUNK) {
-        tx
-          .insert($container)
+        tx.insert($container)
           .values(containerRows.slice(offset, offset + INSERT_CHUNK))
           // `excluded` is the row we tried to insert, so one statement carries a different name and
           // timestamp for every container. `firstSeen` is left alone: it is only true of the insert
