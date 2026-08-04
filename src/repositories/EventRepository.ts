@@ -40,7 +40,7 @@ export class EventRepository {
 
   public saveEvent(event: ContainerEvent): void {
     this.pending.push(event);
-    this.enforceCeilingToBuffer();
+    this.enforcePendingCeiling();
   }
 
   public async listEvents(dockerId: string, limit: number, before?: string): Promise<EventRepository.Page> {
@@ -132,7 +132,7 @@ export class EventRepository {
       this.failedFlushes += 1;
       if (this.failedFlushes < GIVE_UP_AFTER_FLUSHES) {
         this.pending = batch.concat(this.pending);
-        this.enforceCeilingToBuffer();
+        this.enforcePendingCeiling();
       } else {
         this.failedFlushes = 0;
         this.log.error(`Gave up on ${batch.length} events after ${GIVE_UP_AFTER_FLUSHES} failed flushes; discarding them`, error);
@@ -141,7 +141,7 @@ export class EventRepository {
     }
   }
 
-  private enforceCeilingToBuffer(): void {
+  private enforcePendingCeiling(): void {
     const PENDING_CEILING = 50_000;
     if (this.pending.length <= PENDING_CEILING) {
       return;
