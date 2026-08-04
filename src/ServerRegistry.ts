@@ -17,7 +17,7 @@ import { SocketService } from "./socket/SocketService";
 
 export class ServerRegistry {
   public static async bootstrap(env: Env.Private, sqlite: Sqlite): Promise<ServerRegistry> {
-    return new ServerRegistry(env, sqlite);
+    return await new ServerRegistry(env, sqlite).initializeAll();
   }
 
   private readonly registry: Record<string, any> = {};
@@ -48,11 +48,13 @@ export class ServerRegistry {
   }
 
   /**
-   * Starts everything, in the order it was registered above -- which is dependency order, since a
-   * dependency cannot be passed to a dependent before it exists.
+   * Initializes all components in the dependency order they were registered above
    */
-  public initializeAll(): void {
-    Object.values(this.registry).forEach(Initialize.runAll);
+  private async initializeAll(): Promise<ServerRegistry> {
+    for (const instance of Object.values(this.registry)) {
+      await Initialize.runAll(instance);
+    }
+    return this;
   }
 
   public get(sqlite: "sqlite"): Sqlite;

@@ -1,4 +1,5 @@
 import { ServerError } from "@/errors/ServerError";
+import { Temporal } from "@js-temporal/polyfill";
 
 /**
  * uuidv7s are stored as their sixteen raw bytes rather than the thirty-six character text form: less
@@ -17,6 +18,18 @@ export namespace Uuid {
       throw ServerError.malformed_uuid({ value: uuid });
     }
     return Buffer.from(uuid.replaceAll("-", ""), "hex");
+  }
+
+  /**
+   * The smallest value any uuidv7 minted at `instant` could take: its millisecond stamp followed by
+   * zeroes. Comparing against it turns "everything older than this" into a range on the key itself,
+   * so pruning by age needs no index on the timestamp and reads no rows it does not delete.
+   */
+  export function lowerBoundAt(instant: Temporal.Instant): Buffer {
+    const TIMESTAMP_BYTES = 6; // uuidv7 opens with a 48-bit big-endian count of milliseconds
+    const bytes = Buffer.alloc(16);
+    bytes.writeUIntBE(instant.epochMilliseconds, 0, TIMESTAMP_BYTES);
+    return bytes;
   }
 
   export function fromBytes(bytes: Uint8Array): string {

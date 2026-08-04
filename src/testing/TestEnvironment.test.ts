@@ -67,7 +67,7 @@ export namespace TestEnvironment {
       X_DOLOG_LOGGING: LogLevel.warn,
       X_DOLOG_DOCKER_SOCKET: "/var/run/docker.sock",
       X_DOLOG_THROTTLE_LOGS_PER_SECOND: "5",
-      X_DOLOG_RETENTION_MAX_MEGABYTES: "1",
+      X_DOLOG_RETENTION_WINDOW: "P30D",
       X_DOLOG_RETENTION_MAX_EVENTS_PER_CONTAINER: "100000",
     });
     const patchEnvironmentVariables = (environment: Record<string, string>) => {
@@ -105,7 +105,7 @@ export namespace TestEnvironment {
     /** Stands in for the clock the repository would otherwise flush on, so tests decide when. */
     const flushTrigger = new Subject<void>();
     const logRepository = new LogRepository(sqlite, flushTrigger);
-    Initialize.runAll(logRepository);
+    await Initialize.runAll(logRepository);
 
     return {
       env,

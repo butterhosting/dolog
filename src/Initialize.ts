@@ -24,9 +24,16 @@ export function Initialize(target: object, propertyKey: string): void {
 }
 
 export namespace Initialize {
-  /** Runs everything marked on one instance -- for the registry, and for tests standing in for it. */
-  export function runAll(instance: object): void {
+  /**
+   * Runs everything marked on one instance -- for the registry, and for tests standing in for it.
+   *
+   * One after another rather than all at once: an initializer may only be safe to run once an
+   * earlier one has finished, and awaiting something that was never asynchronous costs nothing.
+   */
+  export async function runAll(instance: object): Promise<void> {
     const marked = (instance as { [INITIALIZERS]?: string[] })[INITIALIZERS] ?? [];
-    marked.forEach((method) => (instance as Record<string, () => void>)[method]!());
+    for (const method of marked) {
+      await (instance as Record<string, () => unknown>)[method]!();
+    }
   }
 }

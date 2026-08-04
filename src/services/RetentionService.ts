@@ -53,21 +53,29 @@ export class RetentionService {
   }
 
   /**
-   * Two caps, guarding different failures. The per-container one keeps a chatty container from
-   * evicting everybody else's history, and usually does all the work. The size one is the backstop
-   * for when many well-behaved containers add up to more disk than we have.
+   * Two caps doing two different jobs.
+   *
+   * The per-container one is the working limit: it bounds how much history any single container
+   * keeps, so a chatty one cannot evict everybody else's, and it is the one an operator actually
+   * tunes. "Keep the last hundred thousand lines" is a sentence you can hold in your head.
+   *
+   * The window is the long tail. It forgets containers nobody has looked at in months, and it is the
+   * only one that reliably returns disk: deleting by age is one contiguous run of the clustered key,
+   * where the per-container sweep deletes a scattered subset that frees very few whole pages.
    */
   private async prune(): Promise<void> {
     const perContainer = this.env.X_DOLOG_RETENTION_MAX_EVENTS_PER_CONTAINER;
-    const megabytes = this.env.X_DOLOG_RETENTION_MAX_MEGABYTES;
+    const window = this.env.X_DOLOG_RETENTION_WINDOW;
 
     const fairness = await this.logRepository.pruneToEventsPerContainer(perContainer);
     if (fairness.events > 0) {
       this.log.info(`Pruned ${fairness.events} events, keeping at most ${perContainer} per container`);
     }
-    const disk = await this.logRepository.pruneToSize(megabytes * 1024 * 1024);
-    if (disk.events > 0) {
-      this.log.info(`Pruned ${disk.events} events and ${disk.containers} containers to stay under ${megabytes}MB`);
+    // in milliseconds, because an Instant refuses to subtract a duration counted in days
+    const cutoff = Temporal.Now.instant().subtract({ milliseconds: window.total("milliseconds") });
+    const expired = await this.logRepository.pruneOlderThan(cutoff);
+    if (expired.events > 0) {
+      this.log.info(`Pruned ${expired.events} events and ${expired.containers} containers older than ${window.toString()}`);
     }
   }
 }

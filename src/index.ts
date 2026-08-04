@@ -28,9 +28,4 @@ const sqlite = await Sqlite.initialize(env);
 /**
  * Bootstrap the registry
  */
-const registry = await ServerRegistry.bootstrap(env, sqlite);
-
-/**
- * Run all initializer functions in the order their services were registered.
- */
-registry.initializeAll();
+await ServerRegistry.bootstrap(env, sqlite);

@@ -236,70 +236,45 @@ export class LogRepository {
   }
 
   /**
-   * Deletes the oldest events until the database fits the given budget, then drops any container
-   * left without events. The caller decides how much room retention gets; getting under it -- the
-   * chunking, the page accounting, the orphan sweep -- is this layer's business.
+   * Forgets everything older than the cutoff, then drops any container left without events.
    *
-   * It stops a little below the budget rather than exactly at it, so the very next batch of writes
-   * does not immediately put it over again.
+   * Age is read off the id rather than the timestamp column: a uuidv7 opens with the millisecond it
+   * was minted, so "older than" is a range on the primary key, and the rows being deleted are one
+   * contiguous run at the start of it. That is the shape that actually hands pages back -- deleting
+   * a scattered subset frees almost nothing, because a page only goes onto the freelist once every
+   * row on it is gone.
    */
-  public async pruneToSize(maxBytes: number): Promise<{ events: number; containers: number }> {
-    const TARGET_RATIO = 0.9;
+  public async pruneOlderThan(cutoff: Temporal.Instant): Promise<{ events: number; containers: number }> {
     const CHUNK = 10_000;
 
-    if (this.usedBytes() <= maxBytes) {
-      return { events: 0, containers: 0 };
-    }
-    const target = maxBytes * TARGET_RATIO;
+    const boundary = Uuid.lowerBoundAt(cutoff);
     let events = 0;
     // chunked, because one enormous delete holds the write lock long enough to stall appends
-    while (this.usedBytes() > target) {
-      const deleted = this.deleteOldestEvents(CHUNK);
-      if (deleted === 0) {
+    for (;;) {
+      const doomed = this.sqlite
+        .select({ id: $containerEvent.id })
+        .from($containerEvent)
+        .where(lt($containerEvent.id, boundary))
+        .orderBy(asc($containerEvent.id))
+        .limit(CHUNK)
+        .all();
+      if (doomed.length === 0) {
         break;
       }
-      events += deleted;
+      this.sqlite
+        .delete($containerEvent)
+        .where(
+          inArray(
+            $containerEvent.id,
+            doomed.map(({ id }) => id),
+          ),
+        )
+        .run();
+      events += doomed.length;
     }
     return { events, containers: this.deleteContainersWithoutEvents() };
   }
 
-  /**
-   * Pages actually in use, rather than the file size -- SQLite never returns space to the
-   * filesystem, so the file only ever grows and would make pruning look like it achieved nothing.
-   * Deleted pages land on the freelist and are reused, so subtracting them is what moves.
-   */
-  private usedBytes(): number {
-    const [pages] = this.sqlite.all<{ page_count: number }>(sql`pragma page_count`);
-    const [freed] = this.sqlite.all<{ freelist_count: number }>(sql`pragma freelist_count`);
-    const [size] = this.sqlite.all<{ page_size: number }>(sql`pragma page_size`);
-    return ((pages?.page_count ?? 0) - (freed?.freelist_count ?? 0)) * (size?.page_size ?? 0);
-  }
-
-  /**
-   * Deletes the oldest events. `id` is the rowid and monotonic, so "oldest" is a walk from the
-   * start of the clustered key with no sort involved.
-   */
-  private deleteOldestEvents(count: number): number {
-    const doomed = this.sqlite.select({ id: $containerEvent.id }).from($containerEvent).orderBy(asc($containerEvent.id)).limit(count).all();
-    if (doomed.length === 0) {
-      return 0;
-    }
-    this.sqlite
-      .delete($containerEvent)
-      .where(
-        inArray(
-          $containerEvent.id,
-          doomed.map(({ id }) => id),
-        ),
-      )
-      .run();
-    return doomed.length;
-  }
-
-  /**
-   * Containers whose last event has been pruned away. `notExists` seeks the events index per
-   * container rather than scanning it, unlike the `distinct` a view would have needed.
-   */
   private deleteContainersWithoutEvents(): number {
     const deleted = this.sqlite
       .delete($container)

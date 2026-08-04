@@ -1,3 +1,4 @@
+import { Uuid } from "@/helpers/Uuid";
 import { Container } from "@/models/Container";
 import { Temporal } from "@js-temporal/polyfill";
 import { ContainerEvent } from "@/models/ContainerEvent";
@@ -199,38 +200,42 @@ describe(LogRepository.name, () => {
     expect((await repository.listEvents(container.id, 1_000)).events).toHaveLength(5);
   });
 
-  it("should do nothing while the database fits the budget", async () => {
+  it("should do nothing while everything is inside the window", async () => {
     // given
     const container = TestFixture.container();
     await write(Array.from({ length: 10 }, () => TestFixture.logEvent({ container })));
 
     // when
-    const pruned = await repository.pruneToSize(64 * 1024 * 1024);
+    const pruned = await repository.pruneOlderThan(Temporal.Now.instant().subtract({ hours: 24 }));
     // then
     expect(pruned).toEqual({ events: 0, containers: 0 });
     expect((await repository.listEvents(container.id, 1_000)).events).toHaveLength(10);
   });
 
-  it("should prune the oldest events first, and forget containers left with none", async () => {
-    // given (the one event of `gone` is the oldest, so it is first out)
+  it("should forget events past the window, and containers left with none", async () => {
+    // given (`gone` last said anything a year ago; `staying` has old lines and recent ones)
     const gone = TestFixture.container({ name: "gone" });
     const staying = TestFixture.container({ name: "staying" });
-    await write([TestFixture.logEvent({ container: gone, line: "goodbye" })]);
-    // more than one prune chunk, so that some of them survive it
-    await write(Array.from({ length: 15_000 }, (_, i) => TestFixture.logEvent({ container: staying, line: `line ${i} `.repeat(30) })));
+    const longAgo = Temporal.Now.instant().subtract({ hours: 24 * 365 });
+    const yesterday = Temporal.Now.instant().subtract({ hours: 24 });
 
-    // when (a budget well under the ~7.5 MB those events occupy, but far enough above what one
-    // chunk leaves behind that the loop is not deciding on a rounding difference)
-    const pruned = await repository.pruneToSize(5 * 1024 * 1024);
+    await write([
+      aged(gone, longAgo, "goodbye"),
+      // more than one prune chunk, so the loop has to go round
+      ...Array.from({ length: 15_000 }, (_, i) => aged(staying, longAgo.add({ seconds: i }), `old ${i}`)),
+      ...Array.from({ length: 10 }, (_, i) => aged(staying, yesterday.add({ seconds: i }), `recent ${i}`)),
+    ]);
+
+    // when
+    const pruned = await repository.pruneOlderThan(Temporal.Now.instant().subtract({ hours: 24 * 30 }));
     // then
-    expect(pruned.events).toBeGreaterThan(0);
+    expect(pruned.events).toEqual(15_001);
     expect(pruned.containers).toEqual(1);
     expect(await containers()).toEqual([staying]);
-    // whatever survived is the newest, so the very first line is long gone
+    // only what fell inside the window survived
     const { events: remaining } = await repository.listEvents(staying.id, 100_000);
-    expect(remaining.length).toBeGreaterThan(0);
-    expect(remaining.length).toBeLessThan(15_000);
-    expect(remaining.at(0)).not.toEqual(expect.objectContaining({ line: "line 0 ".repeat(30) } satisfies Partial<ContainerEvent>));
+    expect(remaining).toHaveLength(10);
+    expect(remaining.at(0)).toEqual(expect.objectContaining({ line: "recent 0" } satisfies Partial<ContainerEvent>));
   });
 
   it("should republish the container overview only when the set actually changes", async () => {
@@ -246,6 +251,16 @@ describe(LogRepository.name, () => {
     // then (the seed, plus one emission for the container appearing -- not one per batch)
     expect(published).toEqual([[], [container]]);
   });
+
+  /**
+   * An event that looks as though it were created then. A uuidv7 opens with the millisecond it was
+   * minted, and that is what pruning by age reads, so backdating an event means backdating its id.
+   */
+  function aged(container: Container, instant: Temporal.Instant, line: string): ContainerEvent {
+    const bytes = Uuid.toBytes(Bun.randomUUIDv7()); // random tail, so same-millisecond ids stay distinct
+    bytes.writeUIntBE(instant.epochMilliseconds, 0, 6);
+    return { ...TestFixture.logEvent({ container, line }), id: Uuid.fromBytes(bytes), timestamp: instant };
+  }
 
   /** The overview the repository publishes, which is always current after a mutation. */
   async function containers(): Promise<Container[]> {
