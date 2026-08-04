@@ -4,10 +4,6 @@ import { Temporal } from "@js-temporal/polyfill";
 /**
  * uuidv7s are stored as their sixteen raw bytes rather than the thirty-six character text form: less
  * than half the size, in a value that every index repeats.
- *
- * Nothing about ordering changes. SQLite compares blobs with `memcmp`, and a uuidv7 leads with a
- * big-endian millisecond timestamp, so byte order is time order -- the same order the text form
- * sorts in, since hex encoding preserves it.
  */
 export namespace Uuid {
   const TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

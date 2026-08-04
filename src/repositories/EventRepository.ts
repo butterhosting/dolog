@@ -13,7 +13,7 @@ import { BehaviorSubject, catchError, concatMap, defer, EMPTY, interval, Observa
 /**
  * Recent events are held in memory until they are flushed, and queries answer from both halves.
  */
-export class LogRepository {
+export class EventRepository {
   private readonly log = new Logger(__filename);
   private readonly containers = new BehaviorSubject<Container[]>([]);
 
@@ -43,7 +43,7 @@ export class LogRepository {
     this.enforceCeilingToBuffer();
   }
 
-  public async listEvents(dockerId: string, limit: number, before?: string): Promise<LogRepository.Page> {
+  public async listEvents(dockerId: string, limit: number, before?: string): Promise<EventRepository.Page> {
     const container = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
     const stored = !container
       ? []
@@ -200,18 +200,11 @@ export class LogRepository {
   }
 
   /**
-   * Caps how much history any one container may hold, so a chatty neighbour cannot evict everyone
-   * else's. A global size cap alone has exactly that failure: a container at the throttle ceiling
-   * produces events all day and would come to occupy the entire budget, leaving a quiet service
-   * with no history at all on the day it finally breaks.
-   *
-   * Counted in events rather than bytes, because both the count and the delete then ride the
-   * `(container, id)` index -- and "keep the last N lines" is a sentence an operator can hold in
-   * their head, where "keep 20MB" is not.
+   * Caps how much history (number of events) any one container may hold
    */
-  public async pruneToEventsPerContainer(maxEvents: number): Promise<{ events: number }> {
+  public async pruneToEventsPerContainer(maxEvents: number) {
     const containers = this.sqlite.select({ id: $container.id }).from($container).all();
-    let events = 0;
+    let eventDeleteCount = 0;
     for (const { id } of containers) {
       // the newest event beyond the ones we are keeping; everything at or below it is surplus
       const [surplus] = this.sqlite
@@ -230,26 +223,20 @@ export class LogRepository {
         .where(and(eq($containerEvent.container, id), lte($containerEvent.id, surplus.id)))
         .returning({ id: $containerEvent.id })
         .all();
-      events += deleted.length;
+      eventDeleteCount += deleted.length;
     }
-    return { events };
+    return { eventDeleteCount };
   }
 
   /**
-   * Forgets everything older than the cutoff, then drops any container left without events.
-   *
-   * Age is read off the id rather than the timestamp column: a uuidv7 opens with the millisecond it
-   * was minted, so "older than" is a range on the primary key, and the rows being deleted are one
-   * contiguous run at the start of it. That is the shape that actually hands pages back -- deleting
-   * a scattered subset frees almost nothing, because a page only goes onto the freelist once every
-   * row on it is gone.
+   * Forgets everything older than the cutoff (and drops any container left without events)
    */
-  public async pruneOlderThan(cutoff: Temporal.Instant): Promise<{ events: number; containers: number }> {
+  public async pruneEventsOlderThan(cutoff: Temporal.Instant) {
     const CHUNK = 10_000;
 
+    // delete oldest events
     const boundary = Uuid.lowerBoundAt(cutoff);
-    let events = 0;
-    // chunked, because one enormous delete holds the write lock long enough to stall appends
+    let eventDeleteCount = 0;
     for (;;) {
       const doomed = this.sqlite
         .select({ id: $containerEvent.id })
@@ -270,9 +257,15 @@ export class LogRepository {
           ),
         )
         .run();
-      events += doomed.length;
+      eventDeleteCount += doomed.length;
     }
-    return { events, containers: this.deleteContainersWithoutEvents() };
+    // delete orphaned containers
+    const containerDeleteCount = this.deleteContainersWithoutEvents();
+
+    return {
+      eventDeleteCount,
+      containerDeleteCount,
+    };
   }
 
   private deleteContainersWithoutEvents(): number {
@@ -294,7 +287,7 @@ export class LogRepository {
   }
 }
 
-export namespace LogRepository {
+export namespace EventRepository {
   export type Page = {
     events: ContainerEvent[];
     hasOlder: boolean;

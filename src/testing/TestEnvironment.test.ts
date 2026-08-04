@@ -2,7 +2,7 @@ import { DockerSocket } from "@/services/streaming/DockerSocket";
 import { Sqlite } from "@/drizzle/sqlite";
 import { Env } from "@/Env";
 import { Initialize } from "@/Initialize";
-import { LogRepository } from "@/repositories/LogRepository";
+import { EventRepository } from "@/repositories/EventRepository";
 import { Logger } from "@/Logger";
 import { LogLevel } from "@/models/internal/LogLevel";
 import { OmitBetter } from "@/types/OmitBetter";
@@ -21,7 +21,7 @@ export namespace TestEnvironment {
   export interface Context {
     env: Env.Private;
     sqlite: Sqlite;
-    logRepository: LogRepository;
+    eventRepository: EventRepository;
     flushTrigger: Subject<void>;
     patchEnvironmentVariables(environment: Record<string, string>): void;
     dockerSocketMock: Mocked<DockerSocket>;
@@ -67,8 +67,8 @@ export namespace TestEnvironment {
       X_DOLOG_LOGGING: LogLevel.warn,
       X_DOLOG_DOCKER_SOCKET: "/var/run/docker.sock",
       X_DOLOG_THROTTLE_LOGS_PER_SECOND: "5",
-      X_DOLOG_RETENTION_WINDOW: "P30D",
-      X_DOLOG_RETENTION_MAX_EVENTS_PER_CONTAINER: "100000",
+      X_DOLOG_RETENTION_TIME_WINDOW: "P30D",
+      X_DOLOG_RETENTION_MAX_LINES_PER_CONTAINER: "100000",
     });
     const patchEnvironmentVariables = (environment: Record<string, string>) => {
       Object.assign(Bun.env, environment);
@@ -104,13 +104,13 @@ export namespace TestEnvironment {
 
     /** Stands in for the clock the repository would otherwise flush on, so tests decide when. */
     const flushTrigger = new Subject<void>();
-    const logRepository = new LogRepository(sqlite, flushTrigger);
-    await Initialize.runAll(logRepository);
+    const eventRepository = new EventRepository(sqlite, flushTrigger);
+    await Initialize.runAll(eventRepository);
 
     return {
       env,
       sqlite,
-      logRepository,
+      eventRepository,
       flushTrigger,
       patchEnvironmentVariables,
       dockerSocketMock,

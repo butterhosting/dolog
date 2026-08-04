@@ -17,7 +17,7 @@ export namespace Env {
     X_DOLOG_DOCKER_SOCKET: z.string(),
     X_DOLOG_THROTTLE_LOGS_PER_SECOND: z.string().regex(/^[1-9]\d*$/),
     // an ISO-8601 duration, so "P30D" and "PT12H" both say what they mean without a unit suffix
-    X_DOLOG_RETENTION_WINDOW: z.string().refine(
+    X_DOLOG_RETENTION_TIME_WINDOW: z.string().refine(
       (value) => {
         try {
           Temporal.Duration.from(value);
@@ -28,7 +28,7 @@ export namespace Env {
       },
       { error: "invalid_duration" },
     ),
-    X_DOLOG_RETENTION_MAX_EVENTS_PER_CONTAINER: z.string().regex(/^[1-9]\d*$/),
+    X_DOLOG_RETENTION_MAX_LINES_PER_CONTAINER: z.string().regex(/^[1-9]\d*$/),
   });
 
   export function initializePartiallyForLogger(environment = Bun.env) {
@@ -55,8 +55,8 @@ export namespace Env {
         O_DOLOG_COMMIT: packageJson.commit.slice(0, 7),
         O_DOLOG_VERSION: packageJson.version,
         X_DOLOG_THROTTLE_LOGS_PER_SECOND: Number(env.X_DOLOG_THROTTLE_LOGS_PER_SECOND),
-        X_DOLOG_RETENTION_WINDOW: Temporal.Duration.from(env.X_DOLOG_RETENTION_WINDOW),
-        X_DOLOG_RETENTION_MAX_EVENTS_PER_CONTAINER: Number(env.X_DOLOG_RETENTION_MAX_EVENTS_PER_CONTAINER),
+        X_DOLOG_RETENTION_TIME_WINDOW: Temporal.Duration.from(env.X_DOLOG_RETENTION_TIME_WINDOW),
+        X_DOLOG_RETENTION_MAX_LINES_PER_CONTAINER: Number(env.X_DOLOG_RETENTION_MAX_LINES_PER_CONTAINER),
         X_DOLOG_DATABASE: join(env.X_DOLOG_ROOT, "data", "db.sqlite"),
       }))
       .parse(environment);

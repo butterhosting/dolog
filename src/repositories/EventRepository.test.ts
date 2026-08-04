@@ -7,15 +7,15 @@ import { TestEnvironment } from "@/testing/TestEnvironment.test";
 import { TestFixture } from "@/testing/TestFixture.test";
 import { beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { firstValueFrom } from "rxjs";
-import { LogRepository } from "./LogRepository";
+import { EventRepository } from "./EventRepository";
 
-describe(LogRepository.name, () => {
+describe(EventRepository.name, () => {
   let context: TestEnvironment.Context;
-  let repository: LogRepository;
+  let repository: EventRepository;
 
   beforeEach(async () => {
     context = await TestEnvironment.initialize();
-    repository = context.logRepository;
+    repository = context.eventRepository;
   });
 
   it("should round-trip every kind of event", async () => {
@@ -180,7 +180,7 @@ describe(LogRepository.name, () => {
     // when
     const pruned = await repository.pruneToEventsPerContainer(10);
     // then (the quiet one is untouched -- its own history is not the chatty one's to spend)
-    expect(pruned.events).toEqual(90);
+    expect(pruned.eventDeleteCount).toEqual(90);
     expect((await repository.listEvents(quiet.id, 1_000)).events).toHaveLength(3);
     const { events: remaining } = await repository.listEvents(chatty.id, 1_000);
     expect(remaining).toHaveLength(10);
@@ -196,7 +196,7 @@ describe(LogRepository.name, () => {
     // when
     const pruned = await repository.pruneToEventsPerContainer(10);
     // then
-    expect(pruned.events).toEqual(0);
+    expect(pruned.eventDeleteCount).toEqual(0);
     expect((await repository.listEvents(container.id, 1_000)).events).toHaveLength(5);
   });
 
@@ -206,9 +206,9 @@ describe(LogRepository.name, () => {
     await write(Array.from({ length: 10 }, () => TestFixture.logEvent({ container })));
 
     // when
-    const pruned = await repository.pruneOlderThan(Temporal.Now.instant().subtract({ hours: 24 }));
+    const pruned = await repository.pruneEventsOlderThan(Temporal.Now.instant().subtract({ hours: 24 }));
     // then
-    expect(pruned).toEqual({ events: 0, containers: 0 });
+    expect(pruned).toEqual({ eventDeleteCount: 0, containerDeleteCount: 0 });
     expect((await repository.listEvents(container.id, 1_000)).events).toHaveLength(10);
   });
 
@@ -227,10 +227,10 @@ describe(LogRepository.name, () => {
     ]);
 
     // when
-    const pruned = await repository.pruneOlderThan(Temporal.Now.instant().subtract({ hours: 24 * 30 }));
+    const pruned = await repository.pruneEventsOlderThan(Temporal.Now.instant().subtract({ hours: 24 * 30 }));
     // then
-    expect(pruned.events).toEqual(15_001);
-    expect(pruned.containers).toEqual(1);
+    expect(pruned.eventDeleteCount).toEqual(15_001);
+    expect(pruned.containerDeleteCount).toEqual(1);
     expect(await containers()).toEqual([staying]);
     // only what fell inside the window survived
     const { events: remaining } = await repository.listEvents(staying.id, 100_000);

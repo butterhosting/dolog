@@ -4,7 +4,7 @@ import { Initialize } from "./Initialize";
 import { Env } from "./Env";
 import { LoggingMiddleware } from "./middleware/logging/LoggingMiddleware";
 import { Middleware } from "./middleware/Middleware";
-import { LogRepository } from "./repositories/LogRepository";
+import { EventRepository } from "./repositories/EventRepository";
 import { Server } from "./Server";
 import { AlertingService } from "./services/AlertingService";
 import { ContainerService } from "./services/ContainerService";
@@ -27,17 +27,17 @@ export class ServerRegistry {
     private readonly sqlite: Sqlite,
   ) {
     // Repositories
-    const { logRepository } = this.register({ LogRepository }, [sqlite]);
+    const { eventRepository } = this.register({ EventRepository }, [sqlite]);
 
     // Services
     const { dockerSocket } = this.register({ DockerSocket }, [env]);
     const { throttleService } = this.register({ ThrottleService }, [env]);
     const { fountain } = this.register({ Fountain }, [dockerSocket, throttleService]);
-    this.register({ RetentionService }, [fountain, env, logRepository]);
+    this.register({ RetentionService }, [fountain, env, eventRepository]);
     this.register({ AlertingService }, [fountain]);
     const { socketService } = this.register({ SocketService }, []);
-    const { containerService } = this.register({ ContainerService }, [fountain, dockerSocket, logRepository, socketService]);
-    const { logService } = this.register({ LogService }, [fountain, logRepository, socketService]);
+    const { containerService } = this.register({ ContainerService }, [fountain, dockerSocket, eventRepository, socketService]);
+    const { logService } = this.register({ LogService }, [fountain, eventRepository, socketService]);
 
     // Middleware
     const { loggingMiddleware } = this.register({ LoggingMiddleware }, []);
