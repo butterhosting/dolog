@@ -1,23 +1,12 @@
 import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
-import { Temporal } from "@js-temporal/polyfill";
-import { ClientMessage } from "./ClientMessage";
-import { ServerMessage } from "./ServerMessage";
-import { Socket } from "./Socket";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { ContainerRM } from "@/models/ContainerRM";
-
-/** Everything we track about one connected browser, so that forgetting it is a single delete. */
-type Connection = {
-  socket: Socket;
-  /**
-   * Which container this browser is looking at. Log events go only to the sockets that asked for
-   * them: one sitting on the overview should not pay for the traffic of every container on the host.
-   */
-  watchedContainer: string | null;
-  /** Pings sent since we last heard anything back. */
-  unanswered: number;
-};
+import { Connection } from "@/models/socket/Connection";
+import { Temporal } from "@js-temporal/polyfill";
+import { ClientMessage } from "../models/socket/ClientMessage";
+import { ServerMessage } from "../models/socket/ServerMessage";
+import { Socket } from "../models/socket/Socket";
 
 export class SocketService {
   private readonly log = new Logger(__filename);
@@ -34,10 +23,6 @@ export class SocketService {
     }
   };
 
-  /**
-   * A plain method rather than a field, so the mark lands on the prototype where {@link Initialize}
-   * looks for it.
-   */
   @Initialize
   public keepConnectionsAlive() {
     const KEEPALIVE_INTERVAL = Temporal.Duration.from({ seconds: 25 });
@@ -84,17 +69,16 @@ export class SocketService {
     }
   };
 
-  public broadcastLog = (event: ContainerEvent) => {
-    const watchers = [...this.connections.values()].filter((connection) => connection.watchedContainer === event.container.id);
-    if (watchers.length > 0) {
-      const message: ServerMessage = {
-        type: ServerMessage.Type.log,
-        event,
-      };
-      watchers.forEach((connection) => {
+  public broadcastEventStream = (event: ContainerEvent) => {
+    const message: ServerMessage = {
+      type: ServerMessage.Type.log,
+      event,
+    };
+    [...this.connections.values()]
+      .filter((connection) => connection.watchedContainer === event.container.id)
+      .forEach((connection) => {
         connection.socket.send(JSON.stringify(message));
       });
-    }
   };
 
   public broadcastContainers = (containers: ContainerRM[]) => {

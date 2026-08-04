@@ -12,7 +12,7 @@ const BOTTOM_SLACK_PX = 24;
  * simply re-measure after every scroll: if the viewport is at the bottom we are stuck, and if it is
  * not we are not. Scrolling back down by hand re-sticks it, which is what people expect.
  */
-export function useStickyScroll<T extends HTMLElement>(dependency: unknown): useStickyScroll.Result<T> {
+export function useStickyScroll<T extends HTMLElement>(dependency: unknown, pinToBottom = true): useStickyScroll.Result<T> {
   const ref = useRef<T>(null);
   const [stuck, setStuck] = useState(true);
 
@@ -35,13 +35,17 @@ export function useStickyScroll<T extends HTMLElement>(dependency: unknown): use
 
   /**
    * Runs after the browser has painted the new content, so `scrollHeight` already accounts for it.
+   *
+   * `pinToBottom` is false while the view is parked in history, where the bottom of the window is
+   * just the far edge of what was fetched and being dragged to it would throw away the position
+   * that was navigated to.
    */
   useEffect(() => {
     const element = ref.current;
-    if (element && stuck) {
+    if (element && stuck && pinToBottom) {
       element.scrollTop = element.scrollHeight;
     }
-  }, [dependency, stuck]);
+  }, [dependency, stuck, pinToBottom]);
 
   return { ref, stuck, onScroll, scrollToBottom };
 }

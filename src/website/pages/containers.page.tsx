@@ -1,4 +1,4 @@
-import { ServerMessage } from "@/socket/ServerMessage";
+import { ServerMessage } from "@/models/socket/ServerMessage";
 import { Temporal } from "@js-temporal/polyfill";
 import { useEffect } from "react";
 import { useYesQuery } from "react-yesquery";

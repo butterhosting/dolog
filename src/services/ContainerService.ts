@@ -5,7 +5,7 @@ import { Container } from "@/models/Container";
 import { ContainerRM } from "@/models/ContainerRM";
 import { Throughput } from "@/models/Throughput";
 import { EventRepository } from "@/repositories/EventRepository";
-import { SocketService } from "@/socket/SocketService";
+import { SocketService } from "@/services/SocketService";
 import { auditTime, catchError, concatMap, defer, EMPTY, filter, firstValueFrom, merge, Observable } from "rxjs";
 import { DockerSocket } from "./streaming/DockerSocket";
 import { Fountain } from "./streaming/Fountain";

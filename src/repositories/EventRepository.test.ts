@@ -85,9 +85,62 @@ describe(EventRepository.name, () => {
     all.slice(5).forEach((event) => repository.saveEvent(event));
 
     // when (asking for what came before an event that is itself still buffered)
-    const { events } = await repository.listEvents(container.id, 100, all[7]!.id);
+    const { events } = await repository.listEvents(container.id, 100, { before: all[7]!.id });
     // then (everything older, from both halves, and nothing at or after the cursor)
     expect(events.map((event) => event.id)).toEqual(all.slice(0, 7).map((event) => event.id));
+  });
+
+  it("should read forwards from a cursor, across both halves", async () => {
+    // given
+    const container = TestFixture.container();
+    const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
+    await write(all.slice(0, 5));
+    all.slice(5).forEach((event) => repository.saveEvent(event));
+
+    // when (reading on from an event that is still on disk, into the part that is not)
+    const { events } = await repository.listEvents(container.id, 100, { after: all[2]!.id });
+    // then (everything newer, from both halves, and nothing at or before the cursor)
+    expect(events.map((event) => event.id)).toEqual(all.slice(3).map((event) => event.id));
+  });
+
+  it("should take the oldest of what lies ahead when reading forwards, not the newest", async () => {
+    // given (a window smaller than what remains, so the direction of the slice shows)
+    const container = TestFixture.container();
+    const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
+    await write(all);
+
+    // when
+    const page = await repository.listEvents(container.id, 3, { after: all[0]!.id });
+    // then (the three immediately following the cursor -- reading on, not jumping to the end)
+    expect(page.events.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["line 1", "line 2", "line 3"]);
+    expect(page.hasNewer).toBe(true);
+    expect(page.hasOlder).toBe(true);
+  });
+
+  it("should report reaching the live end when reading forwards runs out", async () => {
+    // given
+    const container = TestFixture.container();
+    const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
+    await write(all);
+
+    // when (a window wider than what remains)
+    const page = await repository.listEvents(container.id, 100, { after: all[7]!.id });
+    // then
+    expect(page.events).toHaveLength(2);
+    expect(page.hasNewer).toBe(false);
+    expect(page.hasOlder).toBe(true);
+  });
+
+  it("should report the live end for a window with no cursor at all", async () => {
+    // given
+    const container = TestFixture.container();
+    await write(Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` })));
+
+    // when
+    const page = await repository.listEvents(container.id, 100);
+    // then (sitting at the live feed, with nothing below it)
+    expect(page.hasNewer).toBe(false);
+    expect(page.hasOlder).toBe(false);
   });
 
   it("should keep unwritten events when the write fails, rather than losing them", async () => {

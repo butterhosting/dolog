@@ -13,7 +13,7 @@ import { RetentionService } from "./services/RetentionService";
 import { DockerSocket } from "./services/streaming/DockerSocket";
 import { Fountain } from "./services/streaming/Fountain";
 import { ThrottleService } from "./services/streaming/ThrottleService";
-import { SocketService } from "./socket/SocketService";
+import { SocketService } from "./services/SocketService";
 
 export class ServerRegistry {
   public static async bootstrap(env: Env.Private, sqlite: Sqlite): Promise<ServerRegistry> {

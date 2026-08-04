@@ -1,5 +1,5 @@
-import { ClientMessage } from "@/socket/ClientMessage";
-import { ServerMessage } from "@/socket/ServerMessage";
+import { ClientMessage } from "@/models/socket/ClientMessage";
+import { ServerMessage } from "@/models/socket/ServerMessage";
 
 type Subscription = {
   id: string;

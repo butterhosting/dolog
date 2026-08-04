@@ -11,11 +11,8 @@ import { Middleware } from "./middleware/Middleware";
 import { ContainerRM } from "./models/ContainerRM";
 import { ContainerService } from "./services/ContainerService";
 import { LogService } from "./services/LogService";
-import { Socket } from "./socket/Socket";
-import { SocketService } from "./socket/SocketService";
-
-/** Upper bound on what one request may ask for, so a client cannot make us build an enormous page. */
-const MAX_LOGS_PER_PAGE = 500;
+import { Socket } from "./models/socket/Socket";
+import { SocketService } from "./services/SocketService";
 
 export class Server {
   private readonly log = new Logger(__filename);
@@ -109,12 +106,8 @@ export class Server {
         },
         "/internal-api/containers/:id/logs": {
           GET: this.handleRoute(async ({ params, url }) => {
-            const { searchParams } = new URL(url);
-            const before = searchParams.get("before");
-            // the caller knows how many will still fit on its screen; we only cap it
-            const limit = Math.min(Number(searchParams.get("limit")) || MAX_LOGS_PER_PAGE, MAX_LOGS_PER_PAGE);
-            const page = await this.logService.list(params.id, limit, before ?? undefined);
-            return Response.json(page);
+            const query: any = Object.fromEntries(new URL(url).searchParams);
+            return Response.json(await this.logService.list(params.id, query));
           }),
         },
       },

@@ -7,11 +7,11 @@ import { Uuid } from "@/helpers/Uuid";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Temporal } from "@js-temporal/polyfill";
-import { and, asc, desc, eq, lt, lte, notExists, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, lt, lte, notExists, sql } from "drizzle-orm";
 import { BehaviorSubject, catchError, concatMap, defer, EMPTY, interval, Observable } from "rxjs";
 
 /**
- * Recent events are held in memory until they are flushed, and queries answer from both halves.
+ * Recent events are held in memory until they are flushed
  */
 export class EventRepository {
   private readonly log = new Logger(__filename);
@@ -43,34 +43,44 @@ export class EventRepository {
     this.enforcePendingCeiling();
   }
 
-  public async listEvents(dockerId: string, limit: number, before?: string): Promise<EventRepository.Page> {
+  public async listEvents(dockerId: string, limit: number, cursor: EventRepository.Cursor = {}): Promise<EventRepository.Page> {
+    const { before, after } = cursor;
+    const forwards = after !== undefined;
     const container = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
+    const bounds = [
+      container ? eq($containerEvent.container, container.id) : undefined,
+      before === undefined ? undefined : lt($containerEvent.id, Uuid.toBytes(before)),
+      after === undefined ? undefined : gt($containerEvent.id, Uuid.toBytes(after)),
+    ];
     const stored = !container
       ? []
       : this.sqlite
           .select()
           .from($containerEvent)
-          .where(
-            before === undefined
-              ? eq($containerEvent.container, container.id)
-              : and(eq($containerEvent.container, container.id), lt($containerEvent.id, Uuid.toBytes(before))),
-          )
-          .orderBy(desc($containerEvent.id))
+          .where(and(...bounds))
+          // reading forwards takes the oldest beyond the cursor; otherwise the newest before it
+          .orderBy(forwards ? asc($containerEvent.id) : desc($containerEvent.id))
           .limit(limit)
           .all();
 
     // uuidv7s are time-ordered, so comparing them as text is comparing them by age
-    const buffered = this.pending.filter((event) => event.container.id === dockerId && (before === undefined || event.id < before));
+    const buffered = this.pending.filter(
+      (event) =>
+        event.container.id === dockerId && (before === undefined || event.id < before) && (after === undefined || event.id > after),
+    );
     const model = container ? ContainerEventConverter.containerFromDatabase(container) : undefined;
     const events = [...stored.map((row) => ContainerEventConverter.fromDatabase(row, model!)), ...buffered];
 
     // A flush landing between the two reads puts the same event in both halves, so they are merged
     // by id rather than concatenated. Sorted rather than assumed ordered for the same reason.
     const merged = [...new Map(events.map((event) => [event.id, event])).values()].sort((a, b) => a.id.localeCompare(b.id));
+    // the query filled its page, or the merge produced more than was asked for, so that edge has more
+    const saturated = stored.length === limit || merged.length > limit;
     return {
-      // either the query filled its page, or the merge produced more than was asked for
-      hasOlder: stored.length === limit || merged.length > limit,
-      events: merged.slice(-limit),
+      events: forwards ? merged.slice(0, limit) : merged.slice(-limit),
+      // whatever lies past the cursor is unexamined, so that side is assumed to have more
+      hasOlder: forwards ? true : saturated,
+      hasNewer: forwards ? saturated : before !== undefined,
     };
   }
 
@@ -279,8 +289,16 @@ export class EventRepository {
 }
 
 export namespace EventRepository {
+  /** Where to read from. Both are ids of events the caller already holds; neither means the live end. */
+  export type Cursor = {
+    before?: string;
+    after?: string;
+  };
+
   export type Page = {
     events: ContainerEvent[];
+    /** Whether the window can be extended at each end; `hasNewer` false means it reaches the live feed. */
     hasOlder: boolean;
+    hasNewer: boolean;
   };
 }
