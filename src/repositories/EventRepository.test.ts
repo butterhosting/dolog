@@ -178,7 +178,7 @@ describe(EventRepository.name, () => {
     ]);
 
     // when
-    const pruned = await repository.pruneToEventsPerContainer(10);
+    const pruned = await repository.pruneEventsPerContainer(10);
     // then (the quiet one is untouched -- its own history is not the chatty one's to spend)
     expect(pruned.eventDeleteCount).toEqual(90);
     expect((await repository.listEvents(quiet.id, 1_000)).events).toHaveLength(3);
@@ -194,7 +194,7 @@ describe(EventRepository.name, () => {
     await write(Array.from({ length: 5 }, () => TestFixture.logEvent({ container })));
 
     // when
-    const pruned = await repository.pruneToEventsPerContainer(10);
+    const pruned = await repository.pruneEventsPerContainer(10);
     // then
     expect(pruned.eventDeleteCount).toEqual(0);
     expect((await repository.listEvents(container.id, 1_000)).events).toHaveLength(5);

@@ -7,7 +7,7 @@ import { Uuid } from "@/helpers/Uuid";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Temporal } from "@js-temporal/polyfill";
-import { and, asc, desc, eq, inArray, lt, lte, notExists, sql } from "drizzle-orm";
+import { and, asc, desc, eq, lt, lte, notExists, sql } from "drizzle-orm";
 import { BehaviorSubject, catchError, concatMap, defer, EMPTY, interval, Observable } from "rxjs";
 
 /**
@@ -202,12 +202,11 @@ export class EventRepository {
   /**
    * Caps how much history (number of events) any one container may hold
    */
-  public async pruneToEventsPerContainer(maxEvents: number) {
+  public async pruneEventsPerContainer(maxEvents: number) {
     const containers = this.sqlite.select({ id: $container.id }).from($container).all();
     let eventDeleteCount = 0;
     for (const { id } of containers) {
-      // the newest event beyond the ones we are keeping; everything at or below it is surplus
-      const [surplus] = this.sqlite
+      const [surplusCursor] = this.sqlite
         .select({ id: $containerEvent.id })
         .from($containerEvent)
         .where(eq($containerEvent.container, id))
@@ -215,15 +214,14 @@ export class EventRepository {
         .limit(1)
         .offset(maxEvents)
         .all();
-      if (!surplus) {
-        continue;
+      if (surplusCursor) {
+        const deleted = this.sqlite
+          .delete($containerEvent)
+          .where(and(eq($containerEvent.container, id), lte($containerEvent.id, surplusCursor.id)))
+          .returning({ one: sql<number>`1` })
+          .all().length;
+        eventDeleteCount += deleted;
       }
-      const deleted = this.sqlite
-        .delete($containerEvent)
-        .where(and(eq($containerEvent.container, id), lte($containerEvent.id, surplus.id)))
-        .returning({ id: $containerEvent.id })
-        .all();
-      eventDeleteCount += deleted.length;
     }
     return { eventDeleteCount };
   }
@@ -238,26 +236,19 @@ export class EventRepository {
     const boundary = Uuid.lowerBoundAt(cutoff);
     let eventDeleteCount = 0;
     for (;;) {
-      const doomed = this.sqlite
-        .select({ id: $containerEvent.id })
-        .from($containerEvent)
-        .where(lt($containerEvent.id, boundary))
-        .orderBy(asc($containerEvent.id))
-        .limit(CHUNK)
-        .all();
-      if (doomed.length === 0) {
-        break;
-      }
-      this.sqlite
+      // a row back per row deleted, since drizzle's driver types away SQLite's rows-affected count.
+      // A constant rather than the ids, so a chunk this size is not carried back only to be counted
+      const deleted = this.sqlite
         .delete($containerEvent)
-        .where(
-          inArray(
-            $containerEvent.id,
-            doomed.map(({ id }) => id),
-          ),
-        )
-        .run();
-      eventDeleteCount += doomed.length;
+        .where(lt($containerEvent.id, boundary))
+        .limit(CHUNK)
+        .returning({ one: sql<number>`1` })
+        .all().length;
+      if (deleted > 0) {
+        eventDeleteCount += deleted;
+        continue;
+      }
+      break;
     }
     // delete orphaned containers
     const containerDeleteCount = this.deleteContainersWithoutEvents();
@@ -279,11 +270,11 @@ export class EventRepository {
             .where(eq($containerEvent.container, $container.id)),
         ),
       )
-      .returning({ id: $container.id })
-      .all();
-    // pruning may have forgotten a container entirely
+      .returning({ one: sql<number>`1` })
+      .all().length;
+    // pruning may have purged a container entirely
     this.publishContainers();
-    return deleted.length;
+    return deleted;
   }
 }
 

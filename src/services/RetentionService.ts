@@ -53,7 +53,7 @@ export class RetentionService {
     const window = this.env.X_DOLOG_RETENTION_TIME_WINDOW;
 
     // Lines-per-container strategy
-    const fairness = await this.logRepository.pruneToEventsPerContainer(perContainer);
+    const fairness = await this.logRepository.pruneEventsPerContainer(perContainer);
     if (fairness.eventDeleteCount > 0) {
       this.log.info(`Pruned ${fairness.eventDeleteCount} events, keeping at most ${perContainer} per container`);
     }
