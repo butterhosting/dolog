@@ -1,3 +1,4 @@
+import { LineMatch } from "@/helpers/LineMatch";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Temporal } from "@js-temporal/polyfill";
 import { StreamVariant } from "@/models/StreamVariant";
@@ -46,8 +47,12 @@ export function containerLogsPage() {
    * change of mind about an annotation, not about where the reader is standing. Fetching off the
    * marker would mean the little `x` silently re-ran the load and threw them back to the live feed,
    * losing the history they had paged in -- so the anchor is moved by jumping, and by nothing else.
+   *
+   * It names a moment or a line, because those are the two ways of arriving somewhere: a jump knows
+   * a time, a search knows an id. A found line cannot be described by its timestamp -- several lines
+   * share a millisecond -- so the distinction has to survive as far as the request.
    */
-  const [anchor, setAnchor] = useState(pinnedAt);
+  const [anchor, setAnchor] = useState<Internal.Anchor | null>(pinnedAt ? { kind: "instant", value: pinnedAt } : null);
 
   const [events, setEvents] = useState<ContainerEvent[]>([]);
   /**
@@ -63,6 +68,26 @@ export function containerLogsPage() {
   const [loading, setLoading] = useState(true);
   const loadingOlder = useRef(false);
   const loadingNewer = useRef(false);
+
+  const [needle, setNeedle] = useState("");
+  const [regex, setRegex] = useState(false);
+  /**
+   * The match last stepped to. The only state search keeps, and it cannot go stale: every step
+   * re-checks it against the viewport and drops it the moment it is not on screen, so it can never
+   * pull the reader back to somewhere they have scrolled away from.
+   */
+  const [currentMatch, setCurrentMatch] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [exhausted, setExhausted] = useState(false);
+
+  /** Which of the loaded lines the needle lights up, and whether it is even a usable needle yet. */
+  const { matched, broken } = useMemo(() => Internal.highlight(events, needle, regex), [events, needle, regex]);
+
+  // a different needle makes the old match meaningless, and the old verdict too
+  useEffect(() => {
+    setCurrentMatch(null);
+    setExhausted(false);
+  }, [needle, regex]);
 
   const name = events.at(-1)?.container.name ?? events.at(0)?.container.name ?? id.slice(0, 12);
   useDocumentTitle(`${name} | Dolog`);
@@ -136,7 +161,11 @@ export function containerLogsPage() {
     socketClient.declareContainerInterest(id);
 
     void (async () => {
-      const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, at: anchor ?? undefined });
+      const page = await containerClient.logs(id, {
+        limit: LINES_PER_PAGE,
+        at: anchor?.kind === "instant" ? anchor.value : undefined,
+        from: anchor?.kind === "line" ? anchor.value : undefined,
+      });
       if (cancelled) {
         return;
       }
@@ -168,10 +197,16 @@ export function containerLogsPage() {
       if (landing) {
         requestAnimationFrame(() => {
           const element = ref.current;
-          const marker = element?.querySelector("[data-landed]");
-          if (marker) {
-            // put the moment they asked for in the middle of the view rather than at an edge
-            marker.scrollIntoView({ block: "center" });
+          /**
+           * A line anchor is aimed at the line itself; a moment anchor at whatever marker was drawn
+           * for it, which is not always on the first row -- asking for a time past the end of the
+           * log puts it below the last one.
+           */
+          const target =
+            anchor?.kind === "line" ? Internal.lineElement(element, anchor.value) : element?.querySelector("[data-landed]");
+          if (target) {
+            // put what they asked for in the middle of the view rather than at an edge
+            target.scrollIntoView({ block: "center" });
           } else if (element) {
             // nothing was logged at or after it, so what they were shown instead is the end of history
             element.scrollTop = element.scrollHeight;
@@ -314,8 +349,8 @@ export function containerLogsPage() {
     (instant: Temporal.Instant) => {
       const at = instant.toString();
       setParameters({ at });
-      if (at !== anchor) {
-        setAnchor(at);
+      if (anchor?.kind !== "instant" || anchor.value !== at) {
+        setAnchor({ kind: "instant", value: at });
         return;
       }
       requestAnimationFrame(() => ref.current?.querySelector("[data-landed]")?.scrollIntoView({ block: "center" }));
@@ -337,6 +372,64 @@ export function containerLogsPage() {
   const dismissPin = useCallback(() => {
     setParameters({}, { replace: true });
   }, [setParameters]);
+
+  /**
+   * One step through the matches, in one direction.
+   *
+   * Where it starts from is decided here and nowhere else, from what is on screen at the moment the
+   * chevron is pressed. A match still in view is where the reader is, so the next one is taken from
+   * there. Once it has been scrolled away from it stops counting, and the far edge of the viewport
+   * takes over -- which is what stops a match left far above from dragging them back to it.
+   *
+   * The edge line is included in the search because it has every right to match; a match being
+   * stepped off is not, or it would answer with itself forever.
+   */
+  const step = useCallback(
+    async (direction: "up" | "down") => {
+      const element = ref.current;
+      const term = needle.trim();
+      if (!element || !term || searching) {
+        return;
+      }
+      const onMatch = currentMatch !== null && Internal.onScreen(element, currentMatch);
+      const edges = onMatch ? {} : Internal.visibleEdges(element);
+      const from = onMatch ? currentMatch : direction === "up" ? edges.last : edges.first;
+
+      setSearching(true);
+      setExhausted(false);
+      try {
+        const found = await containerClient.find(id, { find: term, regex, from, inclusive: !onMatch, direction });
+        if (!found) {
+          // deliberately no wrapping: in a log of unknown length, silently reappearing at the other
+          // end reads as having lost your place rather than as having run out
+          setExhausted(true);
+          return;
+        }
+        setCurrentMatch(found);
+        if (rendered.current.some((event) => event.id === found)) {
+          /**
+           * Only move the view for an answer the reader cannot already see. Recentring on a match
+           * that was on screen the whole time shifts everything around it for no gain -- they were
+           * reading that page, and the highlight moving is the whole of the news.
+           */
+          if (!Internal.onScreen(element, found)) {
+            Internal.lineElement(element, found)?.scrollIntoView({ block: "center" });
+          }
+          return;
+        }
+        /**
+         * The match is outside the window, so the window moves to it -- and the jump marker, which
+         * described the window being left behind, goes with it rather than being redrawn somewhere
+         * it never pointed at.
+         */
+        setParameters({}, { replace: true });
+        setAnchor({ kind: "line", value: found });
+      } finally {
+        setSearching(false);
+      }
+    },
+    [containerClient, currentMatch, id, needle, ref, regex, searching, setParameters],
+  );
 
   /**
    * Paging forward is driven from here rather than from the `stuck` effect on purpose: appending
@@ -373,10 +466,44 @@ export function containerLogsPage() {
           <span className="text-c-dark-half">/</span>
           <span className="font-bold">{name}</span>
         </div>
-        <div className="flex flex-1 items-center gap-2 rounded-tl-2xl bg-c-dark-full px-3 py-2">
+        <div className="flex flex-1 items-center gap-3 rounded-tl-2xl bg-c-dark-full px-3 py-2">
           <Button onClick={() => void openJump()} theme="neutral" className="bg-white/10 hover:bg-white/20 py-1.5 text-xs">
             Jump
           </Button>
+
+          <div className="flex items-center gap-1.5 rounded-lg bg-white/5 px-2 py-1">
+            <button
+              onClick={() => setRegex((on) => !on)}
+              title="read the search as a regular expression"
+              className={clsx(
+                "rounded px-1.5 py-0.5 font-mono text-[11px] cursor-pointer transition-colors",
+                regex ? "bg-c-accent text-white" : "text-c-dark-half hover:text-gray-300",
+              )}
+            >
+              R
+            </button>
+            <input
+              value={needle}
+              onChange={(event) => setNeedle(event.target.value)}
+              onKeyDown={(event) => event.key === "Enter" && void step(event.shiftKey ? "up" : "down")}
+              placeholder="type to search"
+              className={clsx(
+                "w-64 bg-transparent font-mono text-xs outline-none placeholder:text-c-dark-half",
+                broken ? "text-red-400" : "text-gray-200",
+              )}
+            />
+            {/* never disabled by a verdict: without all of history in hand, "no more" is only ever
+                true of the search we last ran, not of the one about to be run */}
+            <Internal.Step direction="up" onClick={() => void step("up")} disabled={!needle.trim()} busy={searching} />
+            <Internal.Step direction="down" onClick={() => void step("down")} disabled={!needle.trim()} busy={searching} />
+          </div>
+
+          {exhausted && <span className="text-[11px] text-c-dark-half">no more matches that way</span>}
+          {matched.size > 0 && !exhausted && (
+            <span className="text-[11px] text-c-dark-half">
+              {matched.size} on screen{hasOlder || hasNewer ? " so far" : ""}
+            </span>
+          )}
         </div>
       </div>
 
@@ -401,7 +528,7 @@ export function containerLogsPage() {
           {/* an empty window means something different once a time was asked for: logs may well exist, just not there */}
           {!loading && events.length === 0 && (
             <div className="text-c-dark-half py-8 text-center">
-              {anchor ? "Nothing was logged at or after that time" : "No logs recorded yet"}
+              {anchor?.kind === "instant" ? "Nothing was logged at or after that time" : "No logs recorded yet"}
             </div>
           )}
           {!loading && hasOlder && <div className="text-c-dark-half text-center pb-2">scroll up for more</div>}
@@ -409,7 +536,13 @@ export function containerLogsPage() {
           {rows.map(({ event, opensDay, landedOn }) => (
             <Fragment key={event.id}>
               {opensDay && <Internal.DayMarker date={opensDay} landedOn={landedOn === "day"} onDismiss={dismissPin} />}
-              <Internal.Line event={event} landedOn={landedOn === "line"} onDismiss={dismissPin} />
+              <Internal.Line
+                event={event}
+                landedOn={landedOn === "line"}
+                onDismiss={dismissPin}
+                matched={matched.has(event.id)}
+                current={event.id === currentMatch}
+              />
             </Fragment>
           ))}
           {landedAtEnd && <Internal.TrailingMarker onDismiss={dismissPin} />}
@@ -453,6 +586,84 @@ namespace Internal {
     rows: Row[];
     landedAtEnd: boolean;
   };
+
+  /** Where the window was fetched around: a moment that was asked for, or a line that was found. */
+  export type Anchor = { kind: "instant"; value: string } | { kind: "line"; value: string };
+
+  export function lineElement(container: HTMLElement | null, eventId: string): HTMLElement | null {
+    return container?.querySelector<HTMLElement>(`[data-event="${CSS.escape(eventId)}"]`) ?? null;
+  }
+
+  /**
+   * Overlapping counts, so a line clipped by an edge is still "on screen" -- it is visible to the
+   * reader, and the alternative is a chevron that skips whatever happens to straddle the boundary.
+   */
+  function overlaps(line: HTMLElement, container: HTMLElement): boolean {
+    const bounds = container.getBoundingClientRect();
+    const rect = line.getBoundingClientRect();
+    return rect.bottom > bounds.top && rect.top < bounds.bottom;
+  }
+
+  export function onScreen(container: HTMLElement, eventId: string): boolean {
+    const line = lineElement(container, eventId);
+    return line !== null && overlaps(line, container);
+  }
+
+  /** The topmost and bottommost lines in view, which is what an unmatched search anchors on. */
+  export function visibleEdges(container: HTMLElement): { first?: string; last?: string } {
+    const shown = [...container.querySelectorAll<HTMLElement>("[data-event]")].filter((line) => overlaps(line, container));
+    return { first: shown.at(0)?.dataset.event, last: shown.at(-1)?.dataset.event };
+  }
+
+  /**
+   * Which loaded lines the needle lights up. Only ever a claim about what is in hand -- the count
+   * beside the box says "on screen" for exactly that reason.
+   */
+  export function highlight(events: ContainerEvent[], needle: string, regex: boolean): { matched: Set<string>; broken: boolean } {
+    const term = needle.trim();
+    if (!term) {
+      return { matched: new Set(), broken: false };
+    }
+    try {
+      const matches = LineMatch.predicate(term, regex);
+      return {
+        matched: new Set(events.filter((event) => event.type === ContainerEvent.Type.log && matches(event.line)).map((e) => e.id)),
+        broken: false,
+      };
+    } catch {
+      // half way through typing an expression, which is not yet an error worth shouting about
+      return { matched: new Set(), broken: true };
+    }
+  }
+
+  export function Step({
+    direction,
+    onClick,
+    disabled,
+    busy,
+  }: {
+    direction: "up" | "down";
+    onClick: () => void;
+    disabled: boolean;
+    busy: boolean;
+  }) {
+    return (
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        title={`${direction === "up" ? "previous" : "next"} match`}
+        className="flex size-5 items-center justify-center rounded text-gray-300 cursor-pointer hover:bg-white/10 disabled:opacity-30 disabled:cursor-default"
+      >
+        {busy ? (
+          <span className="size-2.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+        ) : (
+          <svg viewBox="0 0 10 6" className="w-2.5 fill-none stroke-current stroke-2" style={{ transform: direction === "up" ? "" : "rotate(180deg)" }}>
+            <path d="M1 5 L5 1 L9 5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </button>
+    );
+  }
 
   /** Dates as displayed: the same UTC the timestamps beside each line are printed in. */
   function day(event: ContainerEvent): string {
@@ -578,7 +789,19 @@ namespace Internal {
     );
   }
 
-  export function Line({ event, landedOn, onDismiss }: { event: ContainerEvent; landedOn: boolean; onDismiss: () => void }) {
+  export function Line({
+    event,
+    landedOn,
+    onDismiss,
+    matched,
+    current,
+  }: {
+    event: ContainerEvent;
+    landedOn: boolean;
+    onDismiss: () => void;
+    matched: boolean;
+    current: boolean;
+  }) {
     const time = event.timestamp.toString({ smallestUnit: "second" }).replace("T", " ").replace("Z", "");
     return (
       /*
@@ -586,7 +809,17 @@ namespace Internal {
        * line contributes an estimated height, so scrolling to the bottom stops short of it and the
        * live feed reads as paused when it is not. Plain rows keep the geometry exact.
        */
-      <div data-landed={landedOn ? "" : undefined} className="relative flex gap-3 whitespace-pre-wrap break-all">
+      <div
+        data-event={event.id}
+        data-landed={landedOn ? "" : undefined}
+        className={clsx(
+          "relative flex gap-3 whitespace-pre-wrap break-all",
+          // every match is lit, faintly; the one being stepped through is lit enough to find at a glance
+          matched && "-mx-1 rounded-sm px-1",
+          matched && !current && "bg-yellow-400/15",
+          current && "bg-yellow-400/35 ring-1 ring-yellow-400/60",
+        )}
+      >
         {landedOn && <LandingRule onDismiss={onDismiss} />}
         <span className="text-gray-500 shrink-0">{time}</span>
         <span className={clsx("flex-1", colour(event))}>{describe(event)}</span>

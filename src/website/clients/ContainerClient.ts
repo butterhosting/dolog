@@ -10,9 +10,12 @@ export class ContainerClient {
     return json.map(ContainerRM.parse);
   }
 
-  public async logs(containerId: string, { limit, before, after, at }: ContainerClient.LogsOptions = {}): Promise<ContainerClient.Page> {
+  public async logs(
+    containerId: string,
+    { limit, before, after, from, at }: ContainerClient.LogsOptions = {},
+  ): Promise<ContainerClient.Page> {
     const parameters = new URLSearchParams();
-    Object.entries({ limit, before, after, at }).forEach(([key, value]) => {
+    Object.entries({ limit, before, after, from, at }).forEach(([key, value]) => {
       if (value !== undefined) {
         parameters.set(key, `${value}`);
       }
@@ -31,14 +34,43 @@ export class ContainerClient {
       landedOn: json.landedOn ?? null,
     };
   }
+
+  /**
+   * The nearest line matching `find` in the given direction, or null when there is none that way.
+   *
+   * Only a position comes back. Most answers are lines already on screen, so asking for a page here
+   * would throw away the window the reader is holding in order to be handed most of it again.
+   */
+  public async find(containerId: string, options: ContainerClient.FindOptions): Promise<string | null> {
+    const parameters = new URLSearchParams();
+    Object.entries(options).forEach(([key, value]) => {
+      if (value !== undefined) {
+        parameters.set(key, `${value}`);
+      }
+    });
+    const { json } = await this.yesttp.get<{ landedOn: string | null }>(`/containers/${containerId}/logs/find?${parameters}`);
+    return json.landedOn;
+  }
 }
 
 export namespace ContainerClient {
+  export type FindOptions = {
+    find: string;
+    regex: boolean;
+    /** The line to search out from; absent starts at whichever end `direction` reads from. */
+    from?: string;
+    /** Whether `from` may itself be the answer -- false when stepping off a match already found. */
+    inclusive: boolean;
+    direction: "up" | "down";
+  };
+
   export type LogsOptions = {
     limit?: number;
     /** Ids of events already held: `before` reads backwards, `after` forwards, neither is the live end. */
     before?: string;
     after?: string;
+    /** Like `after`, but opening the window *with* that line rather than just past it. */
+    from?: string;
     /** A wall-clock instant to read forwards from, for arriving somewhere by time rather than by id. */
     at?: string;
   };

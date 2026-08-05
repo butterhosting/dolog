@@ -112,6 +112,13 @@ export class Server {
             return Response.json(await this.logService.list(params.id, query));
           }),
         },
+        // a position, not a page: the caller usually holds the line already and only has to scroll
+        "/internal-api/containers/:id/logs/find": {
+          GET: this.handleRoute(async ({ params, url }) => {
+            const query: any = Object.fromEntries(new URL(url).searchParams);
+            return Response.json(await this.logService.find(params.id, query));
+          }),
+        },
       },
 
       /**

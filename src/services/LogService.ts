@@ -32,7 +32,7 @@ export class LogService {
   }
 
   public async list(containerId: string, unknown: z.output<typeof LogService.Query>): Promise<LogService.Page> {
-    const { limit, before, after, at } = LogService.Query.parse(unknown);
+    const { limit, before, after, from, at } = LogService.Query.parse(unknown);
     /**
      * `at` names a position on its own, so pairing it with a cursor asks for two starting points at
      * once. It used to win silently and the cursor was dropped, which reads as the server ignoring
@@ -41,11 +41,16 @@ export class LogService {
      * Named here rather than refined in the schema because the schema reports issues by *code*, and
      * a cross-field rule only ever has "custom" to offer -- which tells the caller nothing.
      */
-    if (at !== undefined && (before !== undefined || after !== undefined)) {
-      throw ServerError.conflicting_log_position({ at: at.toString(), before: before ?? null, after: after ?? null });
+    if (at !== undefined && (before !== undefined || after !== undefined || from !== undefined)) {
+      throw ServerError.conflicting_log_position({
+        at: at.toString(),
+        before: before ?? null,
+        after: after ?? null,
+        from: from ?? null,
+      });
     }
     if (!at) {
-      return await this.logRepository.listEvents(containerId, limit, { before, after });
+      return await this.logRepository.listEvents(containerId, limit, { before, after, from });
     }
     const boundary = Uuid.fromBytes(Uuid.lowerBoundAt(at));
     const forwards = await this.logRepository.listEvents(containerId, limit, { after: boundary });
@@ -65,6 +70,23 @@ export class LogService {
     const backwards = await this.logRepository.listEvents(containerId, limit, { before: boundary });
     return { ...backwards, hasNewer: false, landedOn: null };
   }
+
+  /**
+   * Where the next line matching a needle sits, without moving anything. The caller decides what to
+   * do with the answer: scroll to it if it already has it, fetch a window around it if it does not.
+   */
+  public async find(containerId: string, unknown: z.output<typeof LogService.Find>): Promise<{ landedOn: string | null }> {
+    const { find, regex, from, inclusive, direction } = LogService.Find.parse(unknown);
+    try {
+      return { landedOn: await this.logRepository.findEvent(containerId, { needle: find, regex, from, inclusive, direction }) };
+    } catch (error) {
+      // a half-typed regular expression is an ordinary thing to receive, not a fault
+      if (error instanceof SyntaxError) {
+        throw ServerError.invalid_search_pattern({ pattern: find, reason: error.message });
+      }
+      throw error;
+    }
+  }
 }
 
 export namespace LogService {
@@ -81,6 +103,24 @@ export namespace LogService {
     landedOn?: string | null;
   };
 
+  export const Find = z
+    .object({
+      find: z.string().min(1),
+      regex: z
+        .string()
+        .optional()
+        .transform((value) => value === "true"),
+      from: z.string().optional(),
+      inclusive: z
+        .string()
+        .optional()
+        .transform((value) => value === "true"),
+      direction: z.enum(["up", "down"]).default("down"),
+    })
+    .catch((e) => {
+      throw ServerError.invalid_request_query(ZodProblem.issuesSummary(e));
+    });
+
   export const Query = z
     .object({
       // clamped rather than rejected: the caller knows how many will still fit on its screen, and
@@ -93,6 +133,7 @@ export namespace LogService {
         .transform((requested) => Math.min(requested, MAX_EVENTS_PER_PAGE)),
       before: z.string().optional(),
       after: z.string().optional(),
+      from: z.string().optional(),
       at: z.string().transform(ZodParser.instant).optional(),
     })
     .catch((e) => {

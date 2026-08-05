@@ -145,6 +145,119 @@ describe(EventRepository.name, () => {
     expect(page.hasOlder).toBe(false);
   });
 
+  describe("searching", () => {
+    /** "line 0" .. "line 9", with "needle" buried at 2 and 7. */
+    async function haystack() {
+      const container = TestFixture.container();
+      const all = Array.from({ length: 10 }, (_, i) =>
+        TestFixture.logEvent({ container, line: i === 2 || i === 7 ? `needle ${i}` : `line ${i}` }),
+      );
+      await write(all);
+      return { container, all };
+    }
+
+    it("should find the nearest match below the anchor, not the furthest", async () => {
+      // given
+      const { container, all } = await haystack();
+      // when
+      const found = await repository.findEvent(container.id, { needle: "needle", regex: false, inclusive: false, direction: "down" });
+      // then
+      expect(found).toBe(all[2]!.id);
+    });
+
+    it("should find the nearest match above the anchor when reading up", async () => {
+      // given
+      const { container, all } = await haystack();
+      // when (standing at the very end and stepping back)
+      const found = await repository.findEvent(container.id, {
+        needle: "needle",
+        regex: false,
+        from: all[9]!.id,
+        inclusive: true,
+        direction: "up",
+      });
+      // then (7, not 2 -- the first one met going up)
+      expect(found).toBe(all[7]!.id);
+    });
+
+    it("should step off a match it is standing on rather than returning it forever", async () => {
+      // given
+      const { container, all } = await haystack();
+      // when (anchored on the match at 2, which is how pressing the chevron again arrives here)
+      const found = await repository.findEvent(container.id, {
+        needle: "needle",
+        regex: false,
+        from: all[2]!.id,
+        inclusive: false,
+        direction: "down",
+      });
+      // then
+      expect(found).toBe(all[7]!.id);
+    });
+
+    it("should let an anchor the reader merely happened to be looking at match on its own", async () => {
+      // given
+      const { container, all } = await haystack();
+      // when (the same line, but anchored the way an unmatched viewport edge is)
+      const found = await repository.findEvent(container.id, {
+        needle: "needle",
+        regex: false,
+        from: all[2]!.id,
+        inclusive: true,
+        direction: "down",
+      });
+      // then
+      expect(found).toBe(all[2]!.id);
+    });
+
+    it("should answer with nothing when the needle is not there, rather than guessing", async () => {
+      // given
+      const { container } = await haystack();
+      // when
+      const found = await repository.findEvent(container.id, { needle: "haystack", regex: false, inclusive: false, direction: "down" });
+      // then
+      expect(found).toBeNull();
+    });
+
+    it("should ignore case for a literal needle, and take a regular expression as written", async () => {
+      // given
+      const container = TestFixture.container();
+      const all = [TestFixture.logEvent({ container, line: "SHOUTING" })];
+      await write(all);
+
+      // when / then
+      const literal = { needle: "shouting", regex: false, inclusive: false, direction: "down" } as const;
+      expect(await repository.findEvent(container.id, literal)).toBe(all[0]!.id);
+      expect(await repository.findEvent(container.id, { ...literal, needle: "shout.ng", regex: true })).toBeNull();
+      expect(await repository.findEvent(container.id, { ...literal, needle: "SHOUT.NG", regex: true })).toBe(all[0]!.id);
+    });
+
+    it("should not let sqlite's own wildcards leak out of a literal needle", async () => {
+      // given (a needle whose characters mean something to `like`)
+      const container = TestFixture.container();
+      const all = [TestFixture.logEvent({ container, line: "100% done" }), TestFixture.logEvent({ container, line: "100 percent" })];
+      await write(all);
+
+      // when
+      const found = await repository.findEvent(container.id, { needle: "100%", regex: false, inclusive: false, direction: "down" });
+      // then (the literal "100%", not "100" followed by anything)
+      expect(found).toBe(all[0]!.id);
+    });
+
+    it("should search lines that have not been written yet", async () => {
+      // given (half on disk, half still buffered)
+      const container = TestFixture.container();
+      await write([TestFixture.logEvent({ container, line: "line 0" })]);
+      const unwritten = TestFixture.logEvent({ container, line: "needle in the buffer" });
+      repository.saveEvent(unwritten);
+
+      // when
+      const found = await repository.findEvent(container.id, { needle: "needle", regex: false, inclusive: false, direction: "down" });
+      // then
+      expect(found).toBe(unwritten.id);
+    });
+  });
+
   it("should report the live end for a window with no cursor at all", async () => {
     // given
     const container = TestFixture.container();
