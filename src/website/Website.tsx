@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { createBrowserRouter, replace, RouterProvider } from "react-router";
 import { ClientRegistry } from "./ClientRegistry";
+import { DialogClient } from "./clients/DialogClient";
 import { SocketClient } from "./clients/SocketClient";
+import { DialogManager } from "./comps/DialogManager";
 import { containerLogsPage } from "./pages/container.logs.page";
 import { containersPage } from "./pages/containers.page";
 import { Route } from "./Route";
@@ -33,6 +35,7 @@ export function Website() {
     return (
       <ClientRegistry.Context.Provider value={clientRegistry}>
         <RouterProvider router={router} />
+        <DialogManager ref={(manager) => clientRegistry.get(DialogClient).initialize(manager)} />
       </ClientRegistry.Context.Provider>
     );
   }

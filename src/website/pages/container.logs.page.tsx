@@ -6,7 +6,9 @@ import clsx from "clsx";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { ContainerClient } from "../clients/ContainerClient";
+import { DialogClient } from "../clients/DialogClient";
 import { SocketClient } from "../clients/SocketClient";
+import { Button } from "../comps/Button";
 import { Spinner } from "../comps/Spinner";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useRegistry } from "../hooks/useRegistry";
@@ -30,14 +32,22 @@ export function containerLogsPage() {
   const { id = "" } = useParams();
   const containerClient = useRegistry(ContainerClient);
   const socketClient = useRegistry(SocketClient);
+  const dialogClient = useRegistry(DialogClient);
 
   /**
-   * The instant the reader navigated to, kept in the URL so the view can be linked and reloaded.
-   * Held as text: it is whatever they typed until they press Jump, and only then has to parse.
+   * Where the marker is drawn, kept in the URL so the view can be linked and reloaded.
    */
   const [parameters, setParameters] = useSearchParams();
-  const navigatedAt = parameters.get("at");
-  const [typedAt, setTypedAt] = useState(navigatedAt ?? "");
+  const pinnedAt = parameters.get("at");
+  /**
+   * Where the window was fetched around, which is a different question from where the marker is.
+   *
+   * They begin life together and part company when the marker is dismissed: taking it away is a
+   * change of mind about an annotation, not about where the reader is standing. Fetching off the
+   * marker would mean the little `x` silently re-ran the load and threw them back to the live feed,
+   * losing the history they had paged in -- so the anchor is moved by jumping, and by nothing else.
+   */
+  const [anchor, setAnchor] = useState(pinnedAt);
 
   const [events, setEvents] = useState<ContainerEvent[]>([]);
   const [hasOlder, setHasOlder] = useState(false);
@@ -50,7 +60,7 @@ export function containerLogsPage() {
   const name = events.at(-1)?.container.name ?? events.at(0)?.container.name ?? id.slice(0, 12);
   useDocumentTitle(`${name} | Dolog`);
 
-  const { ref, stuck, onScroll, scrollToBottom } = useStickyScroll<HTMLDivElement>(events, !navigatedAt);
+  const { ref, stuck, onScroll, scrollToBottom } = useStickyScroll<HTMLDivElement>(events, !anchor);
   /**
    * Read by the socket callback, which closes over its first render and would otherwise never see
    * the reader scroll away.
@@ -62,10 +72,10 @@ export function containerLogsPage() {
    * The lines plus their markers. Recomputed only when the list actually changes, since it walks
    * every rendered event and the live feed re-renders this component every second.
    */
-  const rows = useMemo(() => {
-    const landedAt = Internal.parseInstant(navigatedAt);
+  const { rows, landedAtEnd } = useMemo(() => {
+    const landedAt = Internal.parseInstant(pinnedAt);
     return Internal.rows(events, !hasOlder, landedAt);
-  }, [events, hasOlder, navigatedAt]);
+  }, [events, hasOlder, pinnedAt]);
 
   /** What is on screen, for callbacks that would otherwise be rebuilt on every arriving line. */
   const rendered = useRef<ContainerEvent[]>([]);
@@ -119,7 +129,7 @@ export function containerLogsPage() {
     socketClient.declareContainerInterest(id);
 
     void (async () => {
-      const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, at: navigatedAt ?? undefined });
+      const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, at: anchor ?? undefined });
       if (cancelled) {
         return;
       }
@@ -129,7 +139,7 @@ export function containerLogsPage() {
        * they asked about. A page of context is fetched above it so they arrive in the middle of
        * events rather than at their leading edge.
        */
-      const landing = navigatedAt ? page.events.at(0) : undefined;
+      const landing = anchor ? page.events.at(0) : undefined;
       const above = landing ? await containerClient.logs(id, { limit: LINES_PER_PAGE, before: landing.id }) : undefined;
       if (cancelled) {
         return;
@@ -140,9 +150,9 @@ export function containerLogsPage() {
        * head of the buffer overlap, and whatever the page missed is appended.
        */
       const shown = new Set(page.events.map((event) => event.id));
-      const missed = navigatedAt ? [] : arrivedDuringFetch.filter((event) => !shown.has(event.id));
+      const missed = anchor ? [] : arrivedDuringFetch.filter((event) => !shown.has(event.id));
       const window = [...(above?.events ?? []), ...page.events, ...missed];
-      setEvents(navigatedAt ? window : window.slice(-LINES_PER_PAGE));
+      setEvents(anchor ? window : window.slice(-LINES_PER_PAGE));
       setHasOlder(above ? above.hasOlder : page.hasOlder);
       setHasNewer(page.hasNewer);
       setLoading(false);
@@ -168,7 +178,7 @@ export function containerLogsPage() {
       socketClient.unsubscribe(subscription);
     };
     // re-runs on a jump, which is exactly right: a new position means a new window and a fresh fetch
-  }, [id, navigatedAt, containerClient, socketClient, ref]);
+  }, [id, anchor, containerClient, socketClient, ref]);
 
   /**
    * Scrolling to the very top pulls in the page above. The scroll position is restored afterwards by
@@ -260,11 +270,11 @@ export function containerLogsPage() {
    * Following means sitting at the bottom *of the live feed*. Being at the bottom of a window parked
    * in history is not the same thing, and must not start appending live lines to it.
    *
-   * A navigated instant rules it out on its own, whatever the window happens to contain. Asking for
-   * a time with nothing after it leaves `hasNewer` false -- true, but not because we are at the live
-   * end -- and following on that alone quietly turned a history view back into a live one.
+   * An anchor rules it out on its own, whatever the window happens to contain. Asking for a time
+   * with nothing after it leaves `hasNewer` false -- true, but not because we are at the live end --
+   * and following on that alone quietly turned a history view back into a live one.
    */
-  const atLiveEnd = stuck && !hasNewer && !navigatedAt;
+  const atLiveEnd = stuck && !hasNewer && !anchor;
   useEffect(() => {
     following.current = atLiveEnd;
     if (atLiveEnd) {
@@ -274,39 +284,50 @@ export function containerLogsPage() {
 
   /** Leaves history behind entirely: the live end is elsewhere, so it is fetched afresh. */
   const jumpToLive = useCallback(async () => {
-    if (navigatedAt) {
-      // dropping `at` re-runs the load effect, which fetches the live end for us
+    if (anchor) {
+      // dropping the anchor re-runs the load effect, which fetches the live end for us
       setParameters({}, { replace: true });
+      setAnchor(null);
       scrollToBottom();
       return;
     }
     await rejoinLive();
     scrollToBottom();
-  }, [navigatedAt, rejoinLive, scrollToBottom, setParameters]);
+  }, [anchor, rejoinLive, scrollToBottom, setParameters]);
 
   /**
-   * Navigating is a URL change and nothing more; the load effect does the rest.
+   * Jumping is a URL change plus an anchor move; the load effect does the rest.
    *
-   * Except when the instant has not changed -- then there is no URL change to react to, and the
-   * button would sit there doing nothing. Pressing it again means "take me back to my marker", so
-   * that is what it does, without refetching a window that is already loaded.
+   * Except when the anchor would not actually move -- pressing Jump on the instant already loaded,
+   * or re-pinning one that was dismissed. There is nothing to fetch in either case, so the marker is
+   * simply put back and scrolled to, on the frame after it exists.
    */
-  const jumpToTyped = useCallback(() => {
-    const at = typedAt.trim();
-    if (!at) {
-      return;
-    }
-    const marker = ref.current?.querySelector("[data-landed]");
-    if (at === navigatedAt && marker) {
-      marker.scrollIntoView({ block: "center" });
-      return;
-    }
-    setParameters({ at });
-  }, [navigatedAt, ref, setParameters, typedAt]);
+  const jumpTo = useCallback(
+    (instant: Temporal.Instant) => {
+      const at = instant.toString();
+      setParameters({ at });
+      if (at !== anchor) {
+        setAnchor(at);
+        return;
+      }
+      requestAnimationFrame(() => ref.current?.querySelector("[data-landed]")?.scrollIntoView({ block: "center" }));
+    },
+    [anchor, ref, setParameters],
+  );
 
-  const clearNavigation = useCallback(() => {
-    setTypedAt("");
-    setParameters({});
+  const openJump = useCallback(async () => {
+    const chosen = await dialogClient.jumpTo(Internal.parseInstant(pinnedAt) ?? undefined);
+    if (chosen !== "cancel") {
+      jumpTo(chosen);
+    }
+  }, [dialogClient, jumpTo, pinnedAt]);
+
+  /**
+   * Only the marker goes. The anchor deliberately stays put, so the window the reader is in survives
+   * -- see where it is declared.
+   */
+  const dismissPin = useCallback(() => {
+    setParameters({}, { replace: true });
   }, [setParameters]);
 
   /**
@@ -330,12 +351,25 @@ export function containerLogsPage() {
   }, [hasNewer, loadNewer, loadOlder, onScroll, ref]);
 
   return (
-    <div className="flex flex-col h-screen py-6 gap-4">
-      <div className="flex items-baseline gap-4">
-        <Link to={Route.containers()} className="text-c-accent hover:underline">
-          ← containers
-        </Link>
-        <span className="font-bold">{name}</span>
+    <div className="full-bleed flex h-screen flex-col">
+      {/*
+       * The viewer owns the whole viewport, so the toolbar is the log surface's top edge rather than
+       * a bar floating above it. The breadcrumb is the one thing left standing outside, which is why
+       * the dark area is notched around it rather than starting at the corner.
+       */}
+      <div className="flex items-stretch">
+        <div className="flex shrink-0 items-center gap-2 px-4 text-sm">
+          <Link to={Route.containers()} className="text-c-accent hover:underline">
+            Containers
+          </Link>
+          <span className="text-c-dark-half">/</span>
+          <span className="font-bold">{name}</span>
+        </div>
+        <div className="flex flex-1 items-center gap-2 rounded-tl-2xl bg-c-dark-full px-3 py-2">
+          <Button onClick={() => void openJump()} theme="neutral" className="bg-white/10 hover:bg-white/20 py-1.5 text-xs">
+            Jump
+          </Button>
+        </div>
       </div>
 
       <div className="relative flex-1 min-h-0">
@@ -349,7 +383,7 @@ export function containerLogsPage() {
         <div
           ref={ref}
           onScroll={handleScroll}
-          className="h-full overflow-y-auto [overflow-anchor:none] rounded-2xl bg-c-dark-full text-gray-200 font-mono text-xs p-4 leading-relaxed"
+          className="h-full overflow-y-auto [overflow-anchor:none] bg-c-dark-full text-gray-200 font-mono text-xs p-4 leading-relaxed"
         >
           {loading && (
             <div className="flex justify-center py-8">
@@ -359,17 +393,18 @@ export function containerLogsPage() {
           {/* an empty window means something different once a time was asked for: logs may well exist, just not there */}
           {!loading && events.length === 0 && (
             <div className="text-c-dark-half py-8 text-center">
-              {navigatedAt ? "Nothing was logged at or after that time" : "No logs recorded yet"}
+              {anchor ? "Nothing was logged at or after that time" : "No logs recorded yet"}
             </div>
           )}
           {!loading && hasOlder && <div className="text-c-dark-half text-center pb-2">scroll up for more</div>}
           {!loading && !hasOlder && events.length > 0 && <div className="text-c-dark-half text-center pb-2">that is the beginning</div>}
           {rows.map(({ event, opensDay, landedOn }) => (
             <Fragment key={event.id}>
-              {opensDay && <Internal.DayMarker date={opensDay} />}
-              <Internal.Line event={event} landedOn={landedOn} />
+              {opensDay && <Internal.DayMarker date={opensDay} landedOn={landedOn === "day"} onDismiss={dismissPin} />}
+              <Internal.Line event={event} landedOn={landedOn === "line"} onDismiss={dismissPin} />
             </Fragment>
           ))}
+          {landedAtEnd && <Internal.TrailingMarker onDismiss={dismissPin} />}
           {!loading && hasNewer && <div className="text-c-dark-half text-center pt-2">scroll down for more</div>}
         </div>
 
@@ -385,35 +420,6 @@ export function containerLogsPage() {
           </button>
         )}
       </div>
-
-      <div className="flex items-end gap-6">
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-c-dark-half">Navigate</span>
-          <span className="flex items-center gap-2 rounded-lg border border-c-dark-half/40 px-3 py-1.5">
-            <input
-              value={typedAt}
-              onChange={(event) => setTypedAt(event.target.value)}
-              onKeyDown={(event) => event.key === "Enter" && jumpToTyped()}
-              placeholder="2026-08-04T09:00:00Z"
-              className="bg-transparent font-mono text-xs outline-none w-56"
-            />
-            <button
-              onClick={clearNavigation}
-              disabled={!navigatedAt && !typedAt}
-              className="rounded bg-red-200 text-c-dark-full text-xs px-2 py-0.5 cursor-pointer hover:opacity-90 disabled:opacity-30 disabled:cursor-default"
-            >
-              Clear
-            </button>
-            <button
-              onClick={jumpToTyped}
-              disabled={!typedAt.trim()}
-              className="rounded bg-green-200 text-c-dark-full text-xs px-2 py-0.5 cursor-pointer hover:opacity-90 disabled:opacity-30 disabled:cursor-default"
-            >
-              Jump
-            </button>
-          </span>
-        </label>
-      </div>
     </div>
   );
 }
@@ -427,13 +433,30 @@ namespace Internal {
     event: ContainerEvent;
     /** The date this line opens, when it differs from the line before it. */
     opensDay: string | null;
-    /** Whether a navigation timestamp falls just above this line. */
-    landedOn: boolean;
+    /**
+     * Which of this row's two seams a navigation timestamp fell on, if either -- above the day
+     * marker, or between it and the line itself.
+     */
+    landedOn: "day" | "line" | null;
+  };
+
+  /** The rendered list, plus the one landing position that belongs to no row: past the last line. */
+  type Rows = {
+    rows: Row[];
+    landedAtEnd: boolean;
   };
 
   /** Dates as displayed: the same UTC the timestamps beside each line are printed in. */
   function day(event: ContainerEvent): string {
     return event.timestamp.toString().slice(0, 10);
+  }
+
+  /**
+   * A day marker stands for the instant its day began, which is what lets a navigated timestamp be
+   * placed against it rather than always beneath it.
+   */
+  function midnight(date: string): Temporal.Instant {
+    return Temporal.Instant.from(`${date}T00:00:00Z`);
   }
 
   /** The URL is whatever was typed into it, so an unparseable one simply marks nothing. */
@@ -448,31 +471,100 @@ namespace Internal {
     }
   }
 
-  export function rows(events: ContainerEvent[], reachedBeginning: boolean, landedAt: Temporal.Instant | null): Row[] {
+  export function rows(events: ContainerEvent[], reachedBeginning: boolean, landedAt: Temporal.Instant | null): Rows {
     const landedIndex = !landedAt ? -1 : events.findIndex((event) => Temporal.Instant.compare(event.timestamp, landedAt) >= 0);
-    return events.map((event, index) => {
+    /**
+     * Asking for a moment later than anything logged. The server answers by reading *backwards*, so
+     * the reader is shown the end of history -- and the mark belongs under the last line, because
+     * that is where the instant they asked for falls. Leaving it off was the one case where jumping
+     * appeared to do nothing at all, which is easy to hit: a picker offers today by default, and
+     * today is past the end of any container that has stopped talking.
+     */
+    const landedAtEnd = !!landedAt && landedIndex === -1 && events.length > 0;
+    const rows: Row[] = events.map((event, index) => {
       const previous = events[index - 1];
+      /**
+       * The topmost line gets a marker only once there is nothing above it. Otherwise the window
+       * merely starts mid-day, and a marker there would claim a day began where it did not.
+       */
+      const opensDay = previous ? (day(previous) === day(event) ? null : day(event)) : reachedBeginning ? day(event) : null;
       return {
         event,
+        opensDay,
         /**
-         * The topmost line gets a pill only once there is nothing above it. Otherwise the window
-         * merely starts mid-day, and a pill there would claim a day began where it did not.
+         * One rule, applied to both seams: the mark sits above the first thing at or after the
+         * instant asked for. A day marker counts as a thing, standing at midnight -- so landing
+         * before the day began draws above it, and landing during the day draws below it, rather
+         * than the mark always ending up beneath a date it precedes.
          */
-        opensDay: previous ? (day(previous) === day(event) ? null : day(event)) : reachedBeginning ? day(event) : null,
-        landedOn: index === landedIndex,
+        landedOn:
+          index !== landedIndex
+            ? null
+            : opensDay && landedAt && Temporal.Instant.compare(landedAt, midnight(opensDay)) <= 0
+              ? "day"
+              : "line",
       };
     });
+    return { rows, landedAtEnd };
   }
 
-  export function DayMarker({ date }: { date: string }) {
+  /**
+   * The seam a navigation landed on. Drawn across the boundary between two rows rather than inside
+   * one, and absolutely so: it marks the seam without occupying it, adds no height, and never joins
+   * a copied selection. The insets bleed it into the container's padding so it spans the full width.
+   *
+   * Its host is whichever row edge the instant fell on, so it needs a positioned parent either way.
+   */
+  function LandingRule({ onDismiss }: { onDismiss: () => void }) {
     return (
-      <div className="flex justify-center py-3">
-        <span className="rounded-full bg-c-dark-half/30 text-gray-300 px-4 py-1 text-[11px] tracking-wide">{date}</span>
+      <>
+        <span aria-hidden className="pointer-events-none absolute -left-4 -right-4 -top-px h-px bg-green-400/70" />
+        {/*
+         * The one thing in the column that takes a click, so it is the one thing that keeps its
+         * pointer events. Straddling the left edge puts it clear of the timestamps at any width.
+         */}
+        <button
+          onClick={onDismiss}
+          title="dismiss this marker"
+          className="absolute -left-4 -top-2 z-10 flex size-4 cursor-pointer items-center justify-center rounded-full bg-green-400 text-[10px] font-bold leading-none text-c-dark-full hover:bg-green-300"
+        >
+          ×
+        </button>
+      </>
+    );
+  }
+
+  /**
+   * Deliberately quiet: this only says which day the lines beneath it belong to, and a filled pill
+   * gave that more weight than the log itself. Dimmed to the same register as the other notes around
+   * the list, which also leaves the landing rule as the one coloured thing in the column.
+   */
+  export function DayMarker({ date, landedOn, onDismiss }: { date: string; landedOn: boolean; onDismiss: () => void }) {
+    return (
+      <div
+        data-landed={landedOn ? "" : undefined}
+        className="relative flex justify-center py-3 text-[11px] tracking-wide text-c-dark-half"
+      >
+        {landedOn && <LandingRule onDismiss={onDismiss} />}
+        {date}
       </div>
     );
   }
 
-  export function Line({ event, landedOn }: { event: ContainerEvent; landedOn?: boolean }) {
+  /**
+   * The marker when it sits past every line. Carries the height the rule cannot supply itself,
+   * since it is drawn on this element's top edge and would otherwise hang off the end of the list.
+   */
+  export function TrailingMarker({ onDismiss }: { onDismiss: () => void }) {
+    return (
+      <div data-landed="" className="relative pt-3 text-[11px] text-c-dark-half">
+        <LandingRule onDismiss={onDismiss} />
+        <span className="block text-center">nothing was logged after this</span>
+      </div>
+    );
+  }
+
+  export function Line({ event, landedOn, onDismiss }: { event: ContainerEvent; landedOn: boolean; onDismiss: () => void }) {
     const time = event.timestamp.toString({ smallestUnit: "second" }).replace("T", " ").replace("Z", "");
     return (
       /*
@@ -481,20 +573,7 @@ namespace Internal {
        * live feed reads as paused when it is not. Plain rows keep the geometry exact.
        */
       <div data-landed={landedOn ? "" : undefined} className="relative flex gap-3 whitespace-pre-wrap break-all">
-        {/*
-         * Drawn across the boundary this line opens rather than inside it, and absolutely so: it
-         * marks the seam between two lines without occupying one, and never joins a copied
-         * selection. The insets bleed it into the container's padding so it spans the full width.
-         */}
-        {landedOn && (
-          <>
-            <span aria-hidden className="pointer-events-none absolute -left-4 -right-4 -top-px h-px bg-green-400/60" />
-            <span
-              title="you jumped to here"
-              className="pointer-events-none absolute -left-4 -top-[5px] border-y-[5px] border-y-transparent border-l-[8px] border-l-green-400"
-            />
-          </>
-        )}
+        {landedOn && <LandingRule onDismiss={onDismiss} />}
         <span className="text-gray-500 shrink-0">{time}</span>
         <span className={clsx("flex-1", colour(event))}>{describe(event)}</span>
       </div>

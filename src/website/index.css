@@ -40,4 +40,12 @@
     #root {
         @apply min-h-screen flex flex-col w-full max-w-4xl px-3 mx-auto;
     }
+    /*
+     * The reading-width column is right for every page but the log viewer, which wants the whole
+     * viewport. Asked for by the page that needs it rather than switched on from the router, since
+     * the page is the only thing that knows -- and released again the moment it unmounts.
+     */
+    #root:has(.full-bleed) {
+        @apply max-w-none px-0;
+    }
 }
