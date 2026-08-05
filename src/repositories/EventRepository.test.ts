@@ -131,6 +131,20 @@ describe(EventRepository.name, () => {
     expect(page.hasOlder).toBe(true);
   });
 
+  it("should report reaching the beginning when reading forwards from before anything was logged", async () => {
+    // given
+    const container = TestFixture.container();
+    await write(Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` })));
+
+    // when (arriving by time, at an instant older than every line there is)
+    const beforeEverything = Uuid.fromBytes(Uuid.lowerBoundAt(Temporal.Instant.from("2000-01-01T00:00:00Z")));
+    const page = await repository.listEvents(container.id, 100, { after: beforeEverything });
+
+    // then (the whole history, and no pretending there is more above it)
+    expect(page.events).toHaveLength(10);
+    expect(page.hasOlder).toBe(false);
+  });
+
   it("should report the live end for a window with no cursor at all", async () => {
     // given
     const container = TestFixture.container();

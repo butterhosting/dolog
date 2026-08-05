@@ -76,12 +76,44 @@ export class EventRepository {
     const merged = [...new Map(events.map((event) => [event.id, event])).values()].sort((a, b) => a.id.localeCompare(b.id));
     // the query filled its page, or the merge produced more than was asked for, so that edge has more
     const saturated = stored.length === limit || merged.length > limit;
+    const page = forwards ? merged.slice(0, limit) : merged.slice(-limit);
     return {
-      events: forwards ? merged.slice(0, limit) : merged.slice(-limit),
-      // whatever lies past the cursor is unexamined, so that side is assumed to have more
-      hasOlder: forwards ? true : saturated,
+      events: page,
+      /**
+       * Reading forwards leaves the older side unexamined, and it used to be *assumed* to have more.
+       * That is wrong in the one place it matters: arriving at a time before anything was logged, the
+       * reader is standing at the beginning of history and needs to be told so. One indexed existence
+       * check answers it instead of guessing.
+       */
+      hasOlder: forwards ? this.anythingOlderThan(container?.id, page.at(0)?.id, after) : saturated,
       hasNewer: forwards ? saturated : before !== undefined,
     };
+  }
+
+  /**
+   * Whether the container holds anything above the page just read. The page's own oldest line is the
+   * bound when there is one; with an empty page everything up to and including the cursor qualifies,
+   * since nothing beyond it exists to have pushed it along.
+   */
+  private anythingOlderThan(container: number | undefined, oldestShown: string | undefined, cursor: string | undefined): boolean {
+    const bound =
+      oldestShown !== undefined
+        ? lt($containerEvent.id, Uuid.toBytes(oldestShown))
+        : cursor !== undefined
+          ? lte($containerEvent.id, Uuid.toBytes(cursor))
+          : undefined;
+    // nothing is written for this container yet, so nothing can be older than the page
+    if (container === undefined || !bound) {
+      return false;
+    }
+    return (
+      this.sqlite
+        .select({ one: sql`1` })
+        .from($containerEvent)
+        .where(and(eq($containerEvent.container, container), bound))
+        .limit(1)
+        .get() !== undefined
+    );
   }
 
   /**

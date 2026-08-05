@@ -50,6 +50,13 @@ export function containerLogsPage() {
   const [anchor, setAnchor] = useState(pinnedAt);
 
   const [events, setEvents] = useState<ContainerEvent[]>([]);
+  /**
+   * The line the server settled on for the current anchor, straight from its answer rather than
+   * re-derived here. Its boundary is a millisecond and an instant can sit inside one, so a scan for
+   * the first timestamp at or after the instant could pick a different line than the one the window
+   * was actually fetched around.
+   */
+  const [landedOn, setLandedOn] = useState<string | null>(null);
   const [hasOlder, setHasOlder] = useState(false);
   /** True once the window sits somewhere in history rather than at the live feed. */
   const [hasNewer, setHasNewer] = useState(false);
@@ -74,8 +81,8 @@ export function containerLogsPage() {
    */
   const { rows, landedAtEnd } = useMemo(() => {
     const landedAt = Internal.parseInstant(pinnedAt);
-    return Internal.rows(events, !hasOlder, landedAt);
-  }, [events, hasOlder, pinnedAt]);
+    return Internal.rows(events, !hasOlder, landedAt, landedOn);
+  }, [events, hasOlder, pinnedAt, landedOn]);
 
   /** What is on screen, for callbacks that would otherwise be rebuilt on every arriving line. */
   const rendered = useRef<ContainerEvent[]>([]);
@@ -153,6 +160,7 @@ export function containerLogsPage() {
       const missed = anchor ? [] : arrivedDuringFetch.filter((event) => !shown.has(event.id));
       const window = [...(above?.events ?? []), ...page.events, ...missed];
       setEvents(anchor ? window : window.slice(-LINES_PER_PAGE));
+      setLandedOn(page.landedOn);
       setHasOlder(above ? above.hasOlder : page.hasOlder);
       setHasNewer(page.hasNewer);
       setLoading(false);
@@ -471,16 +479,22 @@ namespace Internal {
     }
   }
 
-  export function rows(events: ContainerEvent[], reachedBeginning: boolean, landedAt: Temporal.Instant | null): Rows {
-    const landedIndex = !landedAt ? -1 : events.findIndex((event) => Temporal.Instant.compare(event.timestamp, landedAt) >= 0);
+  export function rows(
+    events: ContainerEvent[],
+    reachedBeginning: boolean,
+    landedAt: Temporal.Instant | null,
+    landedOn: string | null,
+  ): Rows {
+    // `landedAt` says whether a marker is wanted at all; `landedOn` says where the server put it
+    const landedIndex = !landedAt || !landedOn ? -1 : events.findIndex((event) => event.id === landedOn);
     /**
-     * Asking for a moment later than anything logged. The server answers by reading *backwards*, so
-     * the reader is shown the end of history -- and the mark belongs under the last line, because
-     * that is where the instant they asked for falls. Leaving it off was the one case where jumping
-     * appeared to do nothing at all, which is easy to hit: a picker offers today by default, and
-     * today is past the end of any container that has stopped talking.
+     * Asking for a moment later than anything logged. The server says so by landing on nothing, and
+     * answers by reading *backwards*, so the reader is shown the end of history -- and the mark
+     * belongs under the last line, because that is where the instant they asked for falls. Leaving
+     * it off was the one case where jumping appeared to do nothing at all, which is easy to hit: a
+     * picker offers today by default, and today is past the end of any container that has stopped.
      */
-    const landedAtEnd = !!landedAt && landedIndex === -1 && events.length > 0;
+    const landedAtEnd = !!landedAt && landedOn === null && events.length > 0;
     const rows: Row[] = events.map((event, index) => {
       const previous = events[index - 1];
       /**

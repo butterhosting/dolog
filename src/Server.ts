@@ -41,9 +41,11 @@ export class Server {
           if (server.upgrade(request, { data: context })) {
             return new Response(null, { status: 200 });
           }
-          return Response.json(ServerError.socket_upgrade_failed().problemDetails());
+          // both of these used to answer 200 with an error body, which reads as success to any caller
+          // that checks the status before the payload
+          return Response.json(ServerError.socket_upgrade_failed().problemDetails(), { status: 426 });
         }
-        return Response.json(ServerError.route_not_found().problemDetails());
+        return Response.json(ServerError.route_not_found().problemDetails(), { status: 404 });
       }),
       websocket: {
         message: (socket, message) => {

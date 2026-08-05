@@ -31,29 +31,55 @@ export class LogService {
     });
   }
 
-  public async list(containerId: string, unknown: z.output<typeof LogService.Query>): Promise<EventRepository.Page> {
+  public async list(containerId: string, unknown: z.output<typeof LogService.Query>): Promise<LogService.Page> {
     const { limit, before, after, at } = LogService.Query.parse(unknown);
+    /**
+     * `at` names a position on its own, so pairing it with a cursor asks for two starting points at
+     * once. It used to win silently and the cursor was dropped, which reads as the server ignoring
+     * half the request -- worth refusing rather than guessing which half was meant.
+     *
+     * Named here rather than refined in the schema because the schema reports issues by *code*, and
+     * a cross-field rule only ever has "custom" to offer -- which tells the caller nothing.
+     */
+    if (at !== undefined && (before !== undefined || after !== undefined)) {
+      throw ServerError.conflicting_log_position({ at: at.toString(), before: before ?? null, after: after ?? null });
+    }
     if (!at) {
       return await this.logRepository.listEvents(containerId, limit, { before, after });
     }
     const boundary = Uuid.fromBytes(Uuid.lowerBoundAt(at));
     const forwards = await this.logRepository.listEvents(containerId, limit, { after: boundary });
     if (forwards.events.length > 0) {
-      return forwards;
+      // naming the line it settled on saves the caller re-deriving it from the timestamps, which it
+      // cannot do exactly: the boundary is a millisecond, and an instant may sit inside one
+      return { ...forwards, landedOn: forwards.events[0]!.id };
     }
     /**
      * Nothing was logged at or after that instant -- a date typed past the end of the logs, usually.
      * Reading back from it lands the reader at the end of history rather than on an empty screen,
      * and nothing is newer than that by definition.
+     *
+     * This answer used to be indistinguishable from an ordinary landing, so a caller could not tell
+     * that it had been given something other than what it asked for. `landedOn: null` says so.
      */
     const backwards = await this.logRepository.listEvents(containerId, limit, { before: boundary });
-    return { ...backwards, hasNewer: false };
+    return { ...backwards, hasNewer: false, landedOn: null };
   }
 }
 
 export namespace LogService {
   /** Upper bound on one request, so a caller cannot make us build an enormous page. */
   const MAX_EVENTS_PER_PAGE = 500;
+  /** What a caller that expresses no preference gets: a screenful or two, not the largest page we serve. */
+  const DEFAULT_EVENTS_PER_PAGE = 100;
+
+  export type Page = EventRepository.Page & {
+    /**
+     * Where an `at` request settled: the id of the first line at or after the instant, or null when
+     * there was none and the end of history was served instead. Absent when no instant was asked for.
+     */
+    landedOn?: string | null;
+  };
 
   export const Query = z
     .object({
@@ -63,7 +89,7 @@ export namespace LogService {
         .number()
         .int()
         .positive()
-        .default(MAX_EVENTS_PER_PAGE)
+        .default(DEFAULT_EVENTS_PER_PAGE)
         .transform((requested) => Math.min(requested, MAX_EVENTS_PER_PAGE)),
       before: z.string().optional(),
       after: z.string().optional(),
