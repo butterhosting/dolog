@@ -73,21 +73,23 @@ export function JumpModal({ current, close, done }: Props) {
 
 namespace Internal {
   /** ISO numbering, so index 0 is Monday -- what `dayOfWeek` returns as 1. */
-  const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+  const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   /**
-   * The last seven days, named the way someone would say them out loud: the two nearest by their
-   * relation to now, the rest by weekday -- which only reads unambiguously because it stops before
-   * wrapping around to today's own name a week ago.
+   * The last five days. The two nearest are named by their relation to now, which is how anyone
+   * would say them; the rest carry their date beside the weekday, because a bare "tuesday" leaves
+   * the reader counting backwards to work out which tuesday is meant.
    *
    * Each lands on midnight, so the day is entered at its start rather than at whatever time happened
    * to be in the field.
    */
   export function presets(): { label: string; at: string }[] {
     const today = Temporal.Now.plainDateISO("UTC");
-    return Array.from({ length: 7 }, (_, back) => {
+    return Array.from({ length: 5 }, (_, back) => {
       const date = today.subtract({ days: back });
-      const label = back === 0 ? "today" : back === 1 ? "yesterday" : WEEKDAYS[date.dayOfWeek - 1]!;
+      const dated = `${WEEKDAYS[date.dayOfWeek - 1]!}, ${MONTHS[date.month - 1]!} ${date.day}`;
+      const label = back === 0 ? "Today" : back === 1 ? "Yesterday" : dated;
       return { label, at: `${date.toString()}T00:00:00` };
     });
   }

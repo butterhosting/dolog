@@ -212,6 +212,13 @@ export function containerLogsPage() {
             element.scrollTop = element.scrollHeight;
           }
         });
+      } else {
+        /**
+         * A window with no anchor *is* the live end, so it opens at the bottom -- said outright
+         * rather than left to whether the reader happened to be stuck to the bottom of whatever
+         * window came before this one.
+         */
+        requestAnimationFrame(() => scrollToBottom());
       }
     })();
 
@@ -221,7 +228,7 @@ export function containerLogsPage() {
       socketClient.unsubscribe(subscription);
     };
     // re-runs on a jump, which is exactly right: a new position means a new window and a fresh fetch
-  }, [id, anchor, containerClient, socketClient, ref]);
+  }, [id, anchor, containerClient, socketClient, ref, scrollToBottom]);
 
   /**
    * Scrolling to the very top pulls in the page above. The scroll position is restored afterwards by
@@ -328,10 +335,17 @@ export function containerLogsPage() {
   /** Leaves history behind entirely: the live end is elsewhere, so it is fetched afresh. */
   const jumpToLive = useCallback(async () => {
     if (anchor) {
-      // dropping the anchor re-runs the load effect, which fetches the live end for us
+      /**
+       * Dropping the anchor re-runs the load effect, which fetches the live end and opens at the
+       * bottom of it. Nothing is scrolled *here*, and `hasNewer` is put down before anything else:
+       * the window still on screen belongs to history, and pushing it to its own bottom used to set
+       * it walking forwards a page per request -- with the pin-to-bottom effect, freed by the very
+       * anchor being cleared, re-triggering the scroll each time its own output landed. Four days
+       * back meant hundreds of round trips to travel a distance one request already covered.
+       */
+      setHasNewer(false);
       setParameters({}, { replace: true });
       setAnchor(null);
-      scrollToBottom();
       return;
     }
     await rejoinLive();
