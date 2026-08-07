@@ -49,7 +49,7 @@ export class EventRepository {
     const forwards = after !== undefined || from !== undefined;
     const container = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
     const bounds = [
-      container ? eq($containerEvent.container, container.id) : undefined,
+      container ? eq($containerEvent.containerId, container.id) : undefined,
       before === undefined ? undefined : lt($containerEvent.id, Uuid.toBytes(before)),
       after === undefined ? undefined : gt($containerEvent.id, Uuid.toBytes(after)),
       from === undefined ? undefined : gte($containerEvent.id, Uuid.toBytes(from)),
@@ -110,9 +110,9 @@ export class EventRepository {
    */
   public async findEvent(dockerId: string, search: EventRepository.Search): Promise<string | null> {
     const CHUNK = 1_000;
-    const { needle, regex, from, inclusive, direction } = search;
+    const { needle, variant, from, inclusive, direction } = search;
     const up = direction === "up";
-    const matches = LineMatch.predicate(needle, regex);
+    const matches = LineMatch.predicate(needle, variant);
     const container = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
 
     /**
@@ -137,11 +137,11 @@ export class EventRepository {
         .from($containerEvent)
         .where(
           and(
-            eq($containerEvent.container, container.id),
+            eq($containerEvent.containerId, container.id),
             cursor === undefined ? undefined : bound($containerEvent.id, Uuid.toBytes(cursor)),
-            // a literal needle is filtered by sqlite so non-matching rows never cross into javascript;
+            // a substring is filtered by sqlite so non-matching rows never cross into javascript;
             // a regular expression cannot be pushed down, so those rows are tested here instead
-            regex ? undefined : EventRepository.containing(needle),
+            variant === "substr" ? EventRepository.containing(needle) : undefined,
           ),
         )
         .orderBy(up ? desc($containerEvent.id) : asc($containerEvent.id))
@@ -180,7 +180,7 @@ export class EventRepository {
       this.sqlite
         .select({ one: sql`1` })
         .from($containerEvent)
-        .where(and(eq($containerEvent.container, container), bound))
+        .where(and(eq($containerEvent.containerId, container), bound))
         .limit(1)
         .get() !== undefined
     );
@@ -321,7 +321,7 @@ export class EventRepository {
       const [surplusCursor] = this.sqlite
         .select({ id: $containerEvent.id })
         .from($containerEvent)
-        .where(eq($containerEvent.container, id))
+        .where(eq($containerEvent.containerId, id))
         .orderBy(desc($containerEvent.id))
         .limit(1)
         .offset(maxEvents)
@@ -329,7 +329,7 @@ export class EventRepository {
       if (surplusCursor) {
         const deleted = this.sqlite
           .delete($containerEvent)
-          .where(and(eq($containerEvent.container, id), lte($containerEvent.id, surplusCursor.id)))
+          .where(and(eq($containerEvent.containerId, id), lte($containerEvent.id, surplusCursor.id)))
           .returning({ one: sql<number>`1` })
           .all().length;
         eventDeleteCount += deleted;
@@ -379,7 +379,7 @@ export class EventRepository {
           this.sqlite
             .select({ one: sql`1` })
             .from($containerEvent)
-            .where(eq($containerEvent.container, $container.id)),
+            .where(eq($containerEvent.containerId, $container.id)),
         ),
       )
       .returning({ one: sql<number>`1` })
@@ -405,8 +405,8 @@ export namespace EventRepository {
 
   export type Search = {
     needle: string;
-    /** Whether `needle` is a regular expression rather than text to look for literally. */
-    regex: boolean;
+    /** How to read `needle`. */
+    variant: LineMatch.Variant;
     /** The line to search out from; absent starts at whichever end `direction` reads from. */
     from?: string;
     /**

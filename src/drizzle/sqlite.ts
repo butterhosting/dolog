@@ -17,11 +17,9 @@ export namespace Sqlite {
       migrationsFolder: "src/drizzle/migrations",
     });
     sqlite.run("PRAGMA foreign_keys = ON");
-    /**
-     * Retention writes continuously while the api reads; in the default rollback journal those
-     * block each other. WAL lets them run side by side, and `NORMAL` skips the per-commit fsync --
-     * a crash can cost the last batch of log lines, which is a fair trade for log data.
-     */
+    // Retention writes continuously while the api reads; in the default rollback journal those
+    // block each other. WAL lets them run side by side, and `NORMAL` skips the per-commit fsync.
+    // A crash can cost the last batch of log lines, which is OK.
     sqlite.run("PRAGMA journal_mode = WAL");
     sqlite.run("PRAGMA synchronous = NORMAL");
     return Object.assign(sqlite, {

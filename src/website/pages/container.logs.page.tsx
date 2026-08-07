@@ -70,7 +70,7 @@ export function containerLogsPage() {
   const loadingNewer = useRef(false);
 
   const [needle, setNeedle] = useState("");
-  const [regex, setRegex] = useState(false);
+  const [variant, setVariant] = useState<LineMatch.Variant>("substr");
   /**
    * The match last stepped to. The only state search keeps, and it cannot go stale: every step
    * re-checks it against the viewport and drops it the moment it is not on screen, so it can never
@@ -81,13 +81,13 @@ export function containerLogsPage() {
   const [exhausted, setExhausted] = useState(false);
 
   /** Which of the loaded lines the needle lights up, and whether it is even a usable needle yet. */
-  const { matched, broken } = useMemo(() => Internal.highlight(events, needle, regex), [events, needle, regex]);
+  const { matched, broken } = useMemo(() => Internal.highlight(events, needle, variant), [events, needle, variant]);
 
   // a different needle makes the old match meaningless, and the old verdict too
   useEffect(() => {
     setCurrentMatch(null);
     setExhausted(false);
-  }, [needle, regex]);
+  }, [needle, variant]);
 
   const name = events.at(-1)?.container.name ?? events.at(0)?.container.name ?? id.slice(0, 12);
   useDocumentTitle(`${name} | Dolog`);
@@ -202,8 +202,7 @@ export function containerLogsPage() {
            * for it, which is not always on the first row -- asking for a time past the end of the
            * log puts it below the last one.
            */
-          const target =
-            anchor?.kind === "line" ? Internal.lineElement(element, anchor.value) : element?.querySelector("[data-landed]");
+          const target = anchor?.kind === "line" ? Internal.lineElement(element, anchor.value) : element?.querySelector("[data-landed]");
           if (target) {
             // put what they asked for in the middle of the view rather than at an edge
             target.scrollIntoView({ block: "center" });
@@ -412,7 +411,7 @@ export function containerLogsPage() {
       setSearching(true);
       setExhausted(false);
       try {
-        const found = await containerClient.find(id, { find: term, regex, from, inclusive: !onMatch, direction });
+        const found = await containerClient.find(id, { find: term, variant, from, inclusive: !onMatch, direction });
         if (!found) {
           // deliberately no wrapping: in a log of unknown length, silently reappearing at the other
           // end reads as having lost your place rather than as having run out
@@ -442,7 +441,7 @@ export function containerLogsPage() {
         setSearching(false);
       }
     },
-    [containerClient, currentMatch, id, needle, ref, regex, searching, setParameters],
+    [containerClient, currentMatch, id, needle, ref, variant, searching, setParameters],
   );
 
   /**
@@ -487,11 +486,11 @@ export function containerLogsPage() {
 
           <div className="flex items-center gap-1.5 rounded-lg bg-white/5 px-2 py-1">
             <button
-              onClick={() => setRegex((on) => !on)}
+              onClick={() => setVariant((current) => (current === "regex" ? "substr" : "regex"))}
               title="read the search as a regular expression"
               className={clsx(
                 "rounded px-1.5 py-0.5 font-mono text-[11px] cursor-pointer transition-colors",
-                regex ? "bg-c-accent text-white" : "text-c-dark-half hover:text-gray-300",
+                variant === "regex" ? "bg-c-accent text-white" : "text-c-dark-half hover:text-gray-300",
               )}
             >
               R
@@ -633,13 +632,17 @@ namespace Internal {
    * Which loaded lines the needle lights up. Only ever a claim about what is in hand -- the count
    * beside the box says "on screen" for exactly that reason.
    */
-  export function highlight(events: ContainerEvent[], needle: string, regex: boolean): { matched: Set<string>; broken: boolean } {
+  export function highlight(
+    events: ContainerEvent[],
+    needle: string,
+    variant: LineMatch.Variant,
+  ): { matched: Set<string>; broken: boolean } {
     const term = needle.trim();
     if (!term) {
       return { matched: new Set(), broken: false };
     }
     try {
-      const matches = LineMatch.predicate(term, regex);
+      const matches = LineMatch.predicate(term, variant);
       return {
         matched: new Set(events.filter((event) => event.type === ContainerEvent.Type.log && matches(event.line)).map((e) => e.id)),
         broken: false,
@@ -671,7 +674,11 @@ namespace Internal {
         {busy ? (
           <span className="size-2.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
         ) : (
-          <svg viewBox="0 0 10 6" className="w-2.5 fill-none stroke-current stroke-2" style={{ transform: direction === "up" ? "" : "rotate(180deg)" }}>
+          <svg
+            viewBox="0 0 10 6"
+            className="w-2.5 fill-none stroke-current stroke-2"
+            style={{ transform: direction === "up" ? "" : "rotate(180deg)" }}
+          >
             <path d="M1 5 L5 1 L9 5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         )}
@@ -780,10 +787,7 @@ namespace Internal {
    */
   export function DayMarker({ date, landedOn, onDismiss }: { date: string; landedOn: boolean; onDismiss: () => void }) {
     return (
-      <div
-        data-landed={landedOn ? "" : undefined}
-        className="relative flex justify-center py-3 text-[11px] tracking-wide text-c-dark-half"
-      >
+      <div data-landed={landedOn ? "" : undefined} className="relative flex justify-center py-3 text-[11px] tracking-wide text-c-dark-half">
         {landedOn && <LandingRule onDismiss={onDismiss} />}
         {date}
       </div>

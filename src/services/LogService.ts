@@ -1,5 +1,7 @@
 import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
+import { LineMatch } from "@/helpers/LineMatch";
+import { LogError } from "@/errors/LogError";
 import { ServerError } from "@/errors/ServerError";
 import { Uuid } from "@/helpers/Uuid";
 import { ZodProblem } from "@/helpers/ZodIssues";
@@ -42,7 +44,7 @@ export class LogService {
      * a cross-field rule only ever has "custom" to offer -- which tells the caller nothing.
      */
     if (at !== undefined && (before !== undefined || after !== undefined || from !== undefined)) {
-      throw ServerError.conflicting_log_position({
+      throw LogError.conflicting_position({
         at: at.toString(),
         before: before ?? null,
         after: after ?? null,
@@ -76,13 +78,13 @@ export class LogService {
    * do with the answer: scroll to it if it already has it, fetch a window around it if it does not.
    */
   public async find(containerId: string, unknown: z.output<typeof LogService.Find>): Promise<{ landedOn: string | null }> {
-    const { find, regex, from, inclusive, direction } = LogService.Find.parse(unknown);
+    const { find, variant, from, inclusive, direction } = LogService.Find.parse(unknown);
     try {
-      return { landedOn: await this.logRepository.findEvent(containerId, { needle: find, regex, from, inclusive, direction }) };
+      return { landedOn: await this.logRepository.findEvent(containerId, { needle: find, variant, from, inclusive, direction }) };
     } catch (error) {
       // a half-typed regular expression is an ordinary thing to receive, not a fault
       if (error instanceof SyntaxError) {
-        throw ServerError.invalid_search_pattern({ pattern: find, reason: error.message });
+        throw LogError.invalid_search_pattern({ pattern: find, reason: error.message });
       }
       throw error;
     }
@@ -106,10 +108,8 @@ export namespace LogService {
   export const Find = z
     .object({
       find: z.string().min(1),
-      regex: z
-        .string()
-        .optional()
-        .transform((value) => value === "true"),
+      // an enum rather than `regex=true`, so a third way of reading a needle costs a value, not a flag
+      variant: z.enum(["substr", "regex"] satisfies LineMatch.Variant[]).default("substr"),
       from: z.string().optional(),
       inclusive: z
         .string()

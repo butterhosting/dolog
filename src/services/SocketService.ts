@@ -14,7 +14,7 @@ export class SocketService {
 
   public registerSocket = (socket: Socket) => {
     this.log.debug(`Socket connected: ${socket.data.clientId}`);
-    this.connections.set(socket.data.clientId, { socket, watchedContainer: null, unanswered: 0 });
+    this.connections.set(socket.data.clientId, { socket, watchedContainerId: null, lastHeardAt: Date.now() });
   };
 
   public unregisterSocket = (socket: Socket) => {
@@ -23,19 +23,25 @@ export class SocketService {
     }
   };
 
+  /**
+   * Browsers answer a ping in their network stack, with no help from the page, so this needs nothing
+   * on the client side. It is the only way to notice a peer that has quietly gone: see {@link
+   * Connection.lastHeardAt}.
+   */
   @Initialize
   public keepConnectionsAlive() {
     const KEEPALIVE_INTERVAL = Temporal.Duration.from({ seconds: 25 });
-    const MISSED_PINGS_BEFORE_DROP = 2;
+    // one interval of silence could be a hiccup; two says the peer is not coming back
+    const SILENCE_BEFORE_DROP = Temporal.Duration.from({ seconds: 50 });
 
     setInterval(() => {
       this.connections.forEach((connection, clientId) => {
-        if (connection.unanswered >= MISSED_PINGS_BEFORE_DROP) {
-          this.log.debug(`Socket ${clientId} stopped answering, closing it`);
+        const silentFor = Date.now() - connection.lastHeardAt;
+        if (silentFor > SILENCE_BEFORE_DROP.total("milliseconds")) {
+          this.log.debug(`Socket ${clientId} went quiet ${Math.round(silentFor / 1000)}s ago, closing it`);
           connection.socket.close();
           return;
         }
-        connection.unanswered += 1;
         connection.socket.ping();
       });
     }, KEEPALIVE_INTERVAL.total("milliseconds"));
@@ -48,7 +54,7 @@ export class SocketService {
   public heard = (socket: Socket) => {
     const connection = this.connections.get(socket.data.clientId);
     if (connection) {
-      connection.unanswered = 0;
+      connection.lastHeardAt = Date.now();
     }
   };
 
@@ -57,12 +63,13 @@ export class SocketService {
     if (!connection) {
       return;
     }
-    connection.unanswered = 0;
+    // a message is as good a sign of life as a pong, so it counts the same and is recorded the same way
+    this.heard(socket);
     try {
       const message = ClientMessage.parse(JSON.parse(raw));
       switch (message.type) {
-        case ClientMessage.Type.watch:
-          connection.watchedContainer = message.containerId;
+        case ClientMessage.Type.declare_stream_interest:
+          connection.watchedContainerId = message.containerId;
       }
     } catch (error) {
       this.log.warn(`Ignoring unreadable message from ${socket.data.clientId}`, error);
@@ -75,7 +82,7 @@ export class SocketService {
       event,
     };
     [...this.connections.values()]
-      .filter((connection) => connection.watchedContainer === event.container.id)
+      .filter((connection) => connection.watchedContainerId === event.container.id)
       .forEach((connection) => {
         connection.socket.send(JSON.stringify(message));
       });

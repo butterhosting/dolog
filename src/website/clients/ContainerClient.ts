@@ -1,3 +1,4 @@
+import { LineMatch } from "@/helpers/LineMatch";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { ContainerRM } from "@/models/ContainerRM";
 import { Yesttp } from "yesttp";
@@ -56,7 +57,7 @@ export class ContainerClient {
 export namespace ContainerClient {
   export type FindOptions = {
     find: string;
-    regex: boolean;
+    variant: LineMatch.Variant;
     /** The line to search out from; absent starts at whichever end `direction` reads from. */
     from?: string;
     /** Whether `from` may itself be the answer -- false when stepping off a match already found. */

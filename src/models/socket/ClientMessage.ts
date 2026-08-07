@@ -1,23 +1,15 @@
 import { ZodParser } from "@/helpers/ZodParser";
 import z from "zod/v4";
 
-/**
- * What a browser may send us. Only one thing so far: which container's events it wants pushed.
- *
- * Sockets receive the container overview regardless -- every page cares about that -- but log events
- * are only relayed to the sockets that asked, so opening one container does not mean paying for the
- * traffic of all the others.
- */
-export type ClientMessage = ClientMessage.Watch;
+export type ClientMessage = ClientMessage.DeclareStreamInterest;
 
 export namespace ClientMessage {
   export enum Type {
-    watch = "watch",
+    declare_stream_interest = "declare_stream_interest",
   }
 
-  export type Watch = {
-    type: Type.watch;
-    /** The docker id to follow, or null to stop following anything. */
+  export type DeclareStreamInterest = {
+    type: Type.declare_stream_interest;
     containerId: string | null;
   };
 
@@ -25,7 +17,7 @@ export namespace ClientMessage {
     .ensureSchemaMatchesType(() =>
       z.union([
         z.object({
-          type: z.literal(Type.watch),
+          type: z.literal(Type.declare_stream_interest),
           containerId: z.string().nullable(),
         }),
       ]),

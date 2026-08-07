@@ -16,7 +16,7 @@ export class SocketClient {
 
   public declareContainerInterest(containerId: string | null) {
     this.containerInterest = containerId;
-    this.send({ type: ClientMessage.Type.watch, containerId });
+    this.send({ type: ClientMessage.Type.declare_stream_interest, containerId });
   }
 
   private send(message: ClientMessage) {
@@ -30,7 +30,7 @@ export class SocketClient {
     this.socket.addEventListener("open", () => {
       // re-assert our interest, since a reconnected server knows nothing about us
       if (this.containerInterest) {
-        this.send({ type: ClientMessage.Type.watch, containerId: this.containerInterest });
+        this.send({ type: ClientMessage.Type.declare_stream_interest, containerId: this.containerInterest });
       }
     });
     this.socket.addEventListener("message", ({ data }) => {
