@@ -5,5 +5,5 @@ export type Connection = {
   socket: Socket;
   lastHeardBack: Temporal.Instant;
   watchedContainerId: string | null;
-  logsPredicate: ((line: string) => boolean) | null;
+  logLinePredicate: ((line: string) => boolean) | null;
 };

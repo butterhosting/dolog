@@ -2,6 +2,7 @@ import { Uuid } from "@/helpers/Uuid";
 import { Container } from "@/models/Container";
 import { Temporal } from "@js-temporal/polyfill";
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { LogLinePattern } from "@/models/LogLinePattern";
 import { StreamVariant } from "@/models/StreamVariant";
 import { TestEnvironment } from "@/testing/TestEnvironment.test";
 import { TestFixture } from "@/testing/TestFixture.test";
@@ -161,8 +162,7 @@ describe(EventRepository.name, () => {
       const { container, all } = await haystack();
       // when
       const found = await repository.findEvent(container.id, {
-        pattern: "needle",
-        patternVariant: "substr",
+        logLinePattern: { pattern: "needle", patternVariant: LogLinePattern.Variant.substr },
         direction: "down",
       });
       // then
@@ -174,9 +174,9 @@ describe(EventRepository.name, () => {
       const { container, all } = await haystack();
       // when (standing at the very end and stepping back)
       const found = await repository.findEvent(container.id, {
-        pattern: "needle",
-        patternVariant: "substr",
-        anchorInclusive: all[9]!.id,
+        logLinePattern: { pattern: "needle", patternVariant: LogLinePattern.Variant.substr },
+        anchorId: all[9]!.id,
+        anchorInclusivity: "inclusive",
         direction: "up",
       });
       // then (7, not 2 -- the first one met going up)
@@ -188,9 +188,9 @@ describe(EventRepository.name, () => {
       const { container, all } = await haystack();
       // when (anchored on the match at 2, which is how pressing the chevron again arrives here)
       const found = await repository.findEvent(container.id, {
-        pattern: "needle",
-        patternVariant: "substr",
-        anchorExclusive: all[2]!.id,
+        logLinePattern: { pattern: "needle", patternVariant: LogLinePattern.Variant.substr },
+        anchorId: all[2]!.id,
+        anchorInclusivity: "exclusive",
         direction: "down",
       });
       // then
@@ -202,9 +202,9 @@ describe(EventRepository.name, () => {
       const { container, all } = await haystack();
       // when (the same line, but anchored the way an unmatched viewport edge is)
       const found = await repository.findEvent(container.id, {
-        pattern: "needle",
-        patternVariant: "substr",
-        anchorInclusive: all[2]!.id,
+        logLinePattern: { pattern: "needle", patternVariant: LogLinePattern.Variant.substr },
+        anchorId: all[2]!.id,
+        anchorInclusivity: "inclusive",
         direction: "down",
       });
       // then
@@ -216,8 +216,7 @@ describe(EventRepository.name, () => {
       const { container } = await haystack();
       // when
       const found = await repository.findEvent(container.id, {
-        pattern: "haystack",
-        patternVariant: "substr",
+        logLinePattern: { pattern: "haystack", patternVariant: LogLinePattern.Variant.substr },
         direction: "down",
       });
       // then
@@ -231,10 +230,12 @@ describe(EventRepository.name, () => {
       await write(all);
 
       // when / then
-      const literal = { pattern: "shouting", patternVariant: "substr", direction: "down" } as const;
+      const substr = LogLinePattern.Variant.substr;
+      const regex = LogLinePattern.Variant.regex;
+      const literal = { logLinePattern: { pattern: "shouting", patternVariant: substr }, direction: "down" } as const;
       expect(await repository.findEvent(container.id, literal)).toBe(all[0]!.id);
-      expect(await repository.findEvent(container.id, { ...literal, pattern: "shout.ng", patternVariant: "regex" })).toBeNull();
-      expect(await repository.findEvent(container.id, { ...literal, pattern: "SHOUT.NG", patternVariant: "regex" })).toBe(all[0]!.id);
+      expect(await repository.findEvent(container.id, { ...literal, logLinePattern: { pattern: "shout.ng", patternVariant: regex } })).toBeNull();
+      expect(await repository.findEvent(container.id, { ...literal, logLinePattern: { pattern: "SHOUT.NG", patternVariant: regex } })).toBe(all[0]!.id);
     });
 
     it("should not let sqlite's own wildcards leak out of a literal needle", async () => {
@@ -245,8 +246,7 @@ describe(EventRepository.name, () => {
 
       // when
       const found = await repository.findEvent(container.id, {
-        pattern: "100%",
-        patternVariant: "substr",
+        logLinePattern: { pattern: "100%", patternVariant: LogLinePattern.Variant.substr },
         direction: "down",
       });
       // then (the literal "100%", not "100" followed by anything)
@@ -262,8 +262,7 @@ describe(EventRepository.name, () => {
 
       // when
       const found = await repository.findEvent(container.id, {
-        pattern: "needle",
-        patternVariant: "substr",
+        logLinePattern: { pattern: "needle", patternVariant: LogLinePattern.Variant.substr },
         direction: "down",
       });
       // then

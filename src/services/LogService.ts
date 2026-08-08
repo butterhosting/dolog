@@ -1,6 +1,6 @@
 import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
-import { LineMatch } from "@/helpers/LineMatch";
+import { LogLinePattern } from "@/models/LogLinePattern";
 import { LogError } from "@/errors/LogError";
 import { ServerError } from "@/errors/ServerError";
 import { Uuid } from "@/helpers/Uuid";
@@ -34,19 +34,19 @@ export class LogService {
     });
   }
 
-  public async list(containerId: string, query: z.output<typeof LogService.Query>): Promise<LogService.Page> {
-    query = LogService.Query.parse(query);
+  public async list(containerId: string, listQuery: z.output<typeof LogService.ListQuery>): Promise<LogService.Page> {
+    listQuery = LogService.ListQuery.parse(listQuery);
 
     let at: Temporal.Instant | undefined;
     let cursor: EventRepository.Cursor | undefined;
-    const limit = query.limit;
-    const filter: EventRepository.Filter = LogService.filter(query);
+    const limit: number = listQuery.limit;
+    const filter: EventRepository.Filter = listQuery.filter;
 
-    if (query.at) {
-      at = query.at;
+    if (listQuery.at) {
+      at = listQuery.at;
     }
-    if (query.before !== undefined || query.after !== undefined || query.afterInclusive !== undefined) {
-      cursor = { before: query.before, after: query.after, afterInclusive: query.afterInclusive };
+    if (listQuery.before !== undefined || listQuery.after !== undefined || listQuery.afterInclusive !== undefined) {
+      cursor = { before: listQuery.before, after: listQuery.after, afterInclusive: listQuery.afterInclusive };
     }
     if (at && cursor) {
       throw LogError.conflicting_position({ at: at.toString(), cursor });
@@ -80,21 +80,9 @@ export class LogService {
     throw new Error("unreachable");
   }
 
-  public async find(containerId: string, query: z.output<typeof LogService.Find>): Promise<string | null> {
-    query = LogService.Find.parse(query);
-    if (query.anchorInclusive !== undefined && query.anchorExclusive !== undefined) {
-      throw LogError.conflicting_search_anchor({ anchorInclusive: query.anchorInclusive, anchorExclusive: query.anchorExclusive });
-    }
-
-    const search: EventRepository.Search = {
-      pattern: query.pattern,
-      patternVariant: query.patternVariant,
-      anchorInclusive: query.anchorInclusive,
-      anchorExclusive: query.anchorExclusive,
-      direction: query.direction,
-    };
-    const filter: EventRepository.Filter = LogService.filter(query);
-    return await this.eventRepository.findEvent(containerId, search, filter);
+  public async find(containerId: string, findQuery: z.output<typeof LogService.FindQuery>): Promise<string | null> {
+    findQuery = LogService.FindQuery.parse(findQuery);
+    return await this.eventRepository.findEvent(containerId, findQuery.search, findQuery.filter);
   }
 }
 
@@ -105,14 +93,43 @@ export namespace LogService {
 
   const MAX_EVENTS_PER_PAGE = 500;
   const DEFAULT_EVENTS_PER_PAGE = 100;
+
   const FILTER = {
     filterPattern: z.string().optional(),
-    filterVariant: z.enum(["substr", "regex"] satisfies LineMatch.Variant[]).default("substr"),
+    filterPatternVariant: z.enum(LogLinePattern.Variant).optional(),
     filterSince: z.string().transform(ZodParser.instant).optional(),
     filterUntil: z.string().transform(ZodParser.instant).optional(),
   };
+  const FILTER_TRANSFORM = <
+    T extends {
+      filterPattern?: string;
+      filterPatternVariant?: LogLinePattern.Variant;
+      filterSince?: Temporal.Instant;
+      filterUntil?: Temporal.Instant;
+    },
+  >(
+    query: T,
+  ): Omit<T, "filterPattern" | "filterPatternVariant" | "filterSince" | "filterUntil"> & {
+    filter: EventRepository.Filter;
+  } => {
+    const { filterPattern, filterPatternVariant, filterSince, filterUntil, ...fields } = query;
+    return {
+      ...fields,
+      filter: {
+        logLinePattern:
+          filterPattern && filterPatternVariant
+            ? {
+                pattern: filterPattern,
+                patternVariant: filterPatternVariant,
+              }
+            : undefined,
+        since: filterSince,
+        until: filterUntil,
+      } satisfies EventRepository.Filter,
+    };
+  };
 
-  export const Query = z
+  export const ListQuery = z
     .object({
       limit: z.coerce
         .number()
@@ -126,33 +143,34 @@ export namespace LogService {
       at: z.string().transform(ZodParser.instant).optional(),
       ...FILTER,
     })
+    .transform(FILTER_TRANSFORM)
     .catch((e) => {
       throw ServerError.invalid_request_query(ZodProblem.issuesSummary(e));
     });
 
-  export const Find = z
+  export const FindQuery = z
     .object({
-      pattern: z.string().min(1),
-      patternVariant: z.enum(["substr", "regex"] satisfies LineMatch.Variant[]).default("substr"),
+      searchPattern: z.string(),
+      searchPatternVariant: z.enum(LogLinePattern.Variant),
       anchorInclusive: z.string().optional(),
       anchorExclusive: z.string().optional(),
-      direction: z.enum(["up", "down"]).default("down"),
+      direction: z.enum(["up", "down"]),
       ...FILTER,
     })
+    .refine(({ anchorInclusive, anchorExclusive }) => !(anchorInclusive && anchorExclusive), {
+      error: "cannot specify both `inclusive` and `exclusive`",
+    })
+    .transform(FILTER_TRANSFORM)
+    .transform(({ searchPattern, searchPatternVariant, anchorInclusive, anchorExclusive, direction, ...fields }) => ({
+      search: {
+        logLinePattern: { pattern: searchPattern, patternVariant: searchPatternVariant },
+        anchorId: anchorInclusive ?? anchorExclusive,
+        anchorInclusivity: anchorInclusive !== undefined ? "inclusive" : anchorExclusive !== undefined ? "exclusive" : undefined,
+        direction,
+      } satisfies EventRepository.Search,
+      ...fields,
+    }))
     .catch((e) => {
       throw ServerError.invalid_request_query(ZodProblem.issuesSummary(e));
     });
-
-  export function filter(query: {
-    filterPattern?: string;
-    filterVariant: LineMatch.Variant;
-    filterSince?: Temporal.Instant;
-    filterUntil?: Temporal.Instant;
-  }): EventRepository.Filter {
-    return {
-      matcher: query.filterPattern ? { pattern: query.filterPattern, variant: query.filterVariant } : undefined,
-      since: query.filterSince,
-      until: query.filterUntil,
-    };
-  }
 }

@@ -14,8 +14,8 @@ export class SocketClient {
 
   private containerInterest: ClientMessage.DeclareStreamInterest | null = null;
 
-  public declareStreamInterest(containerId: string | null, matcher: ClientMessage.DeclareStreamInterest["logsFilter"] = null) {
-    this.containerInterest = { type: ClientMessage.Type.declare_stream_interest, containerId, logsFilter: matcher };
+  public declareStreamInterest(containerId: string | null, logLinePattern: ClientMessage.DeclareStreamInterest["logLinePattern"] = null) {
+    this.containerInterest = { type: ClientMessage.Type.declare_stream_interest, containerId, logLinePattern };
     this.send(this.containerInterest);
   }
 

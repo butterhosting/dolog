@@ -3,12 +3,12 @@ import { Logger } from "@/Logger";
 import { ContainerEventConverter } from "@/drizzle/converters/ContainerEventConverter";
 import { $container, $containerEvent } from "@/drizzle/schema";
 import { Sqlite } from "@/drizzle/sqlite";
-import { LineMatch } from "@/helpers/LineMatch";
+import { LogLinePattern } from "@/models/LogLinePattern";
 import { Uuid } from "@/helpers/Uuid";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Temporal } from "@js-temporal/polyfill";
-import { and, asc, desc, eq, gt, gte, lt, lte, notExists, sql } from "drizzle-orm";
+import { and, asc, BinaryOperator, desc, eq, gt, gte, lt, lte, notExists, sql } from "drizzle-orm";
 import { BehaviorSubject, catchError, concatMap, defer, EMPTY, interval, Observable } from "rxjs";
 
 /**
@@ -58,24 +58,30 @@ export class EventRepository {
       before === undefined ? undefined : lt($containerEvent.id, Uuid.toBytes(before)),
       after === undefined ? undefined : gt($containerEvent.id, Uuid.toBytes(after)),
       afterInclusive === undefined ? undefined : gte($containerEvent.id, Uuid.toBytes(afterInclusive)),
-      ...EventRepository.span(filter),
+      ...EventRepository.filterBound(filter),
       // a substring narrows the query itself; a regular expression cannot, and is tested below
-      filter.matcher?.variant === "substr" ? EventRepository.containing(filter.matcher.pattern) : undefined,
+      filter.logLinePattern?.patternVariant === "substr" ? EventRepository.containing(filter.logLinePattern.pattern) : undefined,
     ];
-    const matches = filter.matcher ? LineMatch.predicate(filter.matcher.pattern, filter.matcher.variant) : undefined;
+    const matches = filter.logLinePattern ? LogLinePattern.predicate(filter.logLinePattern) : undefined;
     const stored = !container
       ? []
-      : this.readFiltered(and(...bounds), forwards, limit, filter.matcher?.variant === "regex" ? matches : undefined);
+      : this.readFiltered(and(...bounds), forwards, limit, filter.logLinePattern?.patternVariant === "regex" ? matches : undefined);
 
-    // uuidv7s are time-ordered, so comparing them as text is comparing them by age
+    /**
+     * The same filter the query applied, judged here by the same predicate -- so the two halves
+     * cannot drift. Only the cursor is restated, since that is the caller's position rather than
+     * part of what the window *is*. uuidv7s are time-ordered, so comparing ids as text compares
+     * them by age.
+     */
+    const inWindow = EventRepository.filterPredicate(filter);
     const buffered = this.pending.filter(
       (event) =>
         event.container.id === dockerId &&
         (before === undefined || event.id < before) &&
         (after === undefined || event.id > after) &&
         (afterInclusive === undefined || event.id >= afterInclusive) &&
-        EventRepository.within(event, filter) &&
-        (matches === undefined || (event.type === ContainerEvent.Type.log && matches(event.line))),
+        // a start or a stop carries no text, so a pattern has nothing in it to match
+        inWindow({ id: event.id, line: event.type === ContainerEvent.Type.log ? event.line : null }),
     );
     const model = container ? ContainerEventConverter.containerFromDatabase(container) : undefined;
     const events = [...stored.map((row) => ContainerEventConverter.fromDatabase(row, model!)), ...buffered];
@@ -134,78 +140,91 @@ export class EventRepository {
 
   /**
    * The nearest line matching `needle` in the direction asked for, or null when there is none.
-   *
-   * Only a position is returned. The caller already knows how to fetch a window around an id, and
-   * most answers are lines it is already showing -- so handing back a page here would throw away
-   * work in the common case rather than saving any.
-   *
-   * The walk is bounded by where the match is, not by the size of the table: the index is
-   * `(container, id)` and ids are time-ordered, so this reads along the key from the cursor and
-   * stops at the first hit. Retention caps a container at
-   * `X_DOLOG_RETENTION_MAX_LINES_PER_CONTAINER`, which is what makes even a fruitless search -- the
-   * one case that reads everything -- affordable enough to need no budget of its own.
    */
-  public async findEvent(
-    dockerId: string,
-    { pattern, patternVariant, anchorInclusive, anchorExclusive, direction }: EventRepository.Search,
-    filter: EventRepository.Filter = {},
-  ): Promise<string | null> {
-    const CHUNK = 1_000;
-    const up = direction === "up";
-    // one anchor, plus whether it counts as an answer -- collapsed here so the walk has one thing to carry
-    const from = anchorInclusive ?? anchorExclusive;
-    const inclusive = anchorInclusive !== undefined;
-    const matches = LineMatch.predicate(pattern, patternVariant);
-    // a filtered view is the corpus, so a line the filter excludes is not there to be found
-    const inView = filter.matcher ? LineMatch.predicate(filter.matcher.pattern, filter.matcher.variant) : undefined;
-    const container = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
+  public async findEvent(dockerId: string, search: EventRepository.Search, filter: EventRepository.Filter = {}): Promise<string | null> {
+    const searchPredicate = EventRepository.searchPredicate(search);
+    const filterPredicate = EventRepository.filterPredicate(filter);
 
-    /**
-     * Unflushed lines are searched too, or the newest part of the log -- the part most likely to be
-     * looked at -- would be invisible to search alone among everything else the repository serves.
-     */
-    const buffered = this.pending
-      // only ordinary log lines carry text; a start or a stop has nothing to search
-      .filter((event) => event.container.id === dockerId && event.type === ContainerEvent.Type.log && matches(event.line))
-      .filter((event) => EventRepository.within(event, filter) && (inView === undefined || inView((event as { line: string }).line)))
-      .filter((event) => EventRepository.beyond(event.id, from, inclusive, up))
+    //
+    // Part A: search the buffer for a candidate
+    //
+    const bufferMatchesBeyondSearchAnchor = this.pending
+      .filter((event): event is ContainerEvent.Log => event.container.id === dockerId && event.type === ContainerEvent.Type.log)
+      .filter((event) => searchPredicate(event)) // only logs matching the specific search constraints...
+      .filter((event) => filterPredicate(event)) // ...but only if they match the general filter window as well
       .map((event) => event.id)
-      .sort();
-    const bufferedMatch = up ? buffered.at(-1) : buffered.at(0);
+      .sort(); // UUIDv7s
+    const bufferMatch = search.direction === "up" ? bufferMatchesBeyondSearchAnchor.at(-1) : bufferMatchesBeyondSearchAnchor.at(0);
 
-    let cursor = from;
-    let first = true;
-    while (container) {
-      // only the opening chunk may include the anchor itself; after that the cursor is a line already read
-      const bound = inclusive && first ? (up ? lte : gte) : up ? lt : gt;
+    //
+    // Part B: search the database for a candidate
+    //
+    const CHUNK = 1_000;
+    const upDirection = search.direction === "up";
+    const container = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
+    if (!container) {
+      return bufferMatch ?? null; // nothing was ever flushed, so the buffer contains all history
+    }
+
+    let cursor = search.anchorId;
+    let inclusive = search.anchorInclusivity === "inclusive";
+    while (true) {
+      let anchorBound: BinaryOperator;
+      if (upDirection) {
+        anchorBound = inclusive ? lte : lt;
+      } else {
+        anchorBound = inclusive ? gte : gt;
+      }
       const chunk = this.sqlite
         .select({ id: $containerEvent.id, line: $containerEvent.line })
         .from($containerEvent)
         .where(
           and(
             eq($containerEvent.containerId, container.id),
-            cursor === undefined ? undefined : bound($containerEvent.id, Uuid.toBytes(cursor)),
-            // a substring is filtered by sqlite so non-matching rows never cross into javascript;
-            // a regular expression cannot be pushed down, so those rows are tested here instead
-            patternVariant === "substr" ? EventRepository.containing(pattern) : undefined,
-            ...EventRepository.span(filter),
-            filter.matcher?.variant === "substr" ? EventRepository.containing(filter.matcher.pattern) : undefined,
+            // only logs matching the specific search constraints...
+            cursor === undefined ? undefined : anchorBound($containerEvent.id, Uuid.toBytes(cursor)),
+            search.logLinePattern.patternVariant === LogLinePattern.Variant.substr
+              ? EventRepository.containing(search.logLinePattern.pattern)
+              : undefined,
+            // ...but only if they match the general filter window as well
+            ...EventRepository.filterBound(filter),
+            filter.logLinePattern?.patternVariant === LogLinePattern.Variant.substr
+              ? EventRepository.containing(filter.logLinePattern.pattern)
+              : undefined,
           ),
         )
-        .orderBy(up ? desc($containerEvent.id) : asc($containerEvent.id))
+        .orderBy(upDirection ? desc($containerEvent.id) : asc($containerEvent.id))
         .limit(CHUNK)
         .all();
-      first = false;
       if (chunk.length === 0) {
         break;
       }
-      const hit = chunk.find((row) => row.line !== null && matches(row.line) && (inView === undefined || inView(row.line)));
-      if (hit) {
-        return EventRepository.nearest(Uuid.fromBytes(hit.id), bufferedMatch, up);
+
+      for (const row of chunk) {
+        const databaseCandidate: EventRepository.Candidate = { id: Uuid.fromBytes(row.id), line: row.line };
+        if (searchPredicate(databaseCandidate) && filterPredicate(databaseCandidate)) {
+          const databaseMatch = databaseCandidate.id;
+
+          //
+          // Part C: compare both matches
+          //
+          if (!bufferMatch) {
+            return databaseMatch;
+          }
+          switch (search.direction) {
+            case "up":
+              return bufferMatch > databaseMatch ? bufferMatch : databaseMatch;
+            case "down":
+              return bufferMatch < databaseMatch ? bufferMatch : databaseMatch;
+          }
+        }
       }
       cursor = Uuid.fromBytes(chunk.at(-1)!.id);
+      inclusive = false;
     }
-    return bufferedMatch ?? null;
+
+    // no database match, so the buffer match is our best (and only) candidate ...
+    return bufferMatch ?? null;
   }
 
   /**
@@ -236,10 +255,10 @@ export class EventRepository {
     const where = and(
       eq($containerEvent.containerId, container),
       bound,
-      ...EventRepository.span(filter),
-      filter.matcher?.variant === "substr" ? EventRepository.containing(filter.matcher.pattern) : undefined,
+      ...EventRepository.filterBound(filter),
+      filter.logLinePattern?.patternVariant === "substr" ? EventRepository.containing(filter.logLinePattern.pattern) : undefined,
     );
-    const matches = filter.matcher?.variant === "regex" ? LineMatch.predicate(filter.matcher.pattern, filter.matcher.variant) : undefined;
+    const matches = filter.logLinePattern?.patternVariant === "regex" ? LogLinePattern.predicate(filter.logLinePattern) : undefined;
     return this.readFiltered(where, false, 1, matches).length > 0;
   }
 
@@ -465,9 +484,6 @@ export namespace EventRepository {
     afterInclusive?: string;
   };
 
-  /** A pattern and how to read it. Search and filter each carry one, independently. */
-  export type Matcher = { pattern: string; variant: LineMatch.Variant };
-
   /**
    * The narrowed view everything else operates inside. Absent parts narrow nothing, so `{}` is the
    * whole log.
@@ -477,34 +493,49 @@ export namespace EventRepository {
    * being filtered after the fact.
    */
   export type Filter = {
-    matcher?: Matcher;
+    logLinePattern?: LogLinePattern;
     since?: Temporal.Instant;
     until?: Temporal.Instant;
   };
 
-  export function span(filter: Filter) {
+  export function filterBound(filter: Filter) {
     return [
       filter.since === undefined ? undefined : gte($containerEvent.id, Uuid.lowerBoundAt(filter.since)),
       filter.until === undefined ? undefined : lt($containerEvent.id, Uuid.lowerBoundAt(filter.until)),
     ];
   }
 
-  /** The same span, for events still in the buffer and so never seen by a query. */
-  export function within(event: ContainerEvent, filter: Filter): boolean {
-    return (
-      (filter.since === undefined || Temporal.Instant.compare(event.timestamp, filter.since) >= 0) &&
-      (filter.until === undefined || Temporal.Instant.compare(event.timestamp, filter.until) < 0)
-    );
+  /**
+   * All either predicate needs, and all both halves can offer: a stored row is `{ id, line }` long
+   * before it is an event. Asking for less is what lets one predicate judge the buffer and the
+   * database, so the two can no longer drift apart.
+   */
+  export type Candidate = { id: string; line: string | null };
+
+  /**
+   * The span is compared as *ids*, exactly as {@link filterBound} hands it to sqlite -- a uuidv7 opens with
+   * the millisecond, so the comparison the index performs and the one performed here are the same
+   * one. Comparing timestamps instead would be a shade more precise on one side than the other, and
+   * would cost an `Instant` parse per row on a scan that reads every row in the range.
+   */
+  export function filterPredicate(filter: Filter): (candidate: Candidate) => boolean {
+    const patternPredicate = filter.logLinePattern ? LogLinePattern.predicate(filter.logLinePattern) : undefined;
+    const since = filter.since === undefined ? undefined : Uuid.fromBytes(Uuid.lowerBoundAt(filter.since));
+    const until = filter.until === undefined ? undefined : Uuid.fromBytes(Uuid.lowerBoundAt(filter.until));
+    return ({ id, line }) =>
+      (since === undefined || id >= since) &&
+      (until === undefined || id < until) &&
+      // a start or a stop has no text, so it cannot answer a pattern -- but it is inside a bare span
+      (patternPredicate === undefined || (line !== null && patternPredicate(line)));
   }
 
   /**
    * The line to search out from, and whether it may itself be the answer
    */
   export type Search = {
-    pattern: string;
-    patternVariant: LineMatch.Variant;
-    anchorInclusive?: string;
-    anchorExclusive?: string;
+    logLinePattern: LogLinePattern;
+    anchorId?: string;
+    anchorInclusivity?: "inclusive" | "exclusive";
     direction: "up" | "down";
   };
 
@@ -514,23 +545,23 @@ export namespace EventRepository {
     return sql`${$containerEvent.line} like ${`%${escaped}%`} escape '\\'`;
   }
 
-  /** Whether `id` lies on the far side of the anchor, in the direction being read. */
-  export function beyond(id: string, from: string | undefined, inclusive: boolean, up: boolean): boolean {
-    if (from === undefined) {
-      return true;
-    }
-    if (id === from) {
-      return inclusive;
-    }
-    return up ? id < from : id > from;
-  }
-
-  /** Of two matches found in the same direction, the one encountered first. */
-  export function nearest(stored: string, bufferedMatch: string | undefined, up: boolean): string {
-    if (bufferedMatch === undefined) {
-      return stored;
-    }
-    return up ? (bufferedMatch > stored ? bufferedMatch : stored) : bufferedMatch < stored ? bufferedMatch : stored;
+  export function searchPredicate({ logLinePattern, anchorId, anchorInclusivity, direction }: Search): (candidate: Candidate) => boolean {
+    const patternPredicate = LogLinePattern.predicate(logLinePattern);
+    const beyondPredicate = ({ id }: Candidate): boolean => {
+      if (anchorId === undefined) {
+        return true;
+      }
+      if (id === anchorId) {
+        return anchorInclusivity === "inclusive";
+      }
+      switch (direction) {
+        case "up":
+          return id < anchorId;
+        case "down":
+          return id > anchorId;
+      }
+    };
+    return (candidate) => beyondPredicate(candidate) && candidate.line !== null && patternPredicate(candidate.line);
   }
 
   export type Page = {

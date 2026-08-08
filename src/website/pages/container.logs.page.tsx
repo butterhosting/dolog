@@ -1,4 +1,4 @@
-import { LineMatch } from "@/helpers/LineMatch";
+import { LogLinePattern } from "@/models/LogLinePattern";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Temporal } from "@js-temporal/polyfill";
 import { StreamVariant } from "@/models/StreamVariant";
@@ -70,7 +70,7 @@ export function containerLogsPage() {
   const loadingNewer = useRef(false);
 
   const [needle, setNeedle] = useState("");
-  const [variant, setVariant] = useState<LineMatch.Variant>("substr");
+  const [variant, setVariant] = useState<LogLinePattern.Variant>(LogLinePattern.Variant.substr);
   /**
    * The match last stepped to. The only state search keeps, and it cannot go stale: every step
    * re-checks it against the viewport and drops it the moment it is not on screen, so it can never
@@ -122,7 +122,7 @@ export function containerLogsPage() {
    */
   const applied = useMemo(() => Internal.appliedFilter(parameters), [parameters]);
   const [filterDraft, setFilterDraft] = useState(applied.pattern);
-  const [filterVariant, setFilterVariant] = useState<LineMatch.Variant>(applied.variant);
+  const [filterVariant, setFilterVariant] = useState<LogLinePattern.Variant>(applied.variant);
   const [rangeDraft, setRangeDraft] = useState<LogRange.Value>(applied.range);
   const filterDirty =
     filterDraft.trim() !== applied.pattern || filterVariant !== applied.variant || !LogRange.equals(rangeDraft, applied.range);
@@ -258,7 +258,7 @@ export function containerLogsPage() {
         }
       },
     });
-    socketClient.declareStreamInterest(id, applied.pattern ? { pattern: applied.pattern, variant: applied.variant } : null);
+    socketClient.declareStreamInterest(id, applied.pattern ? { pattern: applied.pattern, patternVariant: applied.variant } : null);
 
     void (async () => {
       const page = await containerClient.logs(id, {
@@ -595,7 +595,7 @@ export function containerLogsPage() {
           <Internal.Field>
             <Internal.RegexToggle
               on={filterVariant === "regex"}
-              onClick={() => setFilterVariant((c) => (c === "regex" ? "substr" : "regex"))}
+              onClick={() => setFilterVariant((c) => (c === LogLinePattern.Variant.regex ? LogLinePattern.Variant.substr : LogLinePattern.Variant.regex))}
             />
             <input
               value={filterDraft}
@@ -674,7 +674,7 @@ export function containerLogsPage() {
         {finding && (
           <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-xl bg-c-dark-deep p-2 shadow-2xl">
             <Internal.Field>
-              <Internal.RegexToggle on={variant === "regex"} onClick={() => setVariant((c) => (c === "regex" ? "substr" : "regex"))} />
+              <Internal.RegexToggle on={variant === "regex"} onClick={() => setVariant((c) => (c === LogLinePattern.Variant.regex ? LogLinePattern.Variant.substr : LogLinePattern.Variant.regex))} />
               <input
                 ref={findField}
                 autoFocus
@@ -758,7 +758,8 @@ namespace Internal {
   /** The filter in force, which lives in the url rather than in state -- a view worth linking to. */
   export function appliedFilter(parameters: URLSearchParams) {
     const pattern = parameters.get("filter") ?? "";
-    const variant: LineMatch.Variant = parameters.get("filterVariant") === "regex" ? "regex" : "substr";
+    const variant =
+      parameters.get("filterVariant") === "regex" ? LogLinePattern.Variant.regex : LogLinePattern.Variant.substr;
     return { pattern, variant, range: LogRange.fromParams(parameters) };
   }
 
@@ -808,14 +809,14 @@ namespace Internal {
   export function highlight(
     events: ContainerEvent[],
     needle: string,
-    variant: LineMatch.Variant,
+    variant: LogLinePattern.Variant,
   ): { matched: Set<string>; broken: boolean } {
     const term = needle.trim();
     if (!term) {
       return { matched: new Set(), broken: false };
     }
     try {
-      const matches = LineMatch.predicate(term, variant);
+      const matches = LogLinePattern.predicate({ pattern: term, patternVariant: variant });
       return {
         matched: new Set(events.filter((event) => event.type === ContainerEvent.Type.log && matches(event.line)).map((e) => e.id)),
         broken: false,

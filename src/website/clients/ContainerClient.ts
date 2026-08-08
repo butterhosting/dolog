@@ -1,4 +1,4 @@
-import { LineMatch } from "@/helpers/LineMatch";
+import { LogLinePattern } from "@/models/LogLinePattern";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { ContainerRM } from "@/models/ContainerRM";
 import { Yesttp } from "yesttp";
@@ -60,7 +60,7 @@ namespace Internal {
 export namespace ContainerClient {
   export type FindOptions = {
     pattern: string;
-    patternVariant: LineMatch.Variant;
+    patternVariant: LogLinePattern.Variant;
     /** Anchored on an ordinary line the reader was looking at, which may itself match. */
     anchorInclusive?: string;
     /** Stepping off a match already found -- including it would return that same line forever. */
@@ -89,7 +89,7 @@ export namespace ContainerClient {
    */
   export type Filter = {
     pattern?: string;
-    variant?: LineMatch.Variant;
+    variant?: LogLinePattern.Variant;
     since?: string;
     until?: string;
   };

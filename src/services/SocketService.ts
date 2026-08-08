@@ -1,8 +1,8 @@
 import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
-import { LineMatch } from "@/helpers/LineMatch";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { ContainerRM } from "@/models/ContainerRM";
+import { LogLinePattern } from "@/models/LogLinePattern";
 import { Connection } from "@/models/socket/Connection";
 import { Temporal } from "@js-temporal/polyfill";
 import { ClientMessage } from "../models/socket/ClientMessage";
@@ -18,7 +18,7 @@ export class SocketService {
     this.connections.set(socket.data.clientId, {
       socket,
       watchedContainerId: null,
-      logsPredicate: null,
+      logLinePredicate: null,
       lastHeardBack: Temporal.Now.instant(),
     });
   };
@@ -54,7 +54,9 @@ export class SocketService {
     };
     [...this.connections.values()]
       .filter((connection) => connection.watchedContainerId === data.container.id)
-      .filter((connection) => !connection.logsPredicate || (data.type === ContainerEvent.Type.log && connection.logsPredicate(data.line)))
+      .filter(
+        (connection) => !connection.logLinePredicate || (data.type === ContainerEvent.Type.log && connection.logLinePredicate(data.line)),
+      )
       .forEach((connection) => connection.socket.send(JSON.stringify(message)));
   };
 
@@ -77,9 +79,7 @@ export class SocketService {
       switch (message.type) {
         case ClientMessage.Type.declare_stream_interest:
           connection.watchedContainerId = message.containerId;
-          connection.logsPredicate = message.logsFilter
-            ? LineMatch.predicate(message.logsFilter.pattern, message.logsFilter.variant)
-            : null;
+          connection.logLinePredicate = message.logLinePattern ? LogLinePattern.predicate(message.logLinePattern) : null;
       }
     } catch (error) {
       this.log.warn(`Ignoring unreadable message from ${socket.data.clientId}`, error);
