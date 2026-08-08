@@ -48,10 +48,9 @@ export class EventRepository {
   public async listEvents(
     dockerId: string,
     limit: number,
-    cursor: EventRepository.Cursor = {},
+    { before, after, afterInclusive }: EventRepository.Cursor = {},
     filter: EventRepository.Filter = {},
   ): Promise<EventRepository.Page> {
-    const { before, after, afterInclusive } = cursor;
     const forwards = after !== undefined || afterInclusive !== undefined;
     const container = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
     const bounds = [
@@ -146,14 +145,17 @@ export class EventRepository {
    * `X_DOLOG_RETENTION_MAX_LINES_PER_CONTAINER`, which is what makes even a fruitless search -- the
    * one case that reads everything -- affordable enough to need no budget of its own.
    */
-  public async findEvent(dockerId: string, search: EventRepository.Search, filter: EventRepository.Filter = {}): Promise<string | null> {
+  public async findEvent(
+    dockerId: string,
+    { pattern, patternVariant, anchorInclusive, anchorExclusive, direction }: EventRepository.Search,
+    filter: EventRepository.Filter = {},
+  ): Promise<string | null> {
     const CHUNK = 1_000;
-    const { pattern: needle, patternVariant: variant, anchorInclusive, anchorExclusive, direction } = search;
     const up = direction === "up";
     // one anchor, plus whether it counts as an answer -- collapsed here so the walk has one thing to carry
     const from = anchorInclusive ?? anchorExclusive;
     const inclusive = anchorInclusive !== undefined;
-    const matches = LineMatch.predicate(needle, variant);
+    const matches = LineMatch.predicate(pattern, patternVariant);
     // a filtered view is the corpus, so a line the filter excludes is not there to be found
     const inView = filter.matcher ? LineMatch.predicate(filter.matcher.pattern, filter.matcher.variant) : undefined;
     const container = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
@@ -185,7 +187,7 @@ export class EventRepository {
             cursor === undefined ? undefined : bound($containerEvent.id, Uuid.toBytes(cursor)),
             // a substring is filtered by sqlite so non-matching rows never cross into javascript;
             // a regular expression cannot be pushed down, so those rows are tested here instead
-            variant === "substr" ? EventRepository.containing(needle) : undefined,
+            patternVariant === "substr" ? EventRepository.containing(pattern) : undefined,
             ...EventRepository.span(filter),
             filter.matcher?.variant === "substr" ? EventRepository.containing(filter.matcher.pattern) : undefined,
           ),
