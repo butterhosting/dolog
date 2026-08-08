@@ -3,12 +3,12 @@ import { Logger } from "@/Logger";
 import { ContainerEventConverter } from "@/drizzle/converters/ContainerEventConverter";
 import { $container, $containerEvent } from "@/drizzle/schema";
 import { Sqlite } from "@/drizzle/sqlite";
-import { LogLinePattern } from "@/models/LogLinePattern";
 import { Uuid } from "@/helpers/Uuid";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { LogLinePattern } from "@/models/LogLinePattern";
 import { Temporal } from "@js-temporal/polyfill";
-import { and, asc, BinaryOperator, desc, eq, gt, gte, lt, lte, notExists, sql } from "drizzle-orm";
+import { and, asc, BinaryOperator, desc, eq, gt, gte, lt, lte, notExists, SQL, sql } from "drizzle-orm";
 import { BehaviorSubject, catchError, concatMap, defer, EMPTY, interval, Observable } from "rxjs";
 
 /**
@@ -72,27 +72,30 @@ export class EventRepository {
   ): Promise<EventRepository.Page> {
     const forwards = after !== undefined || afterInclusive !== undefined;
     const container = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
+
+    /**
+     * One owner for the filter, so the query and the buffer cannot drift: the clauses below and the
+     * predicate further down are the two halves of the same thing. Only the cursor is restated,
+     * since that is the caller's position rather than part of what the window *is*. uuidv7s are
+     * time-ordered, so comparing ids as text compares them by age.
+     */
+    const inWindow = Internal.filterPredicate(filter);
     const bounds = [
       container ? eq($containerEvent.containerId, container.id) : undefined,
       before === undefined ? undefined : lt($containerEvent.id, Uuid.toBytes(before)),
       after === undefined ? undefined : gt($containerEvent.id, Uuid.toBytes(after)),
       afterInclusive === undefined ? undefined : gte($containerEvent.id, Uuid.toBytes(afterInclusive)),
-      ...Internal.filterBound(filter),
-      // a substring narrows the query itself; a regular expression cannot, and is tested below
-      filter.logLinePattern?.patternVariant === "substr" ? Internal.containing(filter.logLinePattern.pattern) : undefined,
+      ...inWindow.partialDatabaseTest(),
     ];
-    const matches = filter.logLinePattern ? LogLinePattern.predicate(filter.logLinePattern) : undefined;
+    /**
+     * Whatever the query narrowed, the predicate still decides. A span cannot disagree -- sqlite is
+     * handed the very same ids -- but a pattern can, so wherever one is in play the rows are tested
+     * rather than trusted.
+     */
     const stored = !container
       ? []
-      : this.readFiltered(and(...bounds), forwards, limit, filter.logLinePattern?.patternVariant === "regex" ? matches : undefined);
+      : this.readFiltered(and(...bounds), forwards, limit, filter.logLinePattern ? inWindow.fullInMemoryTest : undefined);
 
-    /**
-     * The same filter the query applied, judged here by the same predicate -- so the two halves
-     * cannot drift. Only the cursor is restated, since that is the caller's position rather than
-     * part of what the window *is*. uuidv7s are time-ordered, so comparing ids as text compares
-     * them by age.
-     */
-    const inWindow = Internal.filterPredicate(filter);
     const buffered = this.pending.filter(
       (event) =>
         event.container.id === dockerId &&
@@ -100,7 +103,7 @@ export class EventRepository {
         (after === undefined || event.id > after) &&
         (afterInclusive === undefined || event.id >= afterInclusive) &&
         // a start or a stop carries no text, so a pattern has nothing in it to match
-        inWindow({ id: event.id, line: event.type === ContainerEvent.Type.log ? event.line : null }),
+        inWindow.fullInMemoryTest({ id: event.id, line: event.type === ContainerEvent.Type.log ? event.line : null }),
     );
     const model = container ? ContainerEventConverter.containerFromDatabase(container) : undefined;
     const events = [...stored.map((row) => ContainerEventConverter.fromDatabase(row, model!)), ...buffered];
@@ -128,10 +131,16 @@ export class EventRepository {
    * A page of rows in the direction being read.
    *
    * Without a predicate this is one query: sqlite has applied every condition already, so `limit`
-   * means what it says. A regular expression cannot be pushed down, so there `limit` would count
-   * rows rather than matches -- the range is walked a chunk at a time instead, and counted here.
+   * means what it says. With one, `limit` would count rows rather than matches -- the range is
+   * walked a chunk at a time instead, and the matches counted here. A pattern always takes that
+   * path, since the clause standing in for it is a prefilter rather than the verdict.
    */
-  private readFiltered(where: ReturnType<typeof and>, forwards: boolean, limit: number, matches?: (line: string) => boolean) {
+  private readFiltered(
+    where: ReturnType<typeof and>,
+    forwards: boolean,
+    limit: number,
+    matches?: (candidate: Internal.Candidate) => boolean,
+  ) {
     const CHUNK = 1_000;
     const order = forwards ? asc($containerEvent.id) : desc($containerEvent.id);
     const query = (extra: ReturnType<typeof and>, take: number) =>
@@ -148,7 +157,7 @@ export class EventRepository {
         break;
       }
       for (const row of chunk) {
-        if (collected.length < limit && row.line !== null && matches(row.line)) {
+        if (collected.length < limit && matches({ id: Uuid.fromBytes(row.id), line: row.line })) {
           collected.push(row);
         }
       }
@@ -169,8 +178,8 @@ export class EventRepository {
     //
     const bufferMatchesBeyondSearchAnchor = this.pending
       .filter((event): event is ContainerEvent.Log => event.container.id === dockerId && event.type === ContainerEvent.Type.log)
-      .filter((event) => searchPredicate(event)) // only logs matching the specific search constraints...
-      .filter((event) => filterPredicate(event)) // ...but only if they match the general filter window as well
+      .filter((event) => searchPredicate.fullInMemoryTest(event)) // only logs matching the specific search constraints...
+      .filter((event) => filterPredicate.fullInMemoryTest(event)) // ...but only if they match the general filter window as well
       .map((event) => event.id)
       .sort(); // UUIDv7s
     const bufferMatch = search.direction === "up" ? bufferMatchesBeyondSearchAnchor.at(-1) : bufferMatchesBeyondSearchAnchor.at(0);
@@ -185,15 +194,9 @@ export class EventRepository {
       return bufferMatch ?? null; // nothing was ever flushed, so the buffer contains all history
     }
 
+    // the anchor opens the walk; every chunk after it resumes from the last row already read
     let cursor = search.anchorId;
-    let inclusive = search.anchorInclusivity === "inclusive";
     while (true) {
-      let anchorBound: BinaryOperator;
-      if (upDirection) {
-        anchorBound = inclusive ? lte : lt;
-      } else {
-        anchorBound = inclusive ? gte : gt;
-      }
       const chunk = this.sqlite
         .select({ id: $containerEvent.id, line: $containerEvent.line })
         .from($containerEvent)
@@ -201,15 +204,9 @@ export class EventRepository {
           and(
             eq($containerEvent.containerId, container.id),
             // only logs matching the specific search constraints...
-            cursor === undefined ? undefined : anchorBound($containerEvent.id, Uuid.toBytes(cursor)),
-            search.logLinePattern.patternVariant === LogLinePattern.Variant.substr
-              ? Internal.containing(search.logLinePattern.pattern)
-              : undefined,
+            ...searchPredicate.partialDatabaseTest(cursor),
             // ...but only if they match the general filter window as well
-            ...Internal.filterBound(filter),
-            filter.logLinePattern?.patternVariant === LogLinePattern.Variant.substr
-              ? Internal.containing(filter.logLinePattern.pattern)
-              : undefined,
+            ...filterPredicate.partialDatabaseTest(),
           ),
         )
         .orderBy(upDirection ? desc($containerEvent.id) : asc($containerEvent.id))
@@ -224,7 +221,7 @@ export class EventRepository {
           id: Uuid.fromBytes(row.id),
           line: row.line,
         };
-        if (searchPredicate(databaseCandidate) && filterPredicate(databaseCandidate)) {
+        if (searchPredicate.fullInMemoryTest(databaseCandidate) && filterPredicate.fullInMemoryTest(databaseCandidate)) {
           const databaseMatch = databaseCandidate.id;
 
           //
@@ -242,7 +239,6 @@ export class EventRepository {
         }
       }
       cursor = Uuid.fromBytes(chunk.at(-1)!.id);
-      inclusive = false;
     }
 
     // no database match, so the buffer match is our best (and only) candidate ...
@@ -274,13 +270,9 @@ export class EventRepository {
      * Under a filter this stops being a free existence check: "is there anything above" becomes "is
      * there another *match* above", which is the same walk the page does, stopped at one.
      */
-    const where = and(
-      eq($containerEvent.containerId, container),
-      bound,
-      ...Internal.filterBound(filter),
-      filter.logLinePattern?.patternVariant === "substr" ? Internal.containing(filter.logLinePattern.pattern) : undefined,
-    );
-    const matches = filter.logLinePattern?.patternVariant === "regex" ? LogLinePattern.predicate(filter.logLinePattern) : undefined;
+    const inWindow = Internal.filterPredicate(filter);
+    const where = and(eq($containerEvent.containerId, container), bound, ...inWindow.partialDatabaseTest());
+    const matches = filter.logLinePattern ? inWindow.fullInMemoryTest : undefined;
     return this.readFiltered(where, false, 1, matches).length > 0;
   }
 
@@ -469,16 +461,24 @@ export class EventRepository {
   }
 }
 
+/**
+ * Each concept owns both halves of itself: the test that decides, and the clauses that narrow what
+ * sqlite hands over before it is asked.
+ *
+ * The contract between the two halves is that `partialDatabaseTest` is a *prefilter*, never the
+ * verdict -- it only has to be no stricter than `fullInMemoryTest`. That is what lets a substring
+ * narrow the scan while a regular expression, which sqlite cannot evaluate, narrows nothing.
+ */
 namespace Internal {
   export type Candidate = {
     id: string;
     line: string | null;
   };
 
-  export function filterBound(filter: EventRepository.Filter) {
+  export function filterBound({ since, until }: Pick<EventRepository.Filter, "since" | "until">) {
     return [
-      filter.since === undefined ? undefined : gte($containerEvent.id, Uuid.lowerBoundAt(filter.since)),
-      filter.until === undefined ? undefined : lt($containerEvent.id, Uuid.lowerBoundAt(filter.until)),
+      since === undefined ? undefined : gte($containerEvent.id, Uuid.lowerBoundAt(since)),
+      until === undefined ? undefined : lt($containerEvent.id, Uuid.lowerBoundAt(until)),
     ];
   }
 
@@ -488,36 +488,58 @@ namespace Internal {
    * one. Comparing timestamps instead would be a shade more precise on one side than the other, and
    * would cost an `Instant` parse per row on a scan that reads every row in the range.
    */
-  export function filterPredicate(filter: EventRepository.Filter): (candidate: Candidate) => boolean {
-    const patternPredicate = filter.logLinePattern ? LogLinePattern.predicate(filter.logLinePattern) : undefined;
-    const since = filter.since === undefined ? undefined : Uuid.fromBytes(Uuid.lowerBoundAt(filter.since));
-    const until = filter.until === undefined ? undefined : Uuid.fromBytes(Uuid.lowerBoundAt(filter.until));
-    return ({ id, line }) =>
-      (since === undefined || id >= since) &&
-      (until === undefined || id < until) &&
-      // a start or a stop has no text, so it cannot answer a pattern -- but it is inside a bare span
-      (patternPredicate === undefined || (line !== null && patternPredicate(line)));
+  export function filterPredicate({ logLinePattern, since, until }: EventRepository.Filter): {
+    fullInMemoryTest(candidate: Candidate): boolean;
+    partialDatabaseTest(): Array<SQL<unknown> | undefined>;
+  } {
+    // full in-memory test
+    const patternPredicate = logLinePattern ? LogLinePattern.predicate(logLinePattern) : undefined;
+    const sinceId = since === undefined ? undefined : Uuid.fromBytes(Uuid.lowerBoundAt(since));
+    const untilId = until === undefined ? undefined : Uuid.fromBytes(Uuid.lowerBoundAt(until));
+    // partial database test
+    const clauses: Array<SQL<unknown> | undefined> = [
+      ...Internal.filterBound({ since, until }),
+      logLinePattern?.patternVariant === LogLinePattern.Variant.substr ? Internal.sqlContaining(logLinePattern.pattern) : undefined,
+    ];
+    return {
+      fullInMemoryTest(candidate) {
+        return (
+          (sinceId === undefined || candidate.id >= sinceId) &&
+          (untilId === undefined || candidate.id < untilId) &&
+          (patternPredicate === undefined || (candidate.line !== null && patternPredicate(candidate.line)))
+        );
+      },
+      partialDatabaseTest() {
+        return clauses;
+      },
+    };
   }
 
-  /** The `like` prefilter for a literal needle, with sqlite's own wildcards defanged. */
-  export function containing(needle: string) {
+  /**
+   * The `like` prefilter for a literal needle, with sqlite's own wildcards defanged.
+   *
+   * It may stand in for the predicate across every needle because the predicate folds case exactly
+   * as `like` does -- see {@link LogLinePattern.predicate}. Were it to fold more, this would become
+   * the stricter of the two, and a row rejected here is never carried back to be tested.
+   */
+  export function sqlContaining(needle: string): SQL<unknown> {
     const escaped = needle.replace(/[\\%_]/g, (character) => `\\${character}`);
     return sql`${$containerEvent.line} like ${`%${escaped}%`} escape '\\'`;
   }
 
-  export function searchPredicate({
-    logLinePattern,
-    anchorId,
-    anchorInclusivity,
-    direction,
-  }: EventRepository.Search): (candidate: Candidate) => boolean {
+  export function searchPredicate({ logLinePattern, anchorId, anchorInclusivity, direction }: EventRepository.Search): {
+    fullInMemoryTest(candidate: Candidate): boolean;
+    partialDatabaseTest(cursor: string | undefined): Array<SQL<unknown> | undefined>;
+  } {
+    const isInclusive = anchorInclusivity === "inclusive";
+    // full in-memory test
     const patternPredicate = LogLinePattern.predicate(logLinePattern);
     const beyondPredicate = ({ id }: Candidate): boolean => {
       if (anchorId === undefined) {
         return true;
       }
       if (id === anchorId) {
-        return anchorInclusivity === "inclusive";
+        return isInclusive;
       }
       switch (direction) {
         case "up":
@@ -526,7 +548,33 @@ namespace Internal {
           return id > anchorId;
       }
     };
-    return (candidate) => beyondPredicate(candidate) && candidate.line !== null && patternPredicate(candidate.line);
+    // partial database test
+    const extraClause =
+      logLinePattern.patternVariant === LogLinePattern.Variant.substr ? Internal.sqlContaining(logLinePattern.pattern) : undefined;
+    return {
+      fullInMemoryTest: (candidate) => beyondPredicate(candidate) && candidate.line !== null && patternPredicate(candidate.line),
+      partialDatabaseTest: (cursor) => {
+        if (cursor === undefined) {
+          return [extraClause];
+        }
+        /**
+         * Inclusivity belongs to the anchor, never to a resumption: a walk resuming from the last row
+         * it read must exclude it, or it would read that row forever. Rather than have the caller
+         * remember to say so, the anchor is recognised here -- any other cursor is a resumption.
+         */
+        const openingTheWalk = isInclusive && cursor === anchorId;
+        let anchorBound: BinaryOperator;
+        switch (direction) {
+          case "up":
+            anchorBound = openingTheWalk ? lte : lt;
+            break;
+          case "down":
+            anchorBound = openingTheWalk ? gte : gt;
+            break;
+        }
+        return [anchorBound($containerEvent.id, Uuid.toBytes(cursor)), extraClause];
+      },
+    };
   }
 }
 

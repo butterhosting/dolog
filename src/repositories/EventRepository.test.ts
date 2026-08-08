@@ -268,6 +268,70 @@ describe(EventRepository.name, () => {
       // then
       expect(found).toBe(unwritten.id);
     });
+
+    it("should finish a walk that crosses chunks from an inclusive anchor and matches nothing", async () => {
+      /**
+       * The tail of the walk is the part worth guarding. Resuming a chunk means resuming *from* the
+       * last row read, so that row has to be excluded or the final chunk comes back holding only it
+       * -- never empty, never advancing. A regular expression is what reaches that tail at all: a
+       * literal is handed to `like`, which empties the query long before the end of the range.
+       */
+      const container = TestFixture.container();
+      const CHUNK = 1_000;
+      const all = Array.from({ length: CHUNK + 1 }, (_, index) => TestFixture.logEvent({ container, line: `line ${index}` }));
+      await write(all);
+
+      // when (anchored on the very first line, and inclusive of it)
+      const found = await repository.findEvent(container.id, {
+        logLinePattern: { pattern: "nothing-matches-this", patternVariant: LogLinePattern.Variant.regex },
+        anchorId: all[0]!.id,
+        anchorInclusivity: "inclusive",
+        direction: "down",
+      });
+      // then (it ends, rather than spinning on the last row for ever)
+      expect(found).toBeNull();
+    });
+  });
+
+  describe("literal needles", () => {
+    /**
+     * A literal needle is answered by sqlite's `like` for rows on disk and by the predicate for rows
+     * still buffered, so the two have to reach the same verdict on every input -- not merely on the
+     * ascii ones. These are the pairs where folding rules diverge: accented letters, a dotted
+     * capital `İ` that javascript lowers to an `i`, a final sigma, a ligature, full-width latin.
+     */
+    const PAIRS: Array<{ line: string; needle: string; matches: boolean }> = [
+      { line: "Cafe latte", needle: "cafe", matches: true },
+      { line: "CAFE LATTE", needle: "cafe", matches: true },
+      { line: "GET /api", needle: "get /API", matches: true },
+      { line: "100% done", needle: "100%", matches: true },
+      { line: "café latte", needle: "café", matches: true },
+      { line: "café latte", needle: "CAFÉ", matches: false },
+      { line: "CAFÉ LATTE", needle: "café", matches: false },
+      { line: "İstanbul", needle: "i", matches: false },
+      { line: "ΣΙΓΜΑ", needle: "σιγμα", matches: false },
+      { line: "straße", needle: "STRASSE", matches: false },
+      { line: "ﬁle", needle: "fi", matches: false },
+      { line: "ＡＢＣ", needle: "abc", matches: false },
+    ];
+
+    it.each(PAIRS)("should agree on $needle against $line, on disk and in the buffer", async ({ line, needle, matches }) => {
+      // given (the same line written to one container and left buffered in another)
+      const written = TestFixture.container({ name: "written" });
+      const buffered = TestFixture.container({ name: "buffered" });
+      await write([TestFixture.logEvent({ container: written, line })]);
+      repository.saveEvent(TestFixture.logEvent({ container: buffered, line }));
+      const logLinePattern = { pattern: needle, patternVariant: LogLinePattern.Variant.substr };
+
+      // when (sqlite answers for the first, the predicate for the second)
+      const fromDisk = await repository.listEvents(written.id, 100, {}, { logLinePattern });
+      const fromBuffer = await repository.listEvents(buffered.id, 100, {}, { logLinePattern });
+
+      // then (one verdict, whichever half is asked)
+      expect(fromDisk.events.length).toBe(matches ? 1 : 0);
+      expect(fromBuffer.events.length).toBe(matches ? 1 : 0);
+      expect(LogLinePattern.predicate(logLinePattern)(line)).toBe(matches);
+    });
   });
 
   it("should report the live end for a window with no cursor at all", async () => {
