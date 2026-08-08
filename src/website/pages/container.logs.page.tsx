@@ -4,16 +4,16 @@ import { Temporal } from "@js-temporal/polyfill";
 import { StreamVariant } from "@/models/StreamVariant";
 import { ServerMessage } from "@/models/socket/ServerMessage";
 import clsx from "clsx";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, ReactNode, RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { ContainerClient } from "../clients/ContainerClient";
 import { DialogClient } from "../clients/DialogClient";
 import { SocketClient } from "../clients/SocketClient";
-import { Button } from "../comps/Button";
 import { Spinner } from "../comps/Spinner";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useRegistry } from "../hooks/useRegistry";
 import { useStickyScroll } from "../hooks/useStickyScroll";
+import { LogRange } from "../models/LogRange";
 import { Route } from "../Route";
 
 /**
@@ -77,19 +77,119 @@ export function containerLogsPage() {
    * pull the reader back to somewhere they have scrolled away from.
    */
   const [currentMatch, setCurrentMatch] = useState<string | null>(null);
-  const [searching, setSearching] = useState(false);
-  const [exhausted, setExhausted] = useState(false);
+  /** Which way, not merely whether -- so the chevron that was not pressed keeps still. */
+  const [searching, setSearching] = useState<"up" | "down" | null>(null);
+  /** So "there is nothing that way" can be said by the control that was asked. */
+  const chevrons = { up: useRef<HTMLButtonElement>(null), down: useRef<HTMLButtonElement>(null) };
+  const [finding, setFinding] = useState(false);
+  const findField = useRef<HTMLInputElement>(null);
+
+  /**
+   * Closing takes the needle with it. The highlights are the search made visible, so leaving them
+   * behind would mean a closed control still marking up the log -- with nothing on screen left to
+   * explain why, or to clear them with.
+   */
+  const closeFind = useCallback(() => {
+    setFinding(false);
+    setNeedle("");
+    setCurrentMatch(null);
+  }, []);
+
+  /**
+   * The browser's own find is worse than useless here: it only sees the lines currently in the dom,
+   * so it answers "not found" for a line that is merely further up the log. Taking the shortcut is a
+   * service rather than a theft -- it does what the reader meant.
+   */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && (event.key === "f" || event.key === "k")) {
+        event.preventDefault();
+        setFinding(true);
+        findField.current?.select();
+        findField.current?.focus();
+      }
+      if (event.key === "Escape") {
+        closeFind();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [closeFind]);
+
+  /**
+   * The filter as it is being composed, kept apart from the filter in force. Unlike search, applying
+   * one re-defines the window, so it waits for the button rather than following every keystroke.
+   */
+  const applied = useMemo(() => Internal.appliedFilter(parameters), [parameters]);
+  const [filterDraft, setFilterDraft] = useState(applied.pattern);
+  const [filterVariant, setFilterVariant] = useState<LineMatch.Variant>(applied.variant);
+  const [rangeDraft, setRangeDraft] = useState<LogRange.Value>(applied.range);
+  const filterDirty =
+    filterDraft.trim() !== applied.pattern || filterVariant !== applied.variant || !LogRange.equals(rangeDraft, applied.range);
+  /**
+   * What the load effect watches. Not `parameters` itself: that also carries the marker, and a
+   * dismissed marker must not re-fetch -- the very thing the anchor exists to prevent.
+   */
+  const filterKey = ["filter", "filterVariant", "range", "since", "until"].map((key) => parameters.get(key) ?? "").join(" ");
+  /** Whether anything is being narrowed at all, which changes what an empty window means. */
+  const filtering = applied.pattern !== "" || !LogRange.isAll(applied.range);
+
+  const openRange = useCallback(async () => {
+    const chosen = await dialogClient.pickRange(rangeDraft);
+    if (chosen !== "cancel") {
+      setRangeDraft(chosen);
+    }
+  }, [dialogClient, rangeDraft]);
+
+  /**
+   * A filter re-defines what the window *is*, but not where the reader is standing in it. A marker
+   * is a place they chose deliberately, so changing what is shown keeps it and re-opens the window
+   * around it; only jumping, or going live, moves it. With no marker there is nowhere to return to,
+   * so the view starts again at the live end of the narrowed log.
+   */
+  const applyFilter = useCallback(() => {
+    const pattern = filterDraft.trim();
+    setParameters({
+      ...(pinnedAt ? { at: pinnedAt } : {}),
+      ...(pattern ? { filter: pattern, filterVariant } : {}),
+      ...LogRange.toParams(rangeDraft),
+    });
+    if (!pinnedAt) {
+      setAnchor(null);
+      setHasNewer(false);
+    }
+  }, [filterDraft, filterVariant, pinnedAt, rangeDraft, setParameters]);
 
   /** Which of the loaded lines the needle lights up, and whether it is even a usable needle yet. */
   const { matched, broken } = useMemo(() => Internal.highlight(events, needle, variant), [events, needle, variant]);
 
-  // a different needle makes the old match meaningless, and the old verdict too
+  // a different needle makes the old match meaningless
   useEffect(() => {
     setCurrentMatch(null);
-    setExhausted(false);
   }, [needle, variant]);
 
-  const name = events.at(-1)?.container.name ?? events.at(0)?.container.name ?? id.slice(0, 12);
+  /**
+   * Taken from the overview rather than from the events, which carry it too -- but a filter matching
+   * nothing leaves none to read it from, and the title would fall back to a chopped id for a
+   * container that is perfectly well known.
+   */
+  const [name, setName] = useState(id.slice(0, 12));
+  useEffect(() => {
+    // asked for outright rather than waited for: the overview is only broadcast when it *changes*,
+    // so a quiet container would never announce itself to a page that had just opened
+    void containerClient.list().then((containers) => {
+      const mine = containers.find((container) => container.id === id);
+      if (mine) {
+        setName(mine.name);
+      }
+    });
+  }, [containerClient, id]);
+  useEffect(() => {
+    const found = events.at(-1)?.container.name ?? events.at(0)?.container.name;
+    if (found) {
+      setName(found);
+    }
+  }, [events]);
   useDocumentTitle(`${name} | Dolog`);
 
   const { ref, stuck, onScroll, scrollToBottom } = useStickyScroll<HTMLDivElement>(events, !anchor);
@@ -158,13 +258,14 @@ export function containerLogsPage() {
         }
       },
     });
-    socketClient.declareContainerInterest(id);
+    socketClient.declareContainerInterest(id, applied.pattern ? { pattern: applied.pattern, variant: applied.variant } : null);
 
     void (async () => {
       const page = await containerClient.logs(id, {
         limit: LINES_PER_PAGE,
         at: anchor?.kind === "instant" ? anchor.value : undefined,
         from: anchor?.kind === "line" ? anchor.value : undefined,
+        ...Internal.filterParams(applied),
       });
       if (cancelled) {
         return;
@@ -176,7 +277,7 @@ export function containerLogsPage() {
        * events rather than at their leading edge.
        */
       const landing = anchor ? page.events.at(0) : undefined;
-      const above = landing ? await containerClient.logs(id, { limit: LINES_PER_PAGE, before: landing.id }) : undefined;
+      const above = landing ? await containerClient.logs(id, { limit: LINES_PER_PAGE, before: landing.id, ...Internal.filterParams(applied) }) : undefined;
       if (cancelled) {
         return;
       }
@@ -227,7 +328,8 @@ export function containerLogsPage() {
       socketClient.unsubscribe(subscription);
     };
     // re-runs on a jump, which is exactly right: a new position means a new window and a fresh fetch
-  }, [id, anchor, containerClient, socketClient, ref, scrollToBottom]);
+    // `filterKey` rather than `applied`, which is a fresh object on every render
+  }, [id, anchor, filterKey, containerClient, socketClient, ref, scrollToBottom]);
 
   /**
    * Scrolling to the very top pulls in the page above. The scroll position is restored afterwards by
@@ -246,7 +348,7 @@ export function containerLogsPage() {
      * A stored one used to drift: trimming the list while tailing moved the top of the screen
      * forward while the cursor stayed put, and resuming from it skipped everything in between.
      */
-    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, before: oldest.id });
+    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, before: oldest.id, ...Internal.filterParams(applied) });
     setHasOlder(page.hasOlder);
 
     /**
@@ -263,7 +365,7 @@ export function containerLogsPage() {
       element.scrollTop += element.scrollHeight - before;
       loadingOlder.current = false;
     });
-  }, [containerClient, events, id, hasOlder, ref]);
+  }, [applied, containerClient, events, id, hasOlder, ref]);
 
   /**
    * The downward twin of {@link loadOlder}, and a simpler one: content appended below the viewport
@@ -278,11 +380,11 @@ export function containerLogsPage() {
       return;
     }
     loadingNewer.current = true;
-    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, after: newest.id });
+    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, after: newest.id, ...Internal.filterParams(applied) });
     setHasNewer(page.hasNewer);
     setEvents((current) => [...current, ...page.events]);
     loadingNewer.current = false;
-  }, [containerClient, events, hasNewer, id]);
+  }, [applied, containerClient, events, hasNewer, id]);
 
   /**
    * Catches up on whatever arrived while the reader was away. Reaching the bottom by scrolling and
@@ -297,7 +399,7 @@ export function containerLogsPage() {
       return;
     }
     missedWhilePaused.current = false;
-    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE });
+    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, ...Internal.filterParams(applied) });
     const known = new Set(rendered.current.map((event) => event.id));
 
     /**
@@ -313,7 +415,7 @@ export function containerLogsPage() {
     const merged = new Map(rendered.current.map((event) => [event.id, event]));
     page.events.forEach((event) => merged.set(event.id, event));
     setEvents([...merged.values()].sort((a, b) => a.id.localeCompare(b.id)));
-  }, [containerClient, id]);
+  }, [applied, containerClient, id]);
 
   /**
    * Following means sitting at the bottom *of the live feed*. Being at the bottom of a window parked
@@ -401,21 +503,20 @@ export function containerLogsPage() {
     async (direction: "up" | "down") => {
       const element = ref.current;
       const term = needle.trim();
-      if (!element || !term || searching) {
+      if (!element || !term || searching !== null) {
         return;
       }
       const onMatch = currentMatch !== null && Internal.onScreen(element, currentMatch);
       const edges = onMatch ? {} : Internal.visibleEdges(element);
       const from = onMatch ? currentMatch : direction === "up" ? edges.last : edges.first;
 
-      setSearching(true);
-      setExhausted(false);
+      setSearching(direction);
       try {
-        const found = await containerClient.find(id, { find: term, variant, from, inclusive: !onMatch, direction });
+        const found = await containerClient.find(id, { find: term, variant, from, inclusive: !onMatch, direction, ...Internal.filterParams(applied) });
         if (!found) {
           // deliberately no wrapping: in a log of unknown length, silently reappearing at the other
           // end reads as having lost your place rather than as having run out
-          setExhausted(true);
+          Internal.nudge(chevrons[direction].current);
           return;
         }
         setCurrentMatch(found);
@@ -438,10 +539,10 @@ export function containerLogsPage() {
         setParameters({}, { replace: true });
         setAnchor({ kind: "line", value: found });
       } finally {
-        setSearching(false);
+        setSearching(null);
       }
     },
-    [containerClient, currentMatch, id, needle, ref, variant, searching, setParameters],
+    [applied, containerClient, currentMatch, id, needle, ref, variant, searching, setParameters],
   );
 
   /**
@@ -466,58 +567,49 @@ export function containerLogsPage() {
 
   return (
     <div className="full-bleed flex h-screen flex-col">
+      <header className="relative flex items-center justify-center px-4 pb-3 pt-4">
+        <Link to={Route.containers()} className="absolute left-4 text-sm text-c-accent hover:underline">
+          ← Containers
+        </Link>
+        <span className="font-bold">{name}</span>
+      </header>
+
       {/*
-       * The viewer owns the whole viewport, so the toolbar is the log surface's top edge rather than
-       * a bar floating above it. The breadcrumb is the one thing left standing outside, which is why
-       * the dark area is notched around it rather than starting at the corner.
+       * The controls sit a shade below the log surface rather than on it, so the two read as
+       * separate planes -- one you act on, one you read.
        */}
-      <div className="flex items-stretch">
-        <div className="flex shrink-0 items-center gap-2 px-4 text-sm">
-          <Link to={Route.containers()} className="text-c-accent hover:underline">
-            Containers
-          </Link>
-          <span className="text-c-dark-half">/</span>
-          <span className="font-bold">{name}</span>
-        </div>
-        <div className="flex flex-1 items-center gap-3 rounded-tl-2xl bg-c-dark-full px-3 py-2">
-          <Button onClick={() => void openJump()} theme="neutral" className="bg-white/10 hover:bg-white/20 py-1.5 text-xs">
-            Jump
-          </Button>
+      <div className="flex items-end gap-7 bg-c-dark-deep px-4 pb-3 pt-2">
+        <Internal.Group label="Navigate">
+          <Internal.Action onClick={() => void openJump()}>Jump</Internal.Action>
+        </Internal.Group>
 
-          <div className="flex items-center gap-1.5 rounded-lg bg-white/5 px-2 py-1">
-            <button
-              onClick={() => setVariant((current) => (current === "regex" ? "substr" : "regex"))}
-              title="read the search as a regular expression"
-              className={clsx(
-                "rounded px-1.5 py-0.5 font-mono text-[11px] cursor-pointer transition-colors",
-                variant === "regex" ? "bg-c-accent text-white" : "text-c-dark-half hover:text-gray-300",
-              )}
-            >
-              R
-            </button>
-            <input
-              value={needle}
-              onChange={(event) => setNeedle(event.target.value)}
-              onKeyDown={(event) => event.key === "Enter" && void step(event.shiftKey ? "up" : "down")}
-              placeholder="type to search"
-              className={clsx(
-                "w-64 bg-transparent font-mono text-xs outline-none placeholder:text-c-dark-half",
-                broken ? "text-red-400" : "text-gray-200",
-              )}
+        <Internal.Group label="Filter">
+          <Internal.Field>
+            <Internal.RegexToggle
+              on={filterVariant === "regex"}
+              onClick={() => setFilterVariant((c) => (c === "regex" ? "substr" : "regex"))}
             />
-            {/* never disabled by a verdict: without all of history in hand, "no more" is only ever
-                true of the search we last ran, not of the one about to be run */}
-            <Internal.Step direction="up" onClick={() => void step("up")} disabled={!needle.trim()} busy={searching} />
-            <Internal.Step direction="down" onClick={() => void step("down")} disabled={!needle.trim()} busy={searching} />
-          </div>
+            <input
+              value={filterDraft}
+              onChange={(event) => setFilterDraft(event.target.value)}
+              onKeyDown={(event) => event.key === "Enter" && filterDirty && applyFilter()}
+              placeholder="type to filter"
+              className="w-72 bg-transparent font-mono text-xs text-c-dark-full outline-none placeholder:text-c-dark-half"
+            />
+          </Internal.Field>
+          <Internal.Action onClick={applyFilter} disabled={!filterDirty}>
+            Apply
+          </Internal.Action>
+        </Internal.Group>
 
-          {exhausted && <span className="text-[11px] text-c-dark-half">no more matches that way</span>}
-          {matched.size > 0 && !exhausted && (
-            <span className="text-[11px] text-c-dark-half">
-              {matched.size} on screen{hasOlder || hasNewer ? " so far" : ""}
-            </span>
-          )}
-        </div>
+        <div className="flex-1" />
+
+        <Internal.Group label="Period">
+          {/* the whole span is one control: it says what is covered, and opens the picker */}
+          <Internal.Readout onClick={() => void openRange()} title="choose the time span this filter covers">
+            {LogRange.label(rangeDraft)}
+          </Internal.Readout>
+        </Internal.Group>
       </div>
 
       <div className="relative flex-1 min-h-0">
@@ -541,7 +633,11 @@ export function containerLogsPage() {
           {/* an empty window means something different once a time was asked for: logs may well exist, just not there */}
           {!loading && events.length === 0 && (
             <div className="text-c-dark-half py-8 text-center">
-              {anchor?.kind === "instant" ? "Nothing was logged at or after that time" : "No logs recorded yet"}
+              {filtering
+                ? "Nothing in this container matches the filter"
+                : anchor?.kind === "instant"
+                  ? "Nothing was logged at or after that time"
+                  : "No logs recorded yet"}
             </div>
           )}
           {!loading && hasOlder && <div className="text-c-dark-half text-center pb-2">scroll up for more</div>}
@@ -562,12 +658,58 @@ export function containerLogsPage() {
           {!loading && hasNewer && <div className="text-c-dark-half text-center pt-2">scroll down for more</div>}
         </div>
 
+        {/*
+         * Find rides over the log rather than sitting in the toolbar: it is a thing you reach for
+         * mid-read and dismiss, not a setting the view is configured with. The filter is the
+         * opposite, which is why only one of them is up there.
+         */}
+        {finding && (
+          <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-xl bg-c-dark-deep p-2 shadow-2xl">
+            <Internal.Field>
+              <Internal.RegexToggle on={variant === "regex"} onClick={() => setVariant((c) => (c === "regex" ? "substr" : "regex"))} />
+              <input
+                ref={findField}
+                autoFocus
+                value={needle}
+                onChange={(event) => setNeedle(event.target.value)}
+                onKeyDown={(event) => event.key === "Enter" && void step(event.shiftKey ? "up" : "down")}
+                placeholder="type to search"
+                className={clsx(
+                  "w-56 bg-transparent font-mono text-xs outline-none placeholder:text-c-dark-half",
+                  broken ? "text-c-error" : "text-c-dark-full",
+                )}
+              />
+            </Internal.Field>
+            {/* never disabled by a verdict: without all of history in hand, "no more" is only ever
+                true of the search we last ran, not of the one about to be run */}
+            <Internal.Step ref={chevrons.up} direction="up" onClick={() => void step("up")} disabled={!needle.trim()} busy={searching === "up"} />
+            <Internal.Step
+              ref={chevrons.down}
+              direction="down"
+              onClick={() => void step("down")}
+              disabled={!needle.trim()}
+              busy={searching === "down"}
+            />
+            <button
+              onClick={closeFind}
+              title="close (esc)"
+              className="px-1.5 text-sm text-c-dark-half cursor-pointer hover:text-gray-200"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         {/* offered whenever the feed is not being followed -- scrolled up, or parked in history */}
         {!atLiveEnd && (
           <button
             onClick={() => void jumpToLive()}
             title="new lines are not being added while you read back"
-            className="absolute bottom-4 right-4 flex items-center gap-2 rounded-full bg-c-accent text-white text-xs pl-3 pr-4 py-2 shadow-lg cursor-pointer hover:opacity-90"
+            className={clsx(
+              "absolute right-4 flex items-center gap-2 rounded-full bg-c-accent text-white text-xs pl-3 pr-4 py-2 shadow-lg cursor-pointer hover:opacity-90",
+              // stacked above the find bar rather than under it, since both live in this corner
+              finding ? "bottom-20" : "bottom-4",
+            )}
           >
             <span className="rounded-full bg-yellow-400 text-c-dark-full font-bold px-2 py-0.5">paused</span>
             jump to live ↓
@@ -602,6 +744,27 @@ namespace Internal {
 
   /** Where the window was fetched around: a moment that was asked for, or a line that was found. */
   export type Anchor = { kind: "instant"; value: string } | { kind: "line"; value: string };
+
+  /** The filter in force, which lives in the url rather than in state -- a view worth linking to. */
+  export function appliedFilter(parameters: URLSearchParams) {
+    const pattern = parameters.get("filter") ?? "";
+    const variant: LineMatch.Variant = parameters.get("filterVariant") === "regex" ? "regex" : "substr";
+    return { pattern, variant, range: LogRange.fromParams(parameters) };
+  }
+
+  /**
+   * The filter as the api takes it: absolute instants, resolved against the clock *now* rather than
+   * when the filter was applied, so a relative span keeps meaning what it says.
+   */
+  export function filterParams(applied: ReturnType<typeof appliedFilter>): ContainerClient.FilterOptions {
+    const { since, until } = LogRange.window(applied.range, Temporal.Now.instant());
+    return {
+      filterPattern: applied.pattern || undefined,
+      filterVariant: applied.pattern ? applied.variant : undefined,
+      filterSince: since?.toString(),
+      filterUntil: until?.toString(),
+    };
+  }
 
   export function lineElement(container: HTMLElement | null, eventId: string): HTMLElement | null {
     return container?.querySelector<HTMLElement>(`[data-event="${CSS.escape(eventId)}"]`) ?? null;
@@ -653,12 +816,90 @@ namespace Internal {
     }
   }
 
+  /**
+   * One height, stated once, worn by every control in the bar. They were each sizing themselves from
+   * their own padding, so a row of them came out ragged -- and stayed ragged whenever any one of them
+   * gained a border or a slightly larger label.
+   */
+  const CONTROL = "h-9 rounded-lg inline-flex items-center";
+
+  /** A labelled cluster of controls -- the three the toolbar is divided into. */
+  export function Group({ label, children }: { label: string; children: ReactNode }) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[11px] text-c-dark-half">{label}</span>
+        <div className="flex items-center gap-1.5">{children}</div>
+      </div>
+    );
+  }
+
+  /** Reserved for controls that *do* something, which is what the colour is telling you. */
+  export function Action({ onClick, disabled, children }: { onClick: () => void; disabled?: boolean; children: ReactNode }) {
+    return (
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        className={clsx(
+          CONTROL,
+          "bg-c-action px-4 text-xs font-semibold text-c-dark-full cursor-pointer transition hover:brightness-110 disabled:opacity-25 disabled:cursor-default",
+        )}
+      >
+        {children}
+      </button>
+    );
+  }
+
+  /** A white surface holding an input, and whatever sits beside it inside the same border. */
+  export function Field({ children }: { children: ReactNode }) {
+    return <span className={clsx(CONTROL, "gap-1.5 bg-white px-2")}>{children}</span>;
+  }
+
+  /** Reads like a field because it *says* something, but opens a picker rather than taking typing. */
+  export function Readout({ onClick, title, children }: { onClick: () => void; title: string; children: ReactNode }) {
+    return (
+      <button onClick={onClick} title={title} className={clsx(CONTROL, "bg-white px-3 font-mono text-xs text-c-dark-full cursor-pointer")}>
+        {children}
+      </button>
+    );
+  }
+
+  export function RegexToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+    return (
+      <button
+        onClick={onClick}
+        title="read this as a regular expression"
+        className={clsx(
+          "rounded border px-1.5 py-0.5 font-mono text-[11px] cursor-pointer transition-colors",
+          on
+            ? "border-c-accent bg-c-accent text-white"
+            : "border-c-dark-half/40 text-c-dark-half hover:border-c-dark-full hover:text-c-dark-full",
+        )}
+      >
+        R
+      </button>
+    );
+  }
+
+  /**
+   * A shake, driven from the element rather than from a class. A class would already be applied by
+   * the time the second fruitless press arrived, and a css animation that is already running does
+   * not restart -- so the reply to "still nothing?" would be silence.
+   */
+  export function nudge(element: HTMLElement | null): void {
+    element?.animate(
+      [{ transform: "translateX(0)" }, { transform: "translateX(-2px)" }, { transform: "translateX(2px)" }, { transform: "translateX(0)" }],
+      { duration: 75, iterations: 2, easing: "ease-in-out" },
+    );
+  }
+
   export function Step({
+    ref,
     direction,
     onClick,
     disabled,
     busy,
   }: {
+    ref: RefObject<HTMLButtonElement | null>;
     direction: "up" | "down";
     onClick: () => void;
     disabled: boolean;
@@ -666,10 +907,14 @@ namespace Internal {
   }) {
     return (
       <button
+        ref={ref}
         onClick={onClick}
         disabled={disabled}
         title={`${direction === "up" ? "previous" : "next"} match`}
-        className="flex size-5 items-center justify-center rounded text-gray-300 cursor-pointer hover:bg-white/10 disabled:opacity-30 disabled:cursor-default"
+        className={clsx(
+          CONTROL,
+          "w-9 justify-center bg-c-action text-c-dark-full cursor-pointer transition hover:brightness-110 disabled:opacity-25 disabled:cursor-default",
+        )}
       >
         {busy ? (
           <span className="size-2.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -764,7 +1009,7 @@ namespace Internal {
   function LandingRule({ onDismiss }: { onDismiss: () => void }) {
     return (
       <>
-        <span aria-hidden className="pointer-events-none absolute -left-4 -right-4 -top-px h-px bg-green-400/70" />
+        <span aria-hidden className="pointer-events-none absolute -left-4 -right-4 -top-px h-px bg-c-action" />
         {/*
          * The one thing in the column that takes a click, so it is the one thing that keeps its
          * pointer events. Straddling the left edge puts it clear of the timestamps at any width.

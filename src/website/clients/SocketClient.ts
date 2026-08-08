@@ -12,11 +12,15 @@ export class SocketClient {
   private readonly latestMessages: Partial<Record<ServerMessage.Type, ServerMessage>> = {};
   private socket: WebSocket | null = null;
 
-  private containerInterest: string | null = null;
+  private containerInterest: ClientMessage.DeclareStreamInterest | null = null;
 
-  public declareContainerInterest(containerId: string | null) {
-    this.containerInterest = containerId;
-    this.send({ type: ClientMessage.Type.declare_stream_interest, containerId });
+  /**
+   * The filter travels with the interest, so the server never sends a line the view would hide.
+   * Re-declared rather than patched, since a reconnected server knows nothing about either half.
+   */
+  public declareContainerInterest(containerId: string | null, matcher: ClientMessage.DeclareStreamInterest["matcher"] = null) {
+    this.containerInterest = { type: ClientMessage.Type.declare_stream_interest, containerId, matcher };
+    this.send(this.containerInterest);
   }
 
   private send(message: ClientMessage) {
@@ -30,7 +34,7 @@ export class SocketClient {
     this.socket.addEventListener("open", () => {
       // re-assert our interest, since a reconnected server knows nothing about us
       if (this.containerInterest) {
-        this.send({ type: ClientMessage.Type.declare_stream_interest, containerId: this.containerInterest });
+        this.send(this.containerInterest);
       }
     });
     this.socket.addEventListener("message", ({ data }) => {

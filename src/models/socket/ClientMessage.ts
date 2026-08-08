@@ -1,3 +1,4 @@
+import { LineMatch } from "@/helpers/LineMatch";
 import { ZodParser } from "@/helpers/ZodParser";
 import z from "zod/v4";
 
@@ -11,6 +12,12 @@ export namespace ClientMessage {
   export type DeclareStreamInterest = {
     type: Type.declare_stream_interest;
     containerId: string | null;
+    /**
+     * Only the pattern, never the span. A line arriving now is always after any `since`, and a
+     * `until` that has already passed means the reader is looking at history and is not subscribed
+     * at all -- so the time range has nothing to say about live output.
+     */
+    matcher: { pattern: string; variant: LineMatch.Variant } | null;
   };
 
   export const parse = ZodParser.forType<ClientMessage>()
@@ -19,6 +26,12 @@ export namespace ClientMessage {
         z.object({
           type: z.literal(Type.declare_stream_interest),
           containerId: z.string().nullable(),
+          matcher: z
+            .object({
+              pattern: z.string(),
+              variant: z.enum(["substr", "regex"] satisfies LineMatch.Variant[]),
+            })
+            .nullable(),
         }),
       ]),
     )

@@ -44,7 +44,12 @@ export class EventRepository {
     this.enforcePendingCeiling();
   }
 
-  public async listEvents(dockerId: string, limit: number, cursor: EventRepository.Cursor = {}): Promise<EventRepository.Page> {
+  public async listEvents(
+    dockerId: string,
+    limit: number,
+    cursor: EventRepository.Cursor = {},
+    filter: EventRepository.Filter = {},
+  ): Promise<EventRepository.Page> {
     const { before, after, from } = cursor;
     const forwards = after !== undefined || from !== undefined;
     const container = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
@@ -53,17 +58,14 @@ export class EventRepository {
       before === undefined ? undefined : lt($containerEvent.id, Uuid.toBytes(before)),
       after === undefined ? undefined : gt($containerEvent.id, Uuid.toBytes(after)),
       from === undefined ? undefined : gte($containerEvent.id, Uuid.toBytes(from)),
+      ...EventRepository.span(filter),
+      // a substring narrows the query itself; a regular expression cannot, and is tested below
+      filter.matcher?.variant === "substr" ? EventRepository.containing(filter.matcher.pattern) : undefined,
     ];
+    const matches = filter.matcher ? LineMatch.predicate(filter.matcher.pattern, filter.matcher.variant) : undefined;
     const stored = !container
       ? []
-      : this.sqlite
-          .select()
-          .from($containerEvent)
-          .where(and(...bounds))
-          // reading forwards takes the oldest beyond the cursor; otherwise the newest before it
-          .orderBy(forwards ? asc($containerEvent.id) : desc($containerEvent.id))
-          .limit(limit)
-          .all();
+      : this.readFiltered(and(...bounds), forwards, limit, filter.matcher?.variant === "regex" ? matches : undefined);
 
     // uuidv7s are time-ordered, so comparing them as text is comparing them by age
     const buffered = this.pending.filter(
@@ -71,7 +73,9 @@ export class EventRepository {
         event.container.id === dockerId &&
         (before === undefined || event.id < before) &&
         (after === undefined || event.id > after) &&
-        (from === undefined || event.id >= from),
+        (from === undefined || event.id >= from) &&
+        EventRepository.within(event, filter) &&
+        (matches === undefined || (event.type === ContainerEvent.Type.log && matches(event.line))),
     );
     const model = container ? ContainerEventConverter.containerFromDatabase(container) : undefined;
     const events = [...stored.map((row) => ContainerEventConverter.fromDatabase(row, model!)), ...buffered];
@@ -90,9 +94,48 @@ export class EventRepository {
        * reader is standing at the beginning of history and needs to be told so. One indexed existence
        * check answers it instead of guessing.
        */
-      hasOlder: forwards ? this.anythingOlderThan(container?.id, page.at(0)?.id, after ?? from) : saturated,
+      hasOlder: forwards ? this.anythingOlderThan(container?.id, page.at(0)?.id, after ?? from, filter) : saturated,
       hasNewer: forwards ? saturated : before !== undefined,
     };
+  }
+
+  /**
+   * A page of rows in the direction being read.
+   *
+   * Without a predicate this is one query: sqlite has applied every condition already, so `limit`
+   * means what it says. A regular expression cannot be pushed down, so there `limit` would count
+   * rows rather than matches -- the range is walked a chunk at a time instead, and counted here.
+   */
+  private readFiltered(where: ReturnType<typeof and>, forwards: boolean, limit: number, matches?: (line: string) => boolean) {
+    const CHUNK = 1_000;
+    const order = forwards ? asc($containerEvent.id) : desc($containerEvent.id);
+    const query = (extra: ReturnType<typeof and>, take: number) =>
+      this.sqlite
+        .select()
+        .from($containerEvent)
+        .where(and(where, extra))
+        .orderBy(order)
+        .limit(take)
+        .all();
+
+    if (!matches) {
+      return query(undefined, limit);
+    }
+    const collected: ReturnType<typeof query> = [];
+    let cursor: Buffer | undefined;
+    while (collected.length < limit) {
+      const chunk = query(cursor === undefined ? undefined : (forwards ? gt : lt)($containerEvent.id, cursor), CHUNK);
+      if (chunk.length === 0) {
+        break;
+      }
+      for (const row of chunk) {
+        if (collected.length < limit && row.line !== null && matches(row.line)) {
+          collected.push(row);
+        }
+      }
+      cursor = chunk.at(-1)!.id as Buffer;
+    }
+    return collected;
   }
 
   /**
@@ -108,11 +151,17 @@ export class EventRepository {
    * `X_DOLOG_RETENTION_MAX_LINES_PER_CONTAINER`, which is what makes even a fruitless search -- the
    * one case that reads everything -- affordable enough to need no budget of its own.
    */
-  public async findEvent(dockerId: string, search: EventRepository.Search): Promise<string | null> {
+  public async findEvent(
+    dockerId: string,
+    search: EventRepository.Search,
+    filter: EventRepository.Filter = {},
+  ): Promise<string | null> {
     const CHUNK = 1_000;
     const { needle, variant, from, inclusive, direction } = search;
     const up = direction === "up";
     const matches = LineMatch.predicate(needle, variant);
+    // a filtered view is the corpus, so a line the filter excludes is not there to be found
+    const inView = filter.matcher ? LineMatch.predicate(filter.matcher.pattern, filter.matcher.variant) : undefined;
     const container = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
 
     /**
@@ -122,6 +171,7 @@ export class EventRepository {
     const buffered = this.pending
       // only ordinary log lines carry text; a start or a stop has nothing to search
       .filter((event) => event.container.id === dockerId && event.type === ContainerEvent.Type.log && matches(event.line))
+      .filter((event) => EventRepository.within(event, filter) && (inView === undefined || inView((event as { line: string }).line)))
       .filter((event) => EventRepository.beyond(event.id, from, inclusive, up))
       .map((event) => event.id)
       .sort();
@@ -142,6 +192,8 @@ export class EventRepository {
             // a substring is filtered by sqlite so non-matching rows never cross into javascript;
             // a regular expression cannot be pushed down, so those rows are tested here instead
             variant === "substr" ? EventRepository.containing(needle) : undefined,
+            ...EventRepository.span(filter),
+            filter.matcher?.variant === "substr" ? EventRepository.containing(filter.matcher.pattern) : undefined,
           ),
         )
         .orderBy(up ? desc($containerEvent.id) : asc($containerEvent.id))
@@ -151,7 +203,7 @@ export class EventRepository {
       if (chunk.length === 0) {
         break;
       }
-      const hit = chunk.find((row) => row.line !== null && matches(row.line));
+      const hit = chunk.find((row) => row.line !== null && matches(row.line) && (inView === undefined || inView(row.line)));
       if (hit) {
         return EventRepository.nearest(Uuid.fromBytes(hit.id), bufferedMatch, up);
       }
@@ -165,7 +217,12 @@ export class EventRepository {
    * bound when there is one; with an empty page everything up to and including the cursor qualifies,
    * since nothing beyond it exists to have pushed it along.
    */
-  private anythingOlderThan(container: number | undefined, oldestShown: string | undefined, cursor: string | undefined): boolean {
+  private anythingOlderThan(
+    container: number | undefined,
+    oldestShown: string | undefined,
+    cursor: string | undefined,
+    filter: EventRepository.Filter,
+  ): boolean {
     const bound =
       oldestShown !== undefined
         ? lt($containerEvent.id, Uuid.toBytes(oldestShown))
@@ -176,14 +233,19 @@ export class EventRepository {
     if (container === undefined || !bound) {
       return false;
     }
-    return (
-      this.sqlite
-        .select({ one: sql`1` })
-        .from($containerEvent)
-        .where(and(eq($containerEvent.containerId, container), bound))
-        .limit(1)
-        .get() !== undefined
+    /**
+     * Under a filter this stops being a free existence check: "is there anything above" becomes "is
+     * there another *match* above", which is the same walk the page does, stopped at one.
+     */
+    const where = and(
+      eq($containerEvent.containerId, container),
+      bound,
+      ...EventRepository.span(filter),
+      filter.matcher?.variant === "substr" ? EventRepository.containing(filter.matcher.pattern) : undefined,
     );
+    const matches =
+      filter.matcher?.variant === "regex" ? LineMatch.predicate(filter.matcher.pattern, filter.matcher.variant) : undefined;
+    return this.readFiltered(where, false, 1, matches).length > 0;
   }
 
   /**
@@ -402,6 +464,38 @@ export namespace EventRepository {
      */
     from?: string;
   };
+
+  /** A pattern and how to read it. Search and filter each carry one, independently. */
+  export type Matcher = { pattern: string; variant: LineMatch.Variant };
+
+  /**
+   * The narrowed view everything else operates inside. Absent parts narrow nothing, so `{}` is the
+   * whole log.
+   *
+   * The span is expressed as *ids* rather than timestamps once it reaches sqlite: uuidv7s are
+   * time-ordered, so a time range is a key range, and the walk is bounded by the index instead of
+   * being filtered after the fact.
+   */
+  export type Filter = {
+    matcher?: Matcher;
+    since?: Temporal.Instant;
+    until?: Temporal.Instant;
+  };
+
+  export function span(filter: Filter) {
+    return [
+      filter.since === undefined ? undefined : gte($containerEvent.id, Uuid.lowerBoundAt(filter.since)),
+      filter.until === undefined ? undefined : lt($containerEvent.id, Uuid.lowerBoundAt(filter.until)),
+    ];
+  }
+
+  /** The same span, for events still in the buffer and so never seen by a query. */
+  export function within(event: ContainerEvent, filter: Filter): boolean {
+    return (
+      (filter.since === undefined || Temporal.Instant.compare(event.timestamp, filter.since) >= 0) &&
+      (filter.until === undefined || Temporal.Instant.compare(event.timestamp, filter.until) < 0)
+    );
+  }
 
   export type Search = {
     needle: string;

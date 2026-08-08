@@ -1,5 +1,6 @@
 import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
+import { LineMatch } from "@/helpers/LineMatch";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { ContainerRM } from "@/models/ContainerRM";
 import { Connection } from "@/models/socket/Connection";
@@ -14,7 +15,7 @@ export class SocketService {
 
   public registerSocket = (socket: Socket) => {
     this.log.debug(`Socket connected: ${socket.data.clientId}`);
-    this.connections.set(socket.data.clientId, { socket, watchedContainerId: null, lastHeardAt: Date.now() });
+    this.connections.set(socket.data.clientId, { socket, watchedContainerId: null, matches: null, lastHeardAt: Date.now() });
   };
 
   public unregisterSocket = (socket: Socket) => {
@@ -70,6 +71,13 @@ export class SocketService {
       switch (message.type) {
         case ClientMessage.Type.declare_stream_interest:
           connection.watchedContainerId = message.containerId;
+          /**
+           * Compiled once, here, rather than per arriving line -- and a pattern that will not
+           * compile is refused at the moment it is declared instead of throwing forever afterwards.
+           */
+          connection.matches = message.matcher
+            ? LineMatch.predicate(message.matcher.pattern, message.matcher.variant)
+            : null;
       }
     } catch (error) {
       this.log.warn(`Ignoring unreadable message from ${socket.data.clientId}`, error);
@@ -81,10 +89,13 @@ export class SocketService {
       type: ServerMessage.Type.log,
       event,
     };
+    const serialized = JSON.stringify(message);
     [...this.connections.values()]
       .filter((connection) => connection.watchedContainerId === event.container.id)
+      // a filtered view is the whole view, so a line it excludes must not arrive down the live feed
+      .filter((connection) => !connection.matches || (event.type === ContainerEvent.Type.log && connection.matches(event.line)))
       .forEach((connection) => {
-        connection.socket.send(JSON.stringify(message));
+        connection.socket.send(serialized);
       });
   };
 

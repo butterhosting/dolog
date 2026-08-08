@@ -13,10 +13,10 @@ export class ContainerClient {
 
   public async logs(
     containerId: string,
-    { limit, before, after, from, at }: ContainerClient.LogsOptions = {},
+    { limit, before, after, from, at, ...filter }: ContainerClient.LogsOptions = {},
   ): Promise<ContainerClient.Page> {
     const parameters = new URLSearchParams();
-    Object.entries({ limit, before, after, from, at }).forEach(([key, value]) => {
+    Object.entries({ limit, before, after, from, at, ...filter }).forEach(([key, value]) => {
       if (value !== undefined) {
         parameters.set(key, `${value}`);
       }
@@ -63,7 +63,7 @@ export namespace ContainerClient {
     /** Whether `from` may itself be the answer -- false when stepping off a match already found. */
     inclusive: boolean;
     direction: "up" | "down";
-  };
+  } & ContainerClient.FilterOptions;
 
   export type LogsOptions = {
     limit?: number;
@@ -74,6 +74,17 @@ export namespace ContainerClient {
     from?: string;
     /** A wall-clock instant to read forwards from, for arriving somewhere by time rather than by id. */
     at?: string;
+  } & ContainerClient.FilterOptions;
+
+  /**
+   * The narrowed view a request applies inside. Prefixed because search carries a pattern and a
+   * variant of its own, and one request can carry both.
+   */
+  export type FilterOptions = {
+    filterPattern?: string;
+    filterVariant?: LineMatch.Variant;
+    filterSince?: string;
+    filterUntil?: string;
   };
 
   export type Page = {

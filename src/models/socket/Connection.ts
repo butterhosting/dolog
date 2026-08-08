@@ -11,4 +11,6 @@ export type Connection = {
    */
   lastHeardAt: number;
   watchedContainerId: string | null;
+  /** The live half of an active filter, compiled once when it was declared. */
+  matches: ((line: string) => boolean) | null;
 };

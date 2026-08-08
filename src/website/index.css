@@ -12,6 +12,10 @@
     --color-c-error: #d5000d;
     --color-c-dark-full: #2d2c32;
     --color-c-dark-half: #6c6b72;
+    /* the controls bar, a shade below the log surface so the two read as separate planes */
+    --color-c-dark-deep: #1b1a1f;
+    /* reserved for controls that *do* something, and for the jump marker they place */
+    --color-c-action: #7dd3fc;
 }
 
 /* DESKTOP FIRST / PART B -> https://stackoverflow.com/a/79607480 */

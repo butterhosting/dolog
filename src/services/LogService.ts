@@ -9,6 +9,7 @@ import { ZodParser } from "@/helpers/ZodParser";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { EventRepository } from "@/repositories/EventRepository";
 import { SocketService } from "@/services/SocketService";
+import { Temporal } from "@js-temporal/polyfill";
 import { Observable } from "rxjs";
 import z from "zod/v4";
 import { Fountain } from "./streaming/Fountain";
@@ -34,7 +35,9 @@ export class LogService {
   }
 
   public async list(containerId: string, unknown: z.output<typeof LogService.Query>): Promise<LogService.Page> {
-    const { limit, before, after, from, at } = LogService.Query.parse(unknown);
+    const query = LogService.Query.parse(unknown);
+    const { limit, before, after, from, at } = query;
+    const filter = LogService.filter(query);
     /**
      * `at` names a position on its own, so pairing it with a cursor asks for two starting points at
      * once. It used to win silently and the cursor was dropped, which reads as the server ignoring
@@ -52,10 +55,10 @@ export class LogService {
       });
     }
     if (!at) {
-      return await this.logRepository.listEvents(containerId, limit, { before, after, from });
+      return await this.logRepository.listEvents(containerId, limit, { before, after, from }, filter);
     }
     const boundary = Uuid.fromBytes(Uuid.lowerBoundAt(at));
-    const forwards = await this.logRepository.listEvents(containerId, limit, { after: boundary });
+    const forwards = await this.logRepository.listEvents(containerId, limit, { after: boundary }, filter);
     if (forwards.events.length > 0) {
       // naming the line it settled on saves the caller re-deriving it from the timestamps, which it
       // cannot do exactly: the boundary is a millisecond, and an instant may sit inside one
@@ -69,7 +72,7 @@ export class LogService {
      * This answer used to be indistinguishable from an ordinary landing, so a caller could not tell
      * that it had been given something other than what it asked for. `landedOn: null` says so.
      */
-    const backwards = await this.logRepository.listEvents(containerId, limit, { before: boundary });
+    const backwards = await this.logRepository.listEvents(containerId, limit, { before: boundary }, filter);
     return { ...backwards, hasNewer: false, landedOn: null };
   }
 
@@ -78,9 +81,12 @@ export class LogService {
    * do with the answer: scroll to it if it already has it, fetch a window around it if it does not.
    */
   public async find(containerId: string, unknown: z.output<typeof LogService.Find>): Promise<{ landedOn: string | null }> {
-    const { find, variant, from, inclusive, direction } = LogService.Find.parse(unknown);
+    const query = LogService.Find.parse(unknown);
+    const { find, variant, from, inclusive, direction } = query;
     try {
-      return { landedOn: await this.logRepository.findEvent(containerId, { needle: find, variant, from, inclusive, direction }) };
+      const search = { needle: find, variant, from, inclusive, direction };
+      // the filter defines the corpus, so search walks inside it rather than across the whole log
+      return { landedOn: await this.logRepository.findEvent(containerId, search, LogService.filter(query)) };
     } catch (error) {
       // a half-typed regular expression is an ordinary thing to receive, not a fault
       if (error instanceof SyntaxError) {
@@ -96,6 +102,18 @@ export namespace LogService {
   const MAX_EVENTS_PER_PAGE = 500;
   /** What a caller that expresses no preference gets: a screenful or two, not the largest page we serve. */
   const DEFAULT_EVENTS_PER_PAGE = 100;
+
+  /**
+   * Flat and prefixed rather than nested, so a rejection names the parameter the caller sent --
+   * `ZodProblem.issuesSummary` reports issues by path, and a reshaped one would describe our object
+   * graph instead of their request. The pieces are assembled into a `Filter` after parsing.
+   */
+  const FILTER = {
+    filterPattern: z.string().optional(),
+    filterVariant: z.enum(["substr", "regex"] satisfies LineMatch.Variant[]).default("substr"),
+    filterSince: z.string().transform(ZodParser.instant).optional(),
+    filterUntil: z.string().transform(ZodParser.instant).optional(),
+  };
 
   export type Page = EventRepository.Page & {
     /**
@@ -116,6 +134,7 @@ export namespace LogService {
         .optional()
         .transform((value) => value === "true"),
       direction: z.enum(["up", "down"]).default("down"),
+      ...FILTER,
     })
     .catch((e) => {
       throw ServerError.invalid_request_query(ZodProblem.issuesSummary(e));
@@ -135,8 +154,22 @@ export namespace LogService {
       after: z.string().optional(),
       from: z.string().optional(),
       at: z.string().transform(ZodParser.instant).optional(),
+      ...FILTER,
     })
     .catch((e) => {
       throw ServerError.invalid_request_query(ZodProblem.issuesSummary(e));
     });
+
+  export function filter(query: {
+    filterPattern?: string;
+    filterVariant: LineMatch.Variant;
+    filterSince?: Temporal.Instant;
+    filterUntil?: Temporal.Instant;
+  }): EventRepository.Filter {
+    return {
+      matcher: query.filterPattern ? { pattern: query.filterPattern, variant: query.filterVariant } : undefined,
+      since: query.filterSince,
+      until: query.filterUntil,
+    };
+  }
 }
