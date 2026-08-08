@@ -40,6 +40,25 @@ export class EventRepository {
     }));
   }
 
+  /**
+   * Also manually invoked after every write, so the overview reflects containers that have only just appeared
+   */
+  @Initialize
+  public publishContainers(): void {
+    const rows = this.sqlite.select().from($container).orderBy(asc($container.name)).all();
+    const containers = rows.map((row) => ContainerEventConverter.containerFromDatabase(row));
+    const previous = this.containers.value;
+    const unchanged =
+      previous.length === containers.length &&
+      previous.every((was, index) => {
+        const now = containers[index]!;
+        return was.id === now.id && was.name === now.name && was.group === now.group;
+      });
+    if (!unchanged) {
+      this.containers.next(containers);
+    }
+  }
+
   public saveEvent(event: ContainerEvent): void {
     this.pending.push(event);
     this.enforcePendingCeiling();
@@ -58,9 +77,9 @@ export class EventRepository {
       before === undefined ? undefined : lt($containerEvent.id, Uuid.toBytes(before)),
       after === undefined ? undefined : gt($containerEvent.id, Uuid.toBytes(after)),
       afterInclusive === undefined ? undefined : gte($containerEvent.id, Uuid.toBytes(afterInclusive)),
-      ...EventRepository.filterBound(filter),
+      ...Internal.filterBound(filter),
       // a substring narrows the query itself; a regular expression cannot, and is tested below
-      filter.logLinePattern?.patternVariant === "substr" ? EventRepository.containing(filter.logLinePattern.pattern) : undefined,
+      filter.logLinePattern?.patternVariant === "substr" ? Internal.containing(filter.logLinePattern.pattern) : undefined,
     ];
     const matches = filter.logLinePattern ? LogLinePattern.predicate(filter.logLinePattern) : undefined;
     const stored = !container
@@ -73,7 +92,7 @@ export class EventRepository {
      * part of what the window *is*. uuidv7s are time-ordered, so comparing ids as text compares
      * them by age.
      */
-    const inWindow = EventRepository.filterPredicate(filter);
+    const inWindow = Internal.filterPredicate(filter);
     const buffered = this.pending.filter(
       (event) =>
         event.container.id === dockerId &&
@@ -142,8 +161,8 @@ export class EventRepository {
    * The nearest line matching `needle` in the direction asked for, or null when there is none.
    */
   public async findEvent(dockerId: string, search: EventRepository.Search, filter: EventRepository.Filter = {}): Promise<string | null> {
-    const searchPredicate = EventRepository.searchPredicate(search);
-    const filterPredicate = EventRepository.filterPredicate(filter);
+    const searchPredicate = Internal.searchPredicate(search);
+    const filterPredicate = Internal.filterPredicate(filter);
 
     //
     // Part A: search the buffer for a candidate
@@ -184,12 +203,12 @@ export class EventRepository {
             // only logs matching the specific search constraints...
             cursor === undefined ? undefined : anchorBound($containerEvent.id, Uuid.toBytes(cursor)),
             search.logLinePattern.patternVariant === LogLinePattern.Variant.substr
-              ? EventRepository.containing(search.logLinePattern.pattern)
+              ? Internal.containing(search.logLinePattern.pattern)
               : undefined,
             // ...but only if they match the general filter window as well
-            ...EventRepository.filterBound(filter),
+            ...Internal.filterBound(filter),
             filter.logLinePattern?.patternVariant === LogLinePattern.Variant.substr
-              ? EventRepository.containing(filter.logLinePattern.pattern)
+              ? Internal.containing(filter.logLinePattern.pattern)
               : undefined,
           ),
         )
@@ -201,7 +220,10 @@ export class EventRepository {
       }
 
       for (const row of chunk) {
-        const databaseCandidate: EventRepository.Candidate = { id: Uuid.fromBytes(row.id), line: row.line };
+        const databaseCandidate: Internal.Candidate = {
+          id: Uuid.fromBytes(row.id),
+          line: row.line,
+        };
         if (searchPredicate(databaseCandidate) && filterPredicate(databaseCandidate)) {
           const databaseMatch = databaseCandidate.id;
 
@@ -255,30 +277,11 @@ export class EventRepository {
     const where = and(
       eq($containerEvent.containerId, container),
       bound,
-      ...EventRepository.filterBound(filter),
-      filter.logLinePattern?.patternVariant === "substr" ? EventRepository.containing(filter.logLinePattern.pattern) : undefined,
+      ...Internal.filterBound(filter),
+      filter.logLinePattern?.patternVariant === "substr" ? Internal.containing(filter.logLinePattern.pattern) : undefined,
     );
     const matches = filter.logLinePattern?.patternVariant === "regex" ? LogLinePattern.predicate(filter.logLinePattern) : undefined;
     return this.readFiltered(where, false, 1, matches).length > 0;
-  }
-
-  /**
-   * Also manually invoked after every write, so the overview reflects containers that have only just appeared
-   */
-  @Initialize
-  public publishContainers(): void {
-    const rows = this.sqlite.select().from($container).orderBy(asc($container.name)).all();
-    const containers = rows.map((row) => ContainerEventConverter.containerFromDatabase(row));
-    const previous = this.containers.value;
-    const unchanged =
-      previous.length === containers.length &&
-      previous.every((was, index) => {
-        const now = containers[index]!;
-        return was.id === now.id && was.name === now.name && was.group === now.group;
-      });
-    if (!unchanged) {
-      this.containers.next(containers);
-    }
   }
 
   @Initialize
@@ -466,6 +469,67 @@ export class EventRepository {
   }
 }
 
+namespace Internal {
+  export type Candidate = {
+    id: string;
+    line: string | null;
+  };
+
+  export function filterBound(filter: EventRepository.Filter) {
+    return [
+      filter.since === undefined ? undefined : gte($containerEvent.id, Uuid.lowerBoundAt(filter.since)),
+      filter.until === undefined ? undefined : lt($containerEvent.id, Uuid.lowerBoundAt(filter.until)),
+    ];
+  }
+
+  /**
+   * The span is compared as *ids*, exactly as {@link filterBound} hands it to sqlite -- a uuidv7 opens with
+   * the millisecond, so the comparison the index performs and the one performed here are the same
+   * one. Comparing timestamps instead would be a shade more precise on one side than the other, and
+   * would cost an `Instant` parse per row on a scan that reads every row in the range.
+   */
+  export function filterPredicate(filter: EventRepository.Filter): (candidate: Candidate) => boolean {
+    const patternPredicate = filter.logLinePattern ? LogLinePattern.predicate(filter.logLinePattern) : undefined;
+    const since = filter.since === undefined ? undefined : Uuid.fromBytes(Uuid.lowerBoundAt(filter.since));
+    const until = filter.until === undefined ? undefined : Uuid.fromBytes(Uuid.lowerBoundAt(filter.until));
+    return ({ id, line }) =>
+      (since === undefined || id >= since) &&
+      (until === undefined || id < until) &&
+      // a start or a stop has no text, so it cannot answer a pattern -- but it is inside a bare span
+      (patternPredicate === undefined || (line !== null && patternPredicate(line)));
+  }
+
+  /** The `like` prefilter for a literal needle, with sqlite's own wildcards defanged. */
+  export function containing(needle: string) {
+    const escaped = needle.replace(/[\\%_]/g, (character) => `\\${character}`);
+    return sql`${$containerEvent.line} like ${`%${escaped}%`} escape '\\'`;
+  }
+
+  export function searchPredicate({
+    logLinePattern,
+    anchorId,
+    anchorInclusivity,
+    direction,
+  }: EventRepository.Search): (candidate: Candidate) => boolean {
+    const patternPredicate = LogLinePattern.predicate(logLinePattern);
+    const beyondPredicate = ({ id }: Candidate): boolean => {
+      if (anchorId === undefined) {
+        return true;
+      }
+      if (id === anchorId) {
+        return anchorInclusivity === "inclusive";
+      }
+      switch (direction) {
+        case "up":
+          return id < anchorId;
+        case "down":
+          return id > anchorId;
+      }
+    };
+    return (candidate) => beyondPredicate(candidate) && candidate.line !== null && patternPredicate(candidate.line);
+  }
+}
+
 export namespace EventRepository {
   /**
    * Where to read from. All are ids of events the caller already holds; none means the live end.
@@ -498,37 +562,6 @@ export namespace EventRepository {
     until?: Temporal.Instant;
   };
 
-  export function filterBound(filter: Filter) {
-    return [
-      filter.since === undefined ? undefined : gte($containerEvent.id, Uuid.lowerBoundAt(filter.since)),
-      filter.until === undefined ? undefined : lt($containerEvent.id, Uuid.lowerBoundAt(filter.until)),
-    ];
-  }
-
-  /**
-   * All either predicate needs, and all both halves can offer: a stored row is `{ id, line }` long
-   * before it is an event. Asking for less is what lets one predicate judge the buffer and the
-   * database, so the two can no longer drift apart.
-   */
-  export type Candidate = { id: string; line: string | null };
-
-  /**
-   * The span is compared as *ids*, exactly as {@link filterBound} hands it to sqlite -- a uuidv7 opens with
-   * the millisecond, so the comparison the index performs and the one performed here are the same
-   * one. Comparing timestamps instead would be a shade more precise on one side than the other, and
-   * would cost an `Instant` parse per row on a scan that reads every row in the range.
-   */
-  export function filterPredicate(filter: Filter): (candidate: Candidate) => boolean {
-    const patternPredicate = filter.logLinePattern ? LogLinePattern.predicate(filter.logLinePattern) : undefined;
-    const since = filter.since === undefined ? undefined : Uuid.fromBytes(Uuid.lowerBoundAt(filter.since));
-    const until = filter.until === undefined ? undefined : Uuid.fromBytes(Uuid.lowerBoundAt(filter.until));
-    return ({ id, line }) =>
-      (since === undefined || id >= since) &&
-      (until === undefined || id < until) &&
-      // a start or a stop has no text, so it cannot answer a pattern -- but it is inside a bare span
-      (patternPredicate === undefined || (line !== null && patternPredicate(line)));
-  }
-
   /**
    * The line to search out from, and whether it may itself be the answer
    */
@@ -538,31 +571,6 @@ export namespace EventRepository {
     anchorInclusivity?: "inclusive" | "exclusive";
     direction: "up" | "down";
   };
-
-  /** The `like` prefilter for a literal needle, with sqlite's own wildcards defanged. */
-  export function containing(needle: string) {
-    const escaped = needle.replace(/[\\%_]/g, (character) => `\\${character}`);
-    return sql`${$containerEvent.line} like ${`%${escaped}%`} escape '\\'`;
-  }
-
-  export function searchPredicate({ logLinePattern, anchorId, anchorInclusivity, direction }: Search): (candidate: Candidate) => boolean {
-    const patternPredicate = LogLinePattern.predicate(logLinePattern);
-    const beyondPredicate = ({ id }: Candidate): boolean => {
-      if (anchorId === undefined) {
-        return true;
-      }
-      if (id === anchorId) {
-        return anchorInclusivity === "inclusive";
-      }
-      switch (direction) {
-        case "up":
-          return id < anchorId;
-        case "down":
-          return id > anchorId;
-      }
-    };
-    return (candidate) => beyondPredicate(candidate) && candidate.line !== null && patternPredicate(candidate.line);
-  }
 
   export type Page = {
     events: ContainerEvent[];
