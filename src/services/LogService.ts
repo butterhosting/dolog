@@ -64,23 +64,17 @@ export class LogService {
       const boundary = Uuid.fromBytes(Uuid.lowerBoundAt(at));
       const forwards = await this.eventRepository.listEvents(containerId, limit, { after: boundary }, filter);
       if (forwards.events.length > 0) {
-        // naming the line it settled on saves the caller re-deriving it from the timestamps, which it
-        // cannot do exactly: the boundary is a millisecond, and an instant may sit inside one
         return {
           ...forwards,
           landedOn: forwards.events[0].id,
         };
       }
-      /**
-       * Nothing was logged at or after that instant -- a date typed past the end of the logs, usually.
-       * Reading back from it lands the reader at the end of history rather than on an empty screen,
-       * and nothing is newer than that by definition.
-       *
-       * This answer used to be indistinguishable from an ordinary landing, so a caller could not tell
-       * that it had been given something other than what it asked for. `landedOn: null` says so.
-       */
       const backwards = await this.eventRepository.listEvents(containerId, limit, { before: boundary }, filter);
-      return { ...backwards, hasNewer: false, landedOn: null };
+      return {
+        ...backwards,
+        hasNewer: false,
+        landedOn: null, // indicates that we couldn't find any logs past the provided `at`-boundary
+      };
     }
 
     throw new Error("unreachable");

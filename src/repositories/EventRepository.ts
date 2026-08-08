@@ -12,7 +12,7 @@ import { and, asc, desc, eq, gt, gte, lt, lte, notExists, sql } from "drizzle-or
 import { BehaviorSubject, catchError, concatMap, defer, EMPTY, interval, Observable } from "rxjs";
 
 /**
- * Recent events are held in memory until they are flushed
+ * Recent events are held in a `pending` memory buffer until they are flushed
  */
 export class EventRepository {
   private readonly log = new Logger(__filename);
@@ -533,8 +533,7 @@ export namespace EventRepository {
 
   export type Page = {
     events: ContainerEvent[];
-    /** Whether the window can be extended at each end; `hasNewer` false means it reaches the live feed. */
     hasOlder: boolean;
-    hasNewer: boolean;
+    hasNewer: boolean; // false means: it reaches the live feed
   };
 }
