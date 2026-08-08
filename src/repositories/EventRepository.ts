@@ -51,14 +51,14 @@ export class EventRepository {
     cursor: EventRepository.Cursor = {},
     filter: EventRepository.Filter = {},
   ): Promise<EventRepository.Page> {
-    const { before, after, from } = cursor;
-    const forwards = after !== undefined || from !== undefined;
+    const { before, after, afterInclusive } = cursor;
+    const forwards = after !== undefined || afterInclusive !== undefined;
     const container = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
     const bounds = [
       container ? eq($containerEvent.containerId, container.id) : undefined,
       before === undefined ? undefined : lt($containerEvent.id, Uuid.toBytes(before)),
       after === undefined ? undefined : gt($containerEvent.id, Uuid.toBytes(after)),
-      from === undefined ? undefined : gte($containerEvent.id, Uuid.toBytes(from)),
+      afterInclusive === undefined ? undefined : gte($containerEvent.id, Uuid.toBytes(afterInclusive)),
       ...EventRepository.span(filter),
       // a substring narrows the query itself; a regular expression cannot, and is tested below
       filter.matcher?.variant === "substr" ? EventRepository.containing(filter.matcher.pattern) : undefined,
@@ -74,7 +74,7 @@ export class EventRepository {
         event.container.id === dockerId &&
         (before === undefined || event.id < before) &&
         (after === undefined || event.id > after) &&
-        (from === undefined || event.id >= from) &&
+        (afterInclusive === undefined || event.id >= afterInclusive) &&
         EventRepository.within(event, filter) &&
         (matches === undefined || (event.type === ContainerEvent.Type.log && matches(event.line))),
     );
@@ -95,7 +95,7 @@ export class EventRepository {
        * reader is standing at the beginning of history and needs to be told so. One indexed existence
        * check answers it instead of guessing.
        */
-      hasOlder: forwards ? this.anythingOlderThan(container?.id, page.at(0)?.id, after ?? from, filter) : saturated,
+      hasOlder: forwards ? this.anythingOlderThan(container?.id, page.at(0)?.id, after ?? afterInclusive, filter) : saturated,
       hasNewer: forwards ? saturated : before !== undefined,
     };
   }
@@ -148,8 +148,11 @@ export class EventRepository {
    */
   public async findEvent(dockerId: string, search: EventRepository.Search, filter: EventRepository.Filter = {}): Promise<string | null> {
     const CHUNK = 1_000;
-    const { needle, variant, from, inclusive, direction } = search;
+    const { pattern: needle, patternVariant: variant, anchorInclusive, anchorExclusive, direction } = search;
     const up = direction === "up";
+    // one anchor, plus whether it counts as an answer -- collapsed here so the walk has one thing to carry
+    const from = anchorInclusive ?? anchorExclusive;
+    const inclusive = anchorInclusive !== undefined;
     const matches = LineMatch.predicate(needle, variant);
     // a filtered view is the corpus, so a line the filter excludes is not there to be found
     const inView = filter.matcher ? LineMatch.predicate(filter.matcher.pattern, filter.matcher.variant) : undefined;
@@ -443,16 +446,21 @@ export class EventRepository {
 }
 
 export namespace EventRepository {
-  /** Where to read from. All are ids of events the caller already holds; none means the live end. */
+  /**
+   * Where to read from. All are ids of events the caller already holds; none means the live end.
+   * Which one is set also decides the direction read, not merely the bound.
+   */
   export type Cursor = {
+    /** Backwards, exclusive. */
     before?: string;
+    /** Forwards, exclusive -- paging on from a line already read. */
     after?: string;
     /**
-     * Like `after`, but keeping the line itself. Arriving at a *found* line differs from paging on
-     * from one already read: the whole point is to be shown the line, so it has to open the window
-     * rather than sit just off the top of it.
+     * Forwards, keeping the line itself. Arriving at a *found* line differs from paging on from one
+     * already read: the whole point is to be shown it, so it has to open the window rather than sit
+     * just off the top of it.
      */
-    from?: string;
+    afterInclusive?: string;
   };
 
   /** A pattern and how to read it. Search and filter each carry one, independently. */
@@ -487,18 +495,14 @@ export namespace EventRepository {
     );
   }
 
+  /**
+   * The line to search out from, and whether it may itself be the answer
+   */
   export type Search = {
-    needle: string;
-    /** How to read `needle`. */
-    variant: LineMatch.Variant;
-    /** The line to search out from; absent starts at whichever end `direction` reads from. */
-    from?: string;
-    /**
-     * Whether `from` may itself be the answer. False when stepping off a match already found -- it
-     * would otherwise return that same line forever -- and true when the caller anchored on an
-     * ordinary line it happened to be looking at, which has every right to match.
-     */
-    inclusive: boolean;
+    pattern: string;
+    patternVariant: LineMatch.Variant;
+    anchorInclusive?: string;
+    anchorExclusive?: string;
     direction: "up" | "down";
   };
 

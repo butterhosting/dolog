@@ -4,11 +4,14 @@ export class LogError {
   public static readonly NAME = "LogError";
 
   public static readonly conflicting_position = Yexception.field<{
-    at: string;
-    before: string | null;
-    after: string | null;
-    from: string | null;
+    at?: string;
+    cursor?: {
+      before?: string;
+      after?: string;
+      afterInclusive?: string;
+    };
   }>();
+  public static readonly conflicting_search_anchor = Yexception.field<{ anchorInclusive: string; anchorExclusive: string }>();
   public static readonly invalid_search_pattern = Yexception.field<{ pattern: string; reason: string }>();
 
   static {

@@ -264,8 +264,8 @@ export function containerLogsPage() {
       const page = await containerClient.logs(id, {
         limit: LINES_PER_PAGE,
         at: anchor?.kind === "instant" ? anchor.value : undefined,
-        from: anchor?.kind === "line" ? anchor.value : undefined,
-        ...Internal.filterParams(applied),
+        afterInclusive: anchor?.kind === "line" ? anchor.value : undefined,
+        filter: Internal.filterFor(applied),
       });
       if (cancelled) {
         return;
@@ -278,7 +278,7 @@ export function containerLogsPage() {
        */
       const landing = anchor ? page.events.at(0) : undefined;
       const above = landing
-        ? await containerClient.logs(id, { limit: LINES_PER_PAGE, before: landing.id, ...Internal.filterParams(applied) })
+        ? await containerClient.logs(id, { limit: LINES_PER_PAGE, before: landing.id, filter: Internal.filterFor(applied) })
         : undefined;
       if (cancelled) {
         return;
@@ -350,7 +350,7 @@ export function containerLogsPage() {
      * A stored one used to drift: trimming the list while tailing moved the top of the screen
      * forward while the cursor stayed put, and resuming from it skipped everything in between.
      */
-    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, before: oldest.id, ...Internal.filterParams(applied) });
+    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, before: oldest.id, filter: Internal.filterFor(applied) });
     setHasOlder(page.hasOlder);
 
     /**
@@ -382,7 +382,7 @@ export function containerLogsPage() {
       return;
     }
     loadingNewer.current = true;
-    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, after: newest.id, ...Internal.filterParams(applied) });
+    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, after: newest.id, filter: Internal.filterFor(applied) });
     setHasNewer(page.hasNewer);
     setEvents((current) => [...current, ...page.events]);
     loadingNewer.current = false;
@@ -401,7 +401,7 @@ export function containerLogsPage() {
       return;
     }
     missedWhilePaused.current = false;
-    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, ...Internal.filterParams(applied) });
+    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, filter: Internal.filterFor(applied) });
     const known = new Set(rendered.current.map((event) => event.id));
 
     /**
@@ -515,12 +515,11 @@ export function containerLogsPage() {
       setSearching(direction);
       try {
         const found = await containerClient.find(id, {
-          find: term,
-          variant,
-          from,
-          inclusive: !onMatch,
+          pattern: term,
+          patternVariant: variant,
+          ...(onMatch ? { anchorExclusive: from } : { anchorInclusive: from }),
           direction,
-          ...Internal.filterParams(applied),
+          filter: Internal.filterFor(applied),
         });
         if (!found) {
           // deliberately no wrapping: in a log of unknown length, silently reappearing at the other
@@ -767,13 +766,13 @@ namespace Internal {
    * The filter as the api takes it: absolute instants, resolved against the clock *now* rather than
    * when the filter was applied, so a relative span keeps meaning what it says.
    */
-  export function filterParams(applied: ReturnType<typeof appliedFilter>): ContainerClient.FilterOptions {
+  export function filterFor(applied: ReturnType<typeof appliedFilter>): ContainerClient.Filter {
     const { since, until } = LogRange.window(applied.range, Temporal.Now.instant());
     return {
-      filterPattern: applied.pattern || undefined,
-      filterVariant: applied.pattern ? applied.variant : undefined,
-      filterSince: since?.toString(),
-      filterUntil: until?.toString(),
+      pattern: applied.pattern || undefined,
+      variant: applied.variant,
+      since: since?.toString(),
+      until: until?.toString(),
     };
   }
 

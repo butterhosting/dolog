@@ -160,7 +160,11 @@ describe(EventRepository.name, () => {
       // given
       const { container, all } = await haystack();
       // when
-      const found = await repository.findEvent(container.id, { needle: "needle", variant: "substr", inclusive: false, direction: "down" });
+      const found = await repository.findEvent(container.id, {
+        pattern: "needle",
+        patternVariant: "substr",
+        direction: "down",
+      });
       // then
       expect(found).toBe(all[2]!.id);
     });
@@ -170,10 +174,9 @@ describe(EventRepository.name, () => {
       const { container, all } = await haystack();
       // when (standing at the very end and stepping back)
       const found = await repository.findEvent(container.id, {
-        needle: "needle",
-        variant: "substr",
-        from: all[9]!.id,
-        inclusive: true,
+        pattern: "needle",
+        patternVariant: "substr",
+        anchorInclusive: all[9]!.id,
         direction: "up",
       });
       // then (7, not 2 -- the first one met going up)
@@ -185,10 +188,9 @@ describe(EventRepository.name, () => {
       const { container, all } = await haystack();
       // when (anchored on the match at 2, which is how pressing the chevron again arrives here)
       const found = await repository.findEvent(container.id, {
-        needle: "needle",
-        variant: "substr",
-        from: all[2]!.id,
-        inclusive: false,
+        pattern: "needle",
+        patternVariant: "substr",
+        anchorExclusive: all[2]!.id,
         direction: "down",
       });
       // then
@@ -200,10 +202,9 @@ describe(EventRepository.name, () => {
       const { container, all } = await haystack();
       // when (the same line, but anchored the way an unmatched viewport edge is)
       const found = await repository.findEvent(container.id, {
-        needle: "needle",
-        variant: "substr",
-        from: all[2]!.id,
-        inclusive: true,
+        pattern: "needle",
+        patternVariant: "substr",
+        anchorInclusive: all[2]!.id,
         direction: "down",
       });
       // then
@@ -214,7 +215,11 @@ describe(EventRepository.name, () => {
       // given
       const { container } = await haystack();
       // when
-      const found = await repository.findEvent(container.id, { needle: "haystack", variant: "substr", inclusive: false, direction: "down" });
+      const found = await repository.findEvent(container.id, {
+        pattern: "haystack",
+        patternVariant: "substr",
+        direction: "down",
+      });
       // then
       expect(found).toBeNull();
     });
@@ -226,10 +231,10 @@ describe(EventRepository.name, () => {
       await write(all);
 
       // when / then
-      const literal = { needle: "shouting", variant: "substr", inclusive: false, direction: "down" } as const;
+      const literal = { pattern: "shouting", patternVariant: "substr", direction: "down" } as const;
       expect(await repository.findEvent(container.id, literal)).toBe(all[0]!.id);
-      expect(await repository.findEvent(container.id, { ...literal, needle: "shout.ng", variant: "regex" })).toBeNull();
-      expect(await repository.findEvent(container.id, { ...literal, needle: "SHOUT.NG", variant: "regex" })).toBe(all[0]!.id);
+      expect(await repository.findEvent(container.id, { ...literal, pattern: "shout.ng", patternVariant: "regex" })).toBeNull();
+      expect(await repository.findEvent(container.id, { ...literal, pattern: "SHOUT.NG", patternVariant: "regex" })).toBe(all[0]!.id);
     });
 
     it("should not let sqlite's own wildcards leak out of a literal needle", async () => {
@@ -239,7 +244,11 @@ describe(EventRepository.name, () => {
       await write(all);
 
       // when
-      const found = await repository.findEvent(container.id, { needle: "100%", variant: "substr", inclusive: false, direction: "down" });
+      const found = await repository.findEvent(container.id, {
+        pattern: "100%",
+        patternVariant: "substr",
+        direction: "down",
+      });
       // then (the literal "100%", not "100" followed by anything)
       expect(found).toBe(all[0]!.id);
     });
@@ -252,7 +261,11 @@ describe(EventRepository.name, () => {
       repository.saveEvent(unwritten);
 
       // when
-      const found = await repository.findEvent(container.id, { needle: "needle", variant: "substr", inclusive: false, direction: "down" });
+      const found = await repository.findEvent(container.id, {
+        pattern: "needle",
+        patternVariant: "substr",
+        direction: "down",
+      });
       // then
       expect(found).toBe(unwritten.id);
     });

@@ -11,23 +11,15 @@ export class ContainerClient {
     return json.map(ContainerRM.parse);
   }
 
-  public async logs(
-    containerId: string,
-    { limit, before, after, from, at, ...filter }: ContainerClient.LogsOptions = {},
-  ): Promise<ContainerClient.Page> {
-    const parameters = new URLSearchParams();
-    Object.entries({ limit, before, after, from, at, ...filter }).forEach(([key, value]) => {
-      if (value !== undefined) {
-        parameters.set(key, `${value}`);
-      }
-    });
-    const query = parameters.size === 0 ? "" : `?${parameters}`;
+  public async logs(containerId: string, options: ContainerClient.LogsOptions = {}): Promise<ContainerClient.Page> {
     const { json } = await this.yesttp.get<{
       events: unknown[];
       hasOlder: boolean;
       hasNewer: boolean;
       landedOn?: string | null;
-    }>(`/containers/${containerId}/logs${query}`);
+    }>(`/containers/${containerId}/logs`, {
+      searchParams: Internal.searchParams(options),
+    });
     return {
       events: json.events.map(ContainerEvent.parse),
       hasOlder: json.hasOlder,
@@ -36,34 +28,47 @@ export class ContainerClient {
     };
   }
 
-  /**
-   * The nearest line matching `find` in the given direction, or null when there is none that way.
-   *
-   * Only a position comes back. Most answers are lines already on screen, so asking for a page here
-   * would throw away the window the reader is holding in order to be handed most of it again.
-   */
   public async find(containerId: string, options: ContainerClient.FindOptions): Promise<string | null> {
-    const parameters = new URLSearchParams();
-    Object.entries(options).forEach(([key, value]) => {
-      if (value !== undefined) {
-        parameters.set(key, `${value}`);
-      }
+    const { json } = await this.yesttp.get<string | null>(`/containers/${containerId}/logs/find`, {
+      searchParams: Internal.searchParams(options),
     });
-    const { json } = await this.yesttp.get<{ landedOn: string | null }>(`/containers/${containerId}/logs/find?${parameters}`);
-    return json.landedOn;
+    return json;
+  }
+}
+
+namespace Internal {
+  /**
+   * Nested where it is read, flat where it is reported.
+   *
+   * Grouping the window terms keeps a call site legible -- it is obvious which half addresses the
+   * endpoint and which half describes what to look at. The wire stays flat and prefixed because the
+   * server reports rejections by parameter path, so a nested shape would have a 400 describing our
+   * object graph rather than the request that was actually sent.
+   */
+  export function searchParams({ filter, ...rest }: { filter?: ContainerClient.Filter }): Record<string, unknown> {
+    return {
+      ...rest,
+      filterPattern: filter?.pattern,
+      // meaningless without something to read, and sending it alone would look like a filter
+      filterVariant: filter?.pattern ? filter.variant : undefined,
+      filterSince: filter?.since,
+      filterUntil: filter?.until,
+    };
   }
 }
 
 export namespace ContainerClient {
   export type FindOptions = {
-    find: string;
-    variant: LineMatch.Variant;
-    /** The line to search out from; absent starts at whichever end `direction` reads from. */
-    from?: string;
-    /** Whether `from` may itself be the answer -- false when stepping off a match already found. */
-    inclusive: boolean;
+    pattern: string;
+    patternVariant: LineMatch.Variant;
+    /** Anchored on an ordinary line the reader was looking at, which may itself match. */
+    anchorInclusive?: string;
+    /** Stepping off a match already found -- including it would return that same line forever. */
+    anchorExclusive?: string;
     direction: "up" | "down";
-  } & ContainerClient.FilterOptions;
+    /** The corpus this search happens inside, so it never lands on a line the view hides. */
+    filter?: ContainerClient.Filter;
+  };
 
   export type LogsOptions = {
     limit?: number;
@@ -71,20 +76,22 @@ export namespace ContainerClient {
     before?: string;
     after?: string;
     /** Like `after`, but opening the window *with* that line rather than just past it. */
-    from?: string;
+    afterInclusive?: string;
     /** A wall-clock instant to read forwards from, for arriving somewhere by time rather than by id. */
     at?: string;
-  } & ContainerClient.FilterOptions;
+    /** What the window *is*, as opposed to where in it this request starts. */
+    filter?: ContainerClient.Filter;
+  };
 
   /**
-   * The narrowed view a request applies inside. Prefixed because search carries a pattern and a
-   * variant of its own, and one request can carry both.
+   * The narrowed view a request applies inside -- a pattern, a span, or both. Absent parts narrow
+   * nothing, so an empty filter is the whole log.
    */
-  export type FilterOptions = {
-    filterPattern?: string;
-    filterVariant?: LineMatch.Variant;
-    filterSince?: string;
-    filterUntil?: string;
+  export type Filter = {
+    pattern?: string;
+    variant?: LineMatch.Variant;
+    since?: string;
+    until?: string;
   };
 
   export type Page = {
