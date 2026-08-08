@@ -6,9 +6,9 @@ import { Container } from "./Container";
 // read model
 export type ContainerRM = Container & {
   running: boolean;
-  lastSeen: Temporal.Instant | null;
-  logsPerSecond: number;
   throttling: boolean;
+  logsPerSecond: number;
+  lastSeen: Temporal.Instant | null;
 };
 
 export namespace ContainerRM {

@@ -22,7 +22,7 @@ export function containersPage() {
   useEffect(() => {
     const POLL_INTERVAL = Temporal.Duration.from({ seconds: 30 });
 
-    socketClient.declareContainerInterest(null);
+    socketClient.declareStreamInterest(null);
     const timer = setInterval(() => void reload(), POLL_INTERVAL.total("milliseconds"));
     const subscription = socketClient.subscribe({
       type: ServerMessage.Type.containers,

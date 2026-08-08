@@ -15,7 +15,12 @@ export class SocketService {
 
   public registerSocket = (socket: Socket) => {
     this.log.debug(`Socket connected: ${socket.data.clientId}`);
-    this.connections.set(socket.data.clientId, { socket, watchedContainerId: null, matches: null, lastHeardAt: Date.now() });
+    this.connections.set(socket.data.clientId, {
+      socket,
+      watchedContainerId: null,
+      logsFilter: null,
+      lastHeardBack: Temporal.Now.instant(),
+    });
   };
 
   public unregisterSocket = (socket: Socket) => {
@@ -24,22 +29,16 @@ export class SocketService {
     }
   };
 
-  /**
-   * Browsers answer a ping in their network stack, with no help from the page, so this needs nothing
-   * on the client side. It is the only way to notice a peer that has quietly gone: see {@link
-   * Connection.lastHeardAt}.
-   */
   @Initialize
   public keepConnectionsAlive() {
     const KEEPALIVE_INTERVAL = Temporal.Duration.from({ seconds: 25 });
-    // one interval of silence could be a hiccup; two says the peer is not coming back
     const SILENCE_BEFORE_DROP = Temporal.Duration.from({ seconds: 50 });
 
     setInterval(() => {
       this.connections.forEach((connection, clientId) => {
-        const silentFor = Date.now() - connection.lastHeardAt;
-        if (silentFor > SILENCE_BEFORE_DROP.total("milliseconds")) {
-          this.log.debug(`Socket ${clientId} went quiet ${Math.round(silentFor / 1000)}s ago, closing it`);
+        const silentFor = Temporal.Now.instant().since(connection.lastHeardBack);
+        if (Temporal.Duration.compare(silentFor, SILENCE_BEFORE_DROP) > 0) {
+          this.log.debug(`Socket ${clientId} went quiet ${silentFor.total("seconds")}s ago, closing it`);
           connection.socket.close();
           return;
         }
@@ -55,7 +54,7 @@ export class SocketService {
   public heard = (socket: Socket) => {
     const connection = this.connections.get(socket.data.clientId);
     if (connection) {
-      connection.lastHeardAt = Date.now();
+      connection.lastHeardBack = Temporal.Now.instant();
     }
   };
 
@@ -75,25 +74,23 @@ export class SocketService {
            * Compiled once, here, rather than per arriving line -- and a pattern that will not
            * compile is refused at the moment it is declared instead of throwing forever afterwards.
            */
-          connection.matches = message.matcher
-            ? LineMatch.predicate(message.matcher.pattern, message.matcher.variant)
-            : null;
+          connection.logsFilter = message.logsFilter ? LineMatch.predicate(message.logsFilter.pattern, message.logsFilter.variant) : null;
       }
     } catch (error) {
       this.log.warn(`Ignoring unreadable message from ${socket.data.clientId}`, error);
     }
   };
 
-  public broadcastEventStream = (event: ContainerEvent) => {
+  public broadcastEventStream = (data: ContainerEvent) => {
     const message: ServerMessage = {
       type: ServerMessage.Type.log,
-      event,
+      data,
     };
     const serialized = JSON.stringify(message);
     [...this.connections.values()]
-      .filter((connection) => connection.watchedContainerId === event.container.id)
+      .filter((connection) => connection.watchedContainerId === data.container.id)
       // a filtered view is the whole view, so a line it excludes must not arrive down the live feed
-      .filter((connection) => !connection.matches || (event.type === ContainerEvent.Type.log && connection.matches(event.line)))
+      .filter((connection) => !connection.logsFilter || (data.type === ContainerEvent.Type.log && connection.logsFilter(data.line)))
       .forEach((connection) => {
         connection.socket.send(serialized);
       });

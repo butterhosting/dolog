@@ -3,7 +3,7 @@ import { ContainerRM } from "@/models/ContainerRM";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import z from "zod/v4";
 
-export type ServerMessage = ServerMessage.Containers | ServerMessage.Event;
+export type ServerMessage = ServerMessage.Containers | ServerMessage.Log;
 
 export namespace ServerMessage {
   export enum Type {
@@ -11,19 +11,14 @@ export namespace ServerMessage {
     log = "log",
   }
 
-  /**
-   * The set of known containers, pushed whenever it changes so the overview can show one appearing
-   * without waiting for its next poll.
-   */
   export type Containers = {
     type: Type.containers;
     containers: ContainerRM[];
   };
 
-  /** A single live event, relayed only to the sockets watching that container. */
-  export type Event = {
+  export type Log = {
     type: Type.log;
-    event: ContainerEvent;
+    data: ContainerEvent;
   };
 
   export const parse = ZodParser.forType<ServerMessage>()
@@ -35,7 +30,7 @@ export namespace ServerMessage {
         }),
         z.object({
           type: z.literal(Type.log),
-          event: ContainerEvent.parse.SCHEMA,
+          data: ContainerEvent.parse.SCHEMA,
         }),
       ]);
     })

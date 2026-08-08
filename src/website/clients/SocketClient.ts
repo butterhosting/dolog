@@ -14,12 +14,8 @@ export class SocketClient {
 
   private containerInterest: ClientMessage.DeclareStreamInterest | null = null;
 
-  /**
-   * The filter travels with the interest, so the server never sends a line the view would hide.
-   * Re-declared rather than patched, since a reconnected server knows nothing about either half.
-   */
-  public declareContainerInterest(containerId: string | null, matcher: ClientMessage.DeclareStreamInterest["matcher"] = null) {
-    this.containerInterest = { type: ClientMessage.Type.declare_stream_interest, containerId, matcher };
+  public declareStreamInterest(containerId: string | null, matcher: ClientMessage.DeclareStreamInterest["logsFilter"] = null) {
+    this.containerInterest = { type: ClientMessage.Type.declare_stream_interest, containerId, logsFilter: matcher };
     this.send(this.containerInterest);
   }
 

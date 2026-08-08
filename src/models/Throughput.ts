@@ -3,9 +3,6 @@ import { Temporal } from "@js-temporal/polyfill";
 import z from "zod/v4";
 import { Container } from "./Container";
 
-/**
- * One container's activity over the throttler's most recent measurement window.
- */
 export type Throughput = {
   object: "throughput";
   container: Container;

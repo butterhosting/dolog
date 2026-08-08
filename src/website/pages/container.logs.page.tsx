@@ -233,12 +233,12 @@ export function containerLogsPage() {
 
     const subscription = socketClient.subscribe({
       type: ServerMessage.Type.log,
-      callback: ({ event }) => {
-        if (event.container.id !== id) {
+      callback: ({ data }) => {
+        if (data.container.id !== id) {
           return;
         }
         if (!historyLoaded) {
-          arrivedDuringFetch.push(event);
+          arrivedDuringFetch.push(data);
           return;
         }
         /**
@@ -252,13 +252,13 @@ export function containerLogsPage() {
          * though it came next.
          */
         if (following.current) {
-          setEvents((current) => [...current, event].slice(-LINES_PER_PAGE));
+          setEvents((current) => [...current, data].slice(-LINES_PER_PAGE));
         } else {
           missedWhilePaused.current = true;
         }
       },
     });
-    socketClient.declareContainerInterest(id, applied.pattern ? { pattern: applied.pattern, variant: applied.variant } : null);
+    socketClient.declareStreamInterest(id, applied.pattern ? { pattern: applied.pattern, variant: applied.variant } : null);
 
     void (async () => {
       const page = await containerClient.logs(id, {
@@ -277,7 +277,9 @@ export function containerLogsPage() {
        * events rather than at their leading edge.
        */
       const landing = anchor ? page.events.at(0) : undefined;
-      const above = landing ? await containerClient.logs(id, { limit: LINES_PER_PAGE, before: landing.id, ...Internal.filterParams(applied) }) : undefined;
+      const above = landing
+        ? await containerClient.logs(id, { limit: LINES_PER_PAGE, before: landing.id, ...Internal.filterParams(applied) })
+        : undefined;
       if (cancelled) {
         return;
       }
@@ -324,7 +326,7 @@ export function containerLogsPage() {
 
     return () => {
       cancelled = true;
-      socketClient.declareContainerInterest(null);
+      socketClient.declareStreamInterest(null);
       socketClient.unsubscribe(subscription);
     };
     // re-runs on a jump, which is exactly right: a new position means a new window and a fresh fetch
@@ -512,7 +514,14 @@ export function containerLogsPage() {
 
       setSearching(direction);
       try {
-        const found = await containerClient.find(id, { find: term, variant, from, inclusive: !onMatch, direction, ...Internal.filterParams(applied) });
+        const found = await containerClient.find(id, {
+          find: term,
+          variant,
+          from,
+          inclusive: !onMatch,
+          direction,
+          ...Internal.filterParams(applied),
+        });
         if (!found) {
           // deliberately no wrapping: in a log of unknown length, silently reappearing at the other
           // end reads as having lost your place rather than as having run out
@@ -682,7 +691,13 @@ export function containerLogsPage() {
             </Internal.Field>
             {/* never disabled by a verdict: without all of history in hand, "no more" is only ever
                 true of the search we last ran, not of the one about to be run */}
-            <Internal.Step ref={chevrons.up} direction="up" onClick={() => void step("up")} disabled={!needle.trim()} busy={searching === "up"} />
+            <Internal.Step
+              ref={chevrons.up}
+              direction="up"
+              onClick={() => void step("up")}
+              disabled={!needle.trim()}
+              busy={searching === "up"}
+            />
             <Internal.Step
               ref={chevrons.down}
               direction="down"
@@ -690,11 +705,7 @@ export function containerLogsPage() {
               disabled={!needle.trim()}
               busy={searching === "down"}
             />
-            <button
-              onClick={closeFind}
-              title="close (esc)"
-              className="px-1.5 text-sm text-c-dark-half cursor-pointer hover:text-gray-200"
-            >
+            <button onClick={closeFind} title="close (esc)" className="px-1.5 text-sm text-c-dark-half cursor-pointer hover:text-gray-200">
               ×
             </button>
           </div>
