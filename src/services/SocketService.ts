@@ -18,7 +18,7 @@ export class SocketService {
     this.connections.set(socket.data.clientId, {
       socket,
       watchedContainerId: null,
-      logsFilter: null,
+      logsPredicate: null,
       lastHeardBack: Temporal.Now.instant(),
     });
   };
@@ -47,53 +47,15 @@ export class SocketService {
     }, KEEPALIVE_INTERVAL.total("milliseconds"));
   }
 
-  public hasConnections = (): boolean => {
-    return this.connections.size > 0;
-  };
-
-  public heard = (socket: Socket) => {
-    const connection = this.connections.get(socket.data.clientId);
-    if (connection) {
-      connection.lastHeardBack = Temporal.Now.instant();
-    }
-  };
-
-  public receive = (socket: Socket, raw: string) => {
-    const connection = this.connections.get(socket.data.clientId);
-    if (!connection) {
-      return;
-    }
-    // a message is as good a sign of life as a pong, so it counts the same and is recorded the same way
-    this.heard(socket);
-    try {
-      const message = ClientMessage.parse(JSON.parse(raw));
-      switch (message.type) {
-        case ClientMessage.Type.declare_stream_interest:
-          connection.watchedContainerId = message.containerId;
-          /**
-           * Compiled once, here, rather than per arriving line -- and a pattern that will not
-           * compile is refused at the moment it is declared instead of throwing forever afterwards.
-           */
-          connection.logsFilter = message.logsFilter ? LineMatch.predicate(message.logsFilter.pattern, message.logsFilter.variant) : null;
-      }
-    } catch (error) {
-      this.log.warn(`Ignoring unreadable message from ${socket.data.clientId}`, error);
-    }
-  };
-
   public broadcastEventStream = (data: ContainerEvent) => {
     const message: ServerMessage = {
       type: ServerMessage.Type.log,
       data,
     };
-    const serialized = JSON.stringify(message);
     [...this.connections.values()]
       .filter((connection) => connection.watchedContainerId === data.container.id)
-      // a filtered view is the whole view, so a line it excludes must not arrive down the live feed
-      .filter((connection) => !connection.logsFilter || (data.type === ContainerEvent.Type.log && connection.logsFilter(data.line)))
-      .forEach((connection) => {
-        connection.socket.send(serialized);
-      });
+      .filter((connection) => !connection.logsPredicate || (data.type === ContainerEvent.Type.log && connection.logsPredicate(data.line)))
+      .forEach((connection) => connection.socket.send(JSON.stringify(message)));
   };
 
   public broadcastContainers = (containers: ContainerRM[]) => {
@@ -102,5 +64,36 @@ export class SocketService {
       containers,
     };
     this.connections.forEach(({ socket }) => socket.send(JSON.stringify(message)));
+  };
+
+  public receive = (socket: Socket, raw: string) => {
+    const connection = this.connections.get(socket.data.clientId);
+    if (!connection) {
+      return;
+    }
+    this.recordAliveness(socket);
+    try {
+      const message = ClientMessage.parse(JSON.parse(raw));
+      switch (message.type) {
+        case ClientMessage.Type.declare_stream_interest:
+          connection.watchedContainerId = message.containerId;
+          connection.logsPredicate = message.logsFilter
+            ? LineMatch.predicate(message.logsFilter.pattern, message.logsFilter.variant)
+            : null;
+      }
+    } catch (error) {
+      this.log.warn(`Ignoring unreadable message from ${socket.data.clientId}`, error);
+    }
+  };
+
+  public hasConnections = (): boolean => {
+    return this.connections.size > 0;
+  };
+
+  public recordAliveness = (socket: Socket) => {
+    const connection = this.connections.get(socket.data.clientId);
+    if (connection) {
+      connection.lastHeardBack = Temporal.Now.instant();
+    }
   };
 }

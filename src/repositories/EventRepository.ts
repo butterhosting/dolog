@@ -31,10 +31,11 @@ export class EventRepository {
     return this.containers;
   }
 
-  public async listContainers(): Promise<{ container: Container; lastSeen: Temporal.Instant }[]> {
+  public async listContainers(): Promise<{ container: Container; firstSeen: Temporal.Instant; lastSeen: Temporal.Instant }[]> {
     const rows = this.sqlite.select().from($container).orderBy(desc($container.lastSeen)).all();
     return rows.map((row) => ({
       container: ContainerEventConverter.containerFromDatabase(row),
+      firstSeen: Temporal.Instant.from(row.firstSeen),
       lastSeen: Temporal.Instant.from(row.lastSeen),
     }));
   }
@@ -110,13 +111,7 @@ export class EventRepository {
     const CHUNK = 1_000;
     const order = forwards ? asc($containerEvent.id) : desc($containerEvent.id);
     const query = (extra: ReturnType<typeof and>, take: number) =>
-      this.sqlite
-        .select()
-        .from($containerEvent)
-        .where(and(where, extra))
-        .orderBy(order)
-        .limit(take)
-        .all();
+      this.sqlite.select().from($containerEvent).where(and(where, extra)).orderBy(order).limit(take).all();
 
     if (!matches) {
       return query(undefined, limit);
@@ -151,11 +146,7 @@ export class EventRepository {
    * `X_DOLOG_RETENTION_MAX_LINES_PER_CONTAINER`, which is what makes even a fruitless search -- the
    * one case that reads everything -- affordable enough to need no budget of its own.
    */
-  public async findEvent(
-    dockerId: string,
-    search: EventRepository.Search,
-    filter: EventRepository.Filter = {},
-  ): Promise<string | null> {
+  public async findEvent(dockerId: string, search: EventRepository.Search, filter: EventRepository.Filter = {}): Promise<string | null> {
     const CHUNK = 1_000;
     const { needle, variant, from, inclusive, direction } = search;
     const up = direction === "up";
@@ -243,8 +234,7 @@ export class EventRepository {
       ...EventRepository.span(filter),
       filter.matcher?.variant === "substr" ? EventRepository.containing(filter.matcher.pattern) : undefined,
     );
-    const matches =
-      filter.matcher?.variant === "regex" ? LineMatch.predicate(filter.matcher.pattern, filter.matcher.variant) : undefined;
+    const matches = filter.matcher?.variant === "regex" ? LineMatch.predicate(filter.matcher.pattern, filter.matcher.variant) : undefined;
     return this.readFiltered(where, false, 1, matches).length > 0;
   }
 

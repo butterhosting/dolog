@@ -49,24 +49,27 @@ export class ContainerService {
   }
 
   public async list(): Promise<ContainerRM[]> {
-    const [running, recorded, throughputs] = await Promise.all([
-      this.dockerSocket.listRunningContainers().catch(() => [] as Container[]),
+    const [databaseContainers, runningContainers, throughputsPerContainer] = await Promise.all([
       this.eventRepository.listContainers(),
+      this.dockerSocket.listRunningContainers().catch(() => [] as Container[]),
       firstValueFrom(this.throughputs),
     ]);
-    const rate = new Map(throughputs.map((throughput) => [throughput.container.id, throughput]));
-    const seen = new Map(recorded.map(({ container, lastSeen }) => [container.id, lastSeen]));
-    const merged = new Map(running.map((container) => [container.id, container]));
-    recorded.forEach(({ container }) => merged.set(container.id, merged.get(container.id) ?? container));
-
-    return [...merged.values()]
-      .map((container): ContainerRM => ({
-        ...container,
-        running: running.some((candidate) => candidate.id === container.id),
-        lastSeen: seen.get(container.id) ?? null,
-        logsPerSecond: rate.get(container.id)?.logsPerSecond ?? 0,
-        throttling: rate.get(container.id)?.throttling ?? false,
-      }))
+    return databaseContainers
+      .map(({ container, firstSeen, lastSeen }): ContainerRM => {
+        const running = runningContainers.some(({ id }) => id === container.id);
+        const { throttling, logsPerSecond } = throughputsPerContainer.filter(({ container: { id } }) => id === container.id).at(0) || {
+          throttling: false,
+          logsPerSecond: 0,
+        };
+        return {
+          ...container,
+          firstSeen,
+          lastSeen,
+          running,
+          throttling,
+          logsPerSecond,
+        };
+      })
       .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   }
 }

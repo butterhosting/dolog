@@ -8,7 +8,8 @@ export type ContainerRM = Container & {
   running: boolean;
   throttling: boolean;
   logsPerSecond: number;
-  lastSeen: Temporal.Instant | null;
+  firstSeen: Temporal.Instant;
+  lastSeen: Temporal.Instant;
 };
 
 export namespace ContainerRM {
@@ -17,7 +18,8 @@ export namespace ContainerRM {
       Container.parse.SCHEMA.and(
         z.object({
           running: z.boolean(),
-          lastSeen: z.string().transform(ZodParser.instant).nullable(),
+          firstSeen: z.string().transform(ZodParser.instant),
+          lastSeen: z.string().transform(ZodParser.instant),
           logsPerSecond: z.number(),
           throttling: z.boolean(),
         }),

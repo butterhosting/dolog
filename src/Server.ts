@@ -55,7 +55,7 @@ export class Server {
           this.socketService.registerSocket(socket);
         },
         pong: (socket) => {
-          this.socketService.heard(socket);
+          this.socketService.recordAliveness(socket);
         },
         close: (socket) => {
           this.socketService.unregisterSocket(socket);
