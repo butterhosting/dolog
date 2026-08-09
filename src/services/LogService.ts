@@ -7,6 +7,7 @@ import { Uuid } from "@/helpers/Uuid";
 import { ZodProblem } from "@/helpers/ZodIssues";
 import { ZodParser } from "@/helpers/ZodParser";
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { Direction } from "@/models/Direction";
 import { EventRepository } from "@/repositories/EventRepository";
 import { SocketService } from "@/services/SocketService";
 import { Temporal } from "@js-temporal/polyfill";
@@ -124,7 +125,7 @@ export namespace LogService {
       searchPatternVariant: z.enum(LogLinePattern.Variant),
       anchorInclusive: z.string().optional(),
       anchorExclusive: z.string().optional(),
-      direction: z.enum(["up", "down"]),
+      direction: z.enum(Direction),
       ...FILTER,
     })
     .refine(({ anchorInclusive, anchorExclusive }) => !(anchorInclusive && anchorExclusive), {

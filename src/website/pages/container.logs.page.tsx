@@ -1,5 +1,6 @@
 import { LogLinePattern } from "@/models/LogLinePattern";
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { Direction } from "@/models/Direction";
 import { Temporal } from "@js-temporal/polyfill";
 import { StreamVariant } from "@/models/StreamVariant";
 import { ServerMessage } from "@/models/socket/ServerMessage";
@@ -78,9 +79,12 @@ export function containerLogsPage() {
    */
   const [currentMatch, setCurrentMatch] = useState<string | null>(null);
   /** Which way, not merely whether -- so the chevron that was not pressed keeps still. */
-  const [searching, setSearching] = useState<"up" | "down" | null>(null);
+  const [searching, setSearching] = useState<Direction | null>(null);
   /** So "there is nothing that way" can be said by the control that was asked. */
-  const chevrons = { up: useRef<HTMLButtonElement>(null), down: useRef<HTMLButtonElement>(null) };
+  const chevrons = {
+    [Direction.backwards_in_time]: useRef<HTMLButtonElement>(null),
+    [Direction.forwards_in_time]: useRef<HTMLButtonElement>(null),
+  };
   const [finding, setFinding] = useState(false);
   const findField = useRef<HTMLInputElement>(null);
 
@@ -427,7 +431,14 @@ export function containerLogsPage() {
    * with nothing after it leaves `hasNewer` false -- true, but not because we are at the live end --
    * and following on that alone quietly turned a history view back into a live one.
    */
-  const atLiveEnd = stuck && !hasNewer && !anchor;
+  /**
+   * A closed end is the other way to be parked in history, and the quieter one. `hasNewer` is false
+   * there too -- honestly, since nothing newer is *in the window* -- but the live feed lies outside
+   * what the reader asked for, and following it prints today's lines beneath yesterday's under a
+   * heading that still says Yesterday.
+   */
+  const boundedEnd = LogRange.window(applied.range, Temporal.Now.instant()).until !== undefined;
+  const atLiveEnd = stuck && !hasNewer && !anchor && !boundedEnd;
   useEffect(() => {
     following.current = atLiveEnd;
     if (atLiveEnd) {
@@ -502,7 +513,7 @@ export function containerLogsPage() {
    * stepped off is not, or it would answer with itself forever.
    */
   const step = useCallback(
-    async (direction: "up" | "down") => {
+    async (direction: Direction) => {
       const element = ref.current;
       const term = needle.trim();
       if (!element || !term || searching !== null) {
@@ -510,7 +521,7 @@ export function containerLogsPage() {
       }
       const onMatch = currentMatch !== null && Internal.onScreen(element, currentMatch);
       const edges = onMatch ? {} : Internal.visibleEdges(element);
-      const from = onMatch ? currentMatch : direction === "up" ? edges.last : edges.first;
+      const from = onMatch ? currentMatch : direction === Direction.backwards_in_time ? edges.last : edges.first;
 
       setSearching(direction);
       try {
@@ -687,7 +698,9 @@ export function containerLogsPage() {
                 autoFocus
                 value={needle}
                 onChange={(event) => setNeedle(event.target.value)}
-                onKeyDown={(event) => event.key === "Enter" && void step(event.shiftKey ? "up" : "down")}
+                onKeyDown={(event) =>
+                  event.key === "Enter" && void step(event.shiftKey ? Direction.backwards_in_time : Direction.forwards_in_time)
+                }
                 placeholder="type to search"
                 className={clsx(
                   "w-56 bg-transparent font-mono text-xs outline-none placeholder:text-c-dark-half",
@@ -698,18 +711,18 @@ export function containerLogsPage() {
             {/* never disabled by a verdict: without all of history in hand, "no more" is only ever
                 true of the search we last ran, not of the one about to be run */}
             <Internal.Step
-              ref={chevrons.up}
-              direction="up"
-              onClick={() => void step("up")}
+              ref={chevrons[Direction.backwards_in_time]}
+              direction={Direction.backwards_in_time}
+              onClick={() => void step(Direction.backwards_in_time)}
               disabled={!needle.trim()}
-              busy={searching === "up"}
+              busy={searching === Direction.backwards_in_time}
             />
             <Internal.Step
-              ref={chevrons.down}
-              direction="down"
-              onClick={() => void step("down")}
+              ref={chevrons[Direction.forwards_in_time]}
+              direction={Direction.forwards_in_time}
+              onClick={() => void step(Direction.forwards_in_time)}
               disabled={!needle.trim()}
-              busy={searching === "down"}
+              busy={searching === Direction.forwards_in_time}
             />
             <button onClick={closeFind} title="close (esc)" className="px-1.5 text-sm text-c-dark-half cursor-pointer hover:text-gray-200">
               ×
@@ -917,7 +930,7 @@ namespace Internal {
     busy,
   }: {
     ref: RefObject<HTMLButtonElement | null>;
-    direction: "up" | "down";
+    direction: Direction;
     onClick: () => void;
     disabled: boolean;
     busy: boolean;
@@ -927,7 +940,7 @@ namespace Internal {
         ref={ref}
         onClick={onClick}
         disabled={disabled}
-        title={`${direction === "up" ? "previous" : "next"} match`}
+        title={`${direction === Direction.backwards_in_time ? "previous" : "next"} match`}
         className={clsx(
           CONTROL,
           "w-9 justify-center bg-c-action text-c-dark-full cursor-pointer transition hover:brightness-110 disabled:opacity-25 disabled:cursor-default",
@@ -939,7 +952,8 @@ namespace Internal {
           <svg
             viewBox="0 0 10 6"
             className="w-2.5 fill-none stroke-current stroke-2"
-            style={{ transform: direction === "up" ? "" : "rotate(180deg)" }}
+            // the sole place the domain's sense of time becomes a direction on screen
+            style={{ transform: direction === Direction.backwards_in_time ? "" : "rotate(180deg)" }}
           >
             <path d="M1 5 L5 1 L9 5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>

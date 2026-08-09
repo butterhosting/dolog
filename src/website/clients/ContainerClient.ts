@@ -1,7 +1,10 @@
 import { LogLinePattern } from "@/models/LogLinePattern";
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { Direction } from "@/models/Direction";
 import { ContainerRM } from "@/models/ContainerRM";
 import { Yesttp } from "yesttp";
+import type { LogService } from "@/services/LogService";
+import type z from "zod/v4";
 
 export class ContainerClient {
   public constructor(private readonly yesttp: Yesttp) {}
@@ -18,7 +21,7 @@ export class ContainerClient {
       hasNewer: boolean;
       landedOn?: string | null;
     }>(`/containers/${containerId}/logs`, {
-      searchParams: Internal.searchParams(options),
+      searchParams: Internal.listParams(options),
     });
     return {
       events: json.events.map(ContainerEvent.parse),
@@ -30,13 +33,30 @@ export class ContainerClient {
 
   public async find(containerId: string, options: ContainerClient.FindOptions): Promise<string | null> {
     const { json } = await this.yesttp.get<string | null>(`/containers/${containerId}/logs/find`, {
-      searchParams: Internal.searchParams(options),
+      searchParams: Internal.findParams(options),
     });
     return json;
   }
 }
 
 namespace Internal {
+  /**
+   * A query string is the one seam types do not cross on their own: it is strings by the time it
+   * leaves, so a parameter renamed on the server arrives here as a field quietly dropped rather than
+   * as a broken build -- the request still succeeds, having ignored what it was asked. Naming the
+   * schemas' own input types below puts the compiler back in the middle of it.
+   *
+   * The import is type-only, so nothing of the server is carried into the bundle.
+   */
+  type ListParams = z.input<typeof LogService.ListQuery>;
+  type FindParams = z.input<typeof LogService.FindQuery>;
+  /**
+   * Named through `Pick` rather than written out, because a spread is invisible to the excess
+   * property check that guards the rest: these four would otherwise be the one part of the request
+   * that could still drift silently. Renaming any of them on the server fails here, on the key.
+   */
+  type FilterParams = Pick<ListParams, "filterPattern" | "filterPatternVariant" | "filterSince" | "filterUntil">;
+
   /**
    * Nested where it is read, flat where it is reported.
    *
@@ -45,14 +65,37 @@ namespace Internal {
    * server reports rejections by parameter path, so a nested shape would have a 400 describing our
    * object graph rather than the request that was actually sent.
    */
-  export function searchParams({ filter, ...rest }: { filter?: ContainerClient.Filter }): Record<string, unknown> {
+  function filterParams(filter?: ContainerClient.Filter): FilterParams {
     return {
-      ...rest,
       filterPattern: filter?.pattern,
       // meaningless without something to read, and sending it alone would look like a filter
-      filterVariant: filter?.pattern ? filter.variant : undefined,
+      filterPatternVariant: filter?.pattern ? filter.variant : undefined,
       filterSince: filter?.since,
       filterUntil: filter?.until,
+    };
+  }
+
+  // every wire name is written out rather than spread, so each one is checked against the schema
+  export function listParams(options: ContainerClient.LogsOptions): ListParams {
+    return {
+      limit: options.limit,
+      beforeExclusive: options.beforeExclusive,
+      afterExclusive: options.afterExclusive,
+      afterInclusive: options.afterInclusive,
+      at: options.at,
+      ...filterParams(options.filter),
+    };
+  }
+
+  export function findParams(options: ContainerClient.FindOptions): FindParams {
+    return {
+      // the needle is prefixed on the wire, so a rejection names which of the two patterns it means
+      searchPattern: options.pattern,
+      searchPatternVariant: options.patternVariant,
+      anchorInclusive: options.anchorInclusive,
+      anchorExclusive: options.anchorExclusive,
+      direction: options.direction,
+      ...filterParams(options.filter),
     };
   }
 }
@@ -65,7 +108,7 @@ export namespace ContainerClient {
     anchorInclusive?: string;
     /** Stepping off a match already found -- including it would return that same line forever. */
     anchorExclusive?: string;
-    direction: "up" | "down";
+    direction: Direction;
     /** The corpus this search happens inside, so it never lands on a line the view hides. */
     filter?: ContainerClient.Filter;
   };

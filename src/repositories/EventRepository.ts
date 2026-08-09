@@ -6,6 +6,7 @@ import { Sqlite } from "@/drizzle/sqlite";
 import { Uuid } from "@/helpers/Uuid";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { Direction } from "@/models/Direction";
 import { LogLinePattern } from "@/models/LogLinePattern";
 import { Temporal } from "@js-temporal/polyfill";
 import { and, asc, BinaryOperator, desc, eq, gt, gte, lt, lte, notExists, SQL, sql } from "drizzle-orm";
@@ -77,13 +78,13 @@ export class EventRepository {
       .filter((event) => filterPredicate.fullInMemoryTest(event)) // ...but only if they match the general filter window as well
       .map((event) => event.id)
       .sort(); // UUIDv7s
-    const bufferMatch = search.direction === "up" ? bufferMatchesBeyondSearchAnchor.at(-1) : bufferMatchesBeyondSearchAnchor.at(0);
+    const bufferMatch =
+      search.direction === Direction.forwards_in_time ? bufferMatchesBeyondSearchAnchor.at(0) : bufferMatchesBeyondSearchAnchor.at(-1);
 
     //
     // Part B: search the database for a candidate
     //
     const CHUNK = 1_000;
-    const upDirection = search.direction === "up";
     const container = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
     if (!container) {
       return bufferMatch ?? null; // nothing was ever flushed, so the buffer contains all history
@@ -102,7 +103,7 @@ export class EventRepository {
             ...filterPredicate.partialDatabaseTest(), // ...but only if they match the general filter window as well
           ),
         )
-        .orderBy(upDirection ? desc($containerEvent.id) : asc($containerEvent.id))
+        .orderBy(search.direction === Direction.forwards_in_time ? asc($containerEvent.id) : desc($containerEvent.id))
         .limit(CHUNK)
         .all();
       if (chunk.length === 0) {
@@ -124,10 +125,10 @@ export class EventRepository {
             return databaseMatch;
           }
           switch (search.direction) {
-            case "up":
-              return bufferMatch > databaseMatch ? bufferMatch : databaseMatch;
-            case "down":
+            case Direction.forwards_in_time:
               return bufferMatch < databaseMatch ? bufferMatch : databaseMatch;
+            case Direction.backwards_in_time:
+              return bufferMatch > databaseMatch ? bufferMatch : databaseMatch;
           }
         }
       }
@@ -144,23 +145,19 @@ export class EventRepository {
     cursor: EventRepository.Cursor = {},
     filter: EventRepository.Filter = {},
   ): Promise<EventRepository.Page> {
-    const direction: Internal.Direction = cursor.after !== undefined ? "forwards_in_time" : "backwards_in_time";
-    const dbContainer = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
+    // If we didn't get any cursor, we default to showing the latest logs, and walking backwards_in_time
+    const direction = cursor.after !== undefined ? Direction.forwards_in_time : Direction.backwards_in_time;
 
     const cursorPredicate = Internal.cursorPredicate(cursor);
     const filterPredicate = Internal.filterPredicate(filter);
 
-    /**
-     * A container with nothing flushed yet has no row, and that is ordinary rather than exceptional:
-     * events are buffered for up to a flush before one exists. Only this half needs the row -- a
-     * buffered event carries its own container -- so the read is skipped rather than the request
-     * refused, and the model is built where the row is known to be there.
-     */
     let dbEvents: ContainerEvent[] = [];
+    const dbContainer = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
+
     if (dbContainer) {
       const container = ContainerEventConverter.containerFromDatabase(dbContainer);
       dbEvents = this.queryEventsUpToLimitWithPredicate({
-        limit,
+        limit: limit + 1, // +1 for `hasNewer/hasOlder`
         direction,
         where: and(
           eq($containerEvent.containerId, dbContainer.id),
@@ -176,25 +173,30 @@ export class EventRepository {
       .filter((event) => cursorPredicate.fullInMemoryTest(event)) // only logs matching the specific cursor constraints...
       .filter((event) => filterPredicate.fullInMemoryTest(event)); // ...but only if they match the general filter window as well
 
-    // Deduplicate events by id
+    // Deduplicate events by id, and always sort from old to new
     const events = [...new Map([...dbEvents, ...bufferEvents].map((event) => [event.id, event])).values()].sort((a, b) =>
       a.id.localeCompare(b.id),
     );
 
-    const saturated = dbEvents.length === limit || events.length > limit;
-    const page = direction === "forwards_in_time" ? events.slice(0, limit) : events.slice(-limit);
-    return {
-      events: page,
-      /**
-       * Reading forwards leaves the older side unexamined, and it used to be *assumed* to have more.
-       * That is wrong in the one place it matters: arriving at a time before anything was logged, the
-       * reader is standing at the beginning of history and needs to be told so. One indexed existence
-       * check answers it instead of guessing.
-       */
-      hasOlder:
-        direction === "forwards_in_time" ? this.anythingOlderThan(dbContainer?.id, page.at(0)?.id, cursor.after, filter) : saturated,
-      hasNewer: direction === "forwards_in_time" ? saturated : cursor.before !== undefined,
-    };
+    switch (direction) {
+      case Direction.forwards_in_time: {
+        const page = events.slice(0, limit);
+        return {
+          events: page,
+          hasNewer: events.length > limit,
+          hasOlder: this.hasAnythingOlderThan(dbContainer?.id, page.at(0)?.id, cursor.after, filter),
+        };
+      }
+      case Direction.backwards_in_time: {
+        // quick reminder that `cursor.before` is always "exclusive"
+        if (cursor.beforeInclusivity && cursor.beforeInclusivity !== "exclusive") cursor.beforeInclusivity satisfies never;
+        return {
+          events: events.slice(-limit),
+          hasOlder: events.length > limit,
+          hasNewer: cursor.before !== undefined,
+        };
+      }
+    }
   }
 
   private queryEventsUpToLimitWithPredicate<T = typeof $containerEvent.$inferSelect>({
@@ -205,7 +207,7 @@ export class EventRepository {
     mapper = (x) => x as T,
   }: {
     where: ReturnType<typeof and>;
-    direction: Internal.Direction;
+    direction: Direction;
     limit: number;
     predicate?: (candidate: Internal.Candidate) => boolean;
     mapper?: (from: typeof $containerEvent.$inferSelect) => T;
@@ -236,12 +238,7 @@ export class EventRepository {
     return collected.map(mapper);
   }
 
-  /**
-   * Whether the container holds anything above the page just read. The page's own oldest line is the
-   * bound when there is one; with an empty page everything up to and including the cursor qualifies,
-   * since nothing beyond it exists to have pushed it along.
-   */
-  private anythingOlderThan(
+  private hasAnythingOlderThan(
     container: number | undefined,
     oldestShown: string | undefined,
     cursor: string | undefined,
@@ -265,7 +262,7 @@ export class EventRepository {
     return (
       this.queryEventsUpToLimitWithPredicate({
         limit: 1,
-        direction: "backwards_in_time",
+        direction: Direction.backwards_in_time,
         where: and(eq($containerEvent.containerId, container), bound, ...filterPredicate.partialDatabaseTest()),
         predicate: filterPredicate.fullInMemoryTest,
       }).length > 0
@@ -466,9 +463,6 @@ export class EventRepository {
  * narrow the scan while a regular expression, which sqlite cannot evaluate, narrows nothing.
  */
 namespace Internal {
-  /** Which end of the range a page is filled from, and so which way the rows are read. */
-  export type Direction = "forwards_in_time" | "backwards_in_time";
-
   export type Candidate = {
     id: string;
     line: string | null;
@@ -581,10 +575,10 @@ namespace Internal {
         return isInclusive;
       }
       switch (direction) {
-        case "up":
-          return id < anchorId;
-        case "down":
+        case Direction.forwards_in_time:
           return id > anchorId;
+        case Direction.backwards_in_time:
+          return id < anchorId;
       }
     };
     // partial database test
@@ -604,11 +598,11 @@ namespace Internal {
         const openingTheWalk = isInclusive && cursor === anchorId;
         let anchorBound: BinaryOperator;
         switch (direction) {
-          case "up":
-            anchorBound = openingTheWalk ? lte : lt;
-            break;
-          case "down":
+          case Direction.forwards_in_time:
             anchorBound = openingTheWalk ? gte : gt;
+            break;
+          case Direction.backwards_in_time:
+            anchorBound = openingTheWalk ? lte : lt;
             break;
         }
         return [anchorBound($containerEvent.id, Uuid.toBytes(cursor)), extraClause];
@@ -664,7 +658,7 @@ export namespace EventRepository {
     logLinePattern: LogLinePattern;
     anchorId?: string;
     anchorInclusivity?: "inclusive" | "exclusive";
-    direction: "up" | "down";
+    direction: Direction;
   };
 
   export type Page = {

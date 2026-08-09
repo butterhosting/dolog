@@ -2,6 +2,7 @@ import { Uuid } from "@/helpers/Uuid";
 import { Container } from "@/models/Container";
 import { Temporal } from "@js-temporal/polyfill";
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { Direction } from "@/models/Direction";
 import { LogLinePattern } from "@/models/LogLinePattern";
 import { StreamVariant } from "@/models/StreamVariant";
 import { TestEnvironment } from "@/testing/TestEnvironment.test";
@@ -132,6 +133,24 @@ describe(EventRepository.name, () => {
     expect(page.hasOlder).toBe(true);
   });
 
+  it("should not claim there is more when the page lands exactly on the end of the log", async () => {
+    /**
+     * A page that filled and a page that filled *and finished* look identical from the row count
+     * alone, which is why one row beyond the page is asked for: having it is the only honest way to
+     * tell "cut short" from "ended here".
+     */
+    const container = TestFixture.container();
+    const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
+    await write(all);
+
+    // when (nine lie beyond the cursor, and exactly nine are asked for)
+    const page = await repository.listEvents(container.id, 9, { after: all[0]!.id, afterInclusivity: "exclusive" });
+
+    // then
+    expect(page.events).toHaveLength(9);
+    expect(page.hasNewer).toBe(false);
+  });
+
   it("should report reaching the beginning when reading forwards from before anything was logged", async () => {
     // given
     const container = TestFixture.container();
@@ -163,7 +182,7 @@ describe(EventRepository.name, () => {
       // when
       const found = await repository.findEvent(container.id, {
         logLinePattern: { pattern: "needle", patternVariant: LogLinePattern.Variant.substr },
-        direction: "down",
+        direction: Direction.forwards_in_time,
       });
       // then
       expect(found).toBe(all[2]!.id);
@@ -177,7 +196,7 @@ describe(EventRepository.name, () => {
         logLinePattern: { pattern: "needle", patternVariant: LogLinePattern.Variant.substr },
         anchorId: all[9]!.id,
         anchorInclusivity: "inclusive",
-        direction: "up",
+        direction: Direction.backwards_in_time,
       });
       // then (7, not 2 -- the first one met going up)
       expect(found).toBe(all[7]!.id);
@@ -191,7 +210,7 @@ describe(EventRepository.name, () => {
         logLinePattern: { pattern: "needle", patternVariant: LogLinePattern.Variant.substr },
         anchorId: all[2]!.id,
         anchorInclusivity: "exclusive",
-        direction: "down",
+        direction: Direction.forwards_in_time,
       });
       // then
       expect(found).toBe(all[7]!.id);
@@ -205,7 +224,7 @@ describe(EventRepository.name, () => {
         logLinePattern: { pattern: "needle", patternVariant: LogLinePattern.Variant.substr },
         anchorId: all[2]!.id,
         anchorInclusivity: "inclusive",
-        direction: "down",
+        direction: Direction.forwards_in_time,
       });
       // then
       expect(found).toBe(all[2]!.id);
@@ -217,7 +236,7 @@ describe(EventRepository.name, () => {
       // when
       const found = await repository.findEvent(container.id, {
         logLinePattern: { pattern: "haystack", patternVariant: LogLinePattern.Variant.substr },
-        direction: "down",
+        direction: Direction.forwards_in_time,
       });
       // then
       expect(found).toBeNull();
@@ -232,7 +251,7 @@ describe(EventRepository.name, () => {
       // when / then
       const substr = LogLinePattern.Variant.substr;
       const regex = LogLinePattern.Variant.regex;
-      const literal = { logLinePattern: { pattern: "shouting", patternVariant: substr }, direction: "down" } as const;
+      const literal = { logLinePattern: { pattern: "shouting", patternVariant: substr }, direction: Direction.forwards_in_time } as const;
       expect(await repository.findEvent(container.id, literal)).toBe(all[0]!.id);
       expect(
         await repository.findEvent(container.id, { ...literal, logLinePattern: { pattern: "shout.ng", patternVariant: regex } }),
@@ -251,7 +270,7 @@ describe(EventRepository.name, () => {
       // when
       const found = await repository.findEvent(container.id, {
         logLinePattern: { pattern: "100%", patternVariant: LogLinePattern.Variant.substr },
-        direction: "down",
+        direction: Direction.forwards_in_time,
       });
       // then (the literal "100%", not "100" followed by anything)
       expect(found).toBe(all[0]!.id);
@@ -267,7 +286,7 @@ describe(EventRepository.name, () => {
       // when
       const found = await repository.findEvent(container.id, {
         logLinePattern: { pattern: "needle", patternVariant: LogLinePattern.Variant.substr },
-        direction: "down",
+        direction: Direction.forwards_in_time,
       });
       // then
       expect(found).toBe(unwritten.id);
@@ -290,7 +309,7 @@ describe(EventRepository.name, () => {
         logLinePattern: { pattern: "nothing-matches-this", patternVariant: LogLinePattern.Variant.regex },
         anchorId: all[0]!.id,
         anchorInclusivity: "inclusive",
-        direction: "down",
+        direction: Direction.forwards_in_time,
       });
       // then (it ends, rather than spinning on the last row for ever)
       expect(found).toBeNull();
