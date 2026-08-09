@@ -21,15 +21,16 @@ export function containersPage() {
 
   useEffect(() => {
     const POLL_INTERVAL = Temporal.Duration.from({ seconds: 30 });
+    const reloadId = setInterval(() => void reload(), POLL_INTERVAL.total("milliseconds"));
 
     socketClient.declareStreamInterest(null);
-    const timer = setInterval(() => void reload(), POLL_INTERVAL.total("milliseconds"));
     const subscription = socketClient.subscribe({
       type: ServerMessage.Type.containers,
       callback: ({ containers }) => setData(containers),
     });
+
     return () => {
-      clearInterval(timer);
+      clearInterval(reloadId);
       socketClient.unsubscribe(subscription);
     };
   }, [reload, socketClient]);
@@ -51,8 +52,8 @@ export function containersPage() {
         </Paper>
       )}
       <div className="grid grid-cols-3 lg:grid-cols-2 sm:grid-cols-1 gap-4">
-        {data.map((entry) => (
-          <ContainerCard key={entry.id} entry={entry} />
+        {data.map((container) => (
+          <ContainerCard key={container.id} container={container} />
         ))}
       </div>
     </Frame>

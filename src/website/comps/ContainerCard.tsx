@@ -5,8 +5,10 @@ import { Link } from "react-router";
 import { Route } from "../Route";
 import { Paper } from "./Paper";
 
-export function ContainerCard({ entry }: { entry: ContainerRM }) {
-  const { id, name, group, running, logsPerSecond, throttling, lastSeen } = entry;
+type Props = {
+  container: ContainerRM;
+};
+export function ContainerCard({ container: { id, name, group, running, logsPerSecond, throttling, lastSeen } }: Props) {
   return (
     <Link to={Route.containerLogs(id)}>
       <Paper className="px-5 py-4 h-full flex flex-col gap-1 hover:shadow-xl transition-shadow">
