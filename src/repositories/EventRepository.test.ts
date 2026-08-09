@@ -68,10 +68,7 @@ describe(EventRepository.name, () => {
 
   it("should join written and unwritten events into one uninterrupted page", async () => {
     // given (half written, half still buffered -- the seam the reader must not see)
-    const container = TestFixture.container();
-    const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
-    await write(all.slice(0, 5));
-    all.slice(5).forEach((event) => repository.saveEvent(event));
+    const { container, all } = await tenLinesHalfBuffered();
 
     // when
     const { events } = await repository.listEvents(container.id, 100);
@@ -79,126 +76,154 @@ describe(EventRepository.name, () => {
     expect(events.map((event) => event.id)).toEqual(all.map((event) => event.id));
   });
 
-  it("should honour the cursor across both halves", async () => {
-    // given
-    const container = TestFixture.container();
-    const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
-    await write(all.slice(0, 5));
-    all.slice(5).forEach((event) => repository.saveEvent(event));
+  /**
+   * Both halves are asked the same question here: the fixture leaves five lines on disk and five in
+   * the buffer, so a cursor that meant something slightly different to the query than to the
+   * predicate would show up as a page with a join in it.
+   */
+  const CURSOR_CASES: Array<{
+    name: string;
+    cursor: (all: ContainerEvent[]) => EventRepository.Cursor;
+    expected: (all: ContainerEvent[]) => ContainerEvent[];
+  }> = [
+    {
+      name: "everything older than a line that is itself still buffered",
+      cursor: (all) => ({ before: all[7]!.id, beforeInclusivity: "exclusive" }),
+      expected: (all) => all.slice(0, 7),
+    },
+    {
+      name: "everything newer than a line still on disk, on into the part that is not",
+      cursor: (all) => ({ after: all[2]!.id, afterInclusivity: "exclusive" }),
+      expected: (all) => all.slice(3),
+    },
+  ];
 
-    // when (asking for what came before an event that is itself still buffered)
-    const { events } = await repository.listEvents(container.id, 100, { before: all[7]!.id, beforeInclusivity: "exclusive" });
-    // then (everything older, from both halves, and nothing at or after the cursor)
-    expect(events.map((event) => event.id)).toEqual(all.slice(0, 7).map((event) => event.id));
-  });
-
-  it("should read forwards from a cursor, across both halves", async () => {
-    // given
-    const container = TestFixture.container();
-    const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
-    await write(all.slice(0, 5));
-    all.slice(5).forEach((event) => repository.saveEvent(event));
-
-    // when (reading on from an event that is still on disk, into the part that is not)
-    const { events } = await repository.listEvents(container.id, 100, { after: all[2]!.id, afterInclusivity: "exclusive" });
-    // then (everything newer, from both halves, and nothing at or before the cursor)
-    expect(events.map((event) => event.id)).toEqual(all.slice(3).map((event) => event.id));
-  });
-
-  it("should take the oldest of what lies ahead when reading forwards, not the newest", async () => {
-    // given (a window smaller than what remains, so the direction of the slice shows)
-    const container = TestFixture.container();
-    const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
-    await write(all);
-
-    // when
-    const page = await repository.listEvents(container.id, 3, { after: all[0]!.id, afterInclusivity: "exclusive" });
-    // then (the three immediately following the cursor -- reading on, not jumping to the end)
-    expect(page.events.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["line 1", "line 2", "line 3"]);
-    expect(page.hasNewer).toBe(true);
-    expect(page.hasOlder).toBe(true);
-  });
-
-  it("should report reaching the live end when reading forwards runs out", async () => {
-    // given
-    const container = TestFixture.container();
-    const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
-    await write(all);
-
-    // when (a window wider than what remains)
-    const page = await repository.listEvents(container.id, 100, { after: all[7]!.id, afterInclusivity: "exclusive" });
-    // then
-    expect(page.events).toHaveLength(2);
-    expect(page.hasNewer).toBe(false);
-    expect(page.hasOlder).toBe(true);
-  });
-
-  it("should not claim there is more when the page lands exactly on the end of the log", async () => {
-    /**
-     * A page that filled and a page that filled *and finished* look identical from the row count
-     * alone, which is why one row beyond the page is asked for: having it is the only honest way to
-     * tell "cut short" from "ended here".
-     */
-    const container = TestFixture.container();
-    const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
-    await write(all);
-
-    // when (nine lie beyond the cursor, and exactly nine are asked for)
-    const page = await repository.listEvents(container.id, 9, { after: all[0]!.id, afterInclusivity: "exclusive" });
-
-    // then
-    expect(page.events).toHaveLength(9);
-    expect(page.hasNewer).toBe(false);
-  });
-
-  describe("reaching the live feed", () => {
-    /**
-     * `hasNewer` runs out at the top of the *window*; the feed is a different edge. They agree only
-     * while the window is still open at the top, and reading one for the other is what puts a line
-     * from today underneath one from yesterday.
-     */
-    async function tenLines() {
-      const container = TestFixture.container();
-      const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
-      await write(all);
-      return { container, all };
-    }
-
-    it("should reach the feed when the window has no end", async () => {
-      const { container } = await tenLines();
-      const page = await repository.listEvents(container.id, 100);
-      expect(page.hasNewer).toBe(false);
-      expect(page.reachesLiveFeed).toBe(true);
+  for (const { name, cursor, expected } of CURSOR_CASES) {
+    it(`should honour a cursor across both halves: ${name}`, async () => {
+      // given
+      const { container, all } = await tenLinesHalfBuffered();
+      // when
+      const { events } = await repository.listEvents(container.id, 100, cursor(all));
+      // then (nothing at the cursor itself, and nothing beyond it in the other direction)
+      expect(events.map((event) => event.id)).toEqual(expected(all).map((event) => event.id));
     });
+  }
 
-    it("should not reach the feed when the window closes in the past", async () => {
-      const { container } = await tenLines();
-      const page = await repository.listEvents(container.id, 100, {}, { until: Temporal.Now.instant() });
+  /**
+   * What a page says about its own edges, read forwards from a cursor.
+   *
+   * The last case is the one worth keeping honest: a page that filled and a page that filled *and
+   * finished* look identical from the row count alone, which is why one row beyond the page is
+   * asked for. Having it is the only way to tell "cut short" from "ended here".
+   */
+  const PAGING_CASES: Array<{
+    name: string;
+    limit: number;
+    fromIndex: number;
+    expectedLines: string[];
+    hasNewer: boolean;
+    hasOlder: boolean;
+  }> = [
+    {
+      name: "reading on from a cursor takes the oldest of what lies ahead, not the newest",
+      limit: 3,
+      fromIndex: 0,
+      expectedLines: ["line 1", "line 2", "line 3"],
+      hasNewer: true,
+      hasOlder: true,
+    },
+    {
+      name: "a window wider than what remains reaches the end of the log",
+      limit: 100,
+      fromIndex: 7,
+      expectedLines: ["line 8", "line 9"],
+      hasNewer: false,
+      hasOlder: true,
+    },
+    {
+      name: "a page landing exactly on the end of the log does not claim there is more",
+      limit: 9,
+      fromIndex: 0,
+      expectedLines: Array.from({ length: 9 }, (_, i) => `line ${i + 1}`),
+      hasNewer: false,
+      hasOlder: true,
+    },
+  ];
+
+  for (const { name, limit, fromIndex, expectedLines, hasNewer, hasOlder } of PAGING_CASES) {
+    it(`should report its edges when reading forwards: ${name}`, async () => {
+      // given
+      const { container, all } = await tenWrittenLines();
+      // when
+      const page = await repository.listEvents(container.id, limit, { after: all[fromIndex]!.id, afterInclusivity: "exclusive" });
+      // then
+      expect(page.events.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(expectedLines);
+      expect(page.hasNewer).toBe(hasNewer);
+      expect(page.hasOlder).toBe(hasOlder);
+    });
+  }
+
+  /**
+   * `hasNewer` runs out at the top of the *window*; the feed is a different edge. They agree only
+   * while the window is still open at the top, and reading one for the other is what puts a line
+   * from today underneath one from yesterday.
+   */
+  const LIVE_FEED_CASES: Array<{
+    name: string;
+    limit?: number;
+    cursor?: (all: ContainerEvent[]) => EventRepository.Cursor;
+    filter?: () => EventRepository.Filter;
+    hasNewer: boolean;
+    hasOlder?: boolean;
+    reachesLiveFeed: boolean;
+  }> = [
+    {
+      name: "a window with no end at all, which is where a page opens with nothing in its url",
+      hasNewer: false,
+      hasOlder: false,
+      reachesLiveFeed: true,
+    },
+    {
       // out of window and out of feed are not the same thing, and only the second is reported here
-      expect(page.hasNewer).toBe(false);
-      expect(page.reachesLiveFeed).toBe(false);
-    });
-
-    it("should reach the feed when the window closes in the future", async () => {
-      const { container } = await tenLines();
-      const tomorrow = Temporal.Now.instant().add({ hours: 24 });
-      const page = await repository.listEvents(container.id, 100, {}, { until: tomorrow });
+      name: "a window closed in the past runs out without ever arriving at the feed",
+      filter: () => ({ until: Temporal.Now.instant() }),
+      hasNewer: false,
+      reachesLiveFeed: false,
+    },
+    {
       // an end was named, but the feed is comfortably inside it -- a named end is not a closed one
-      expect(page.reachesLiveFeed).toBe(true);
-    });
+      name: "a window closed in the future still contains the feed",
+      filter: () => ({ until: Temporal.Now.instant().add({ hours: 24 }) }),
+      hasNewer: false,
+      reachesLiveFeed: true,
+    },
+    {
+      name: "a window parked in history has the feed somewhere above it",
+      limit: 3,
+      cursor: (all) => ({ before: all[8]!.id, beforeInclusivity: "exclusive" }),
+      hasNewer: true,
+      reachesLiveFeed: false,
+    },
+  ];
 
-    it("should not reach the feed from a window parked in history", async () => {
-      const { container, all } = await tenLines();
-      const page = await repository.listEvents(container.id, 3, { before: all[8]!.id, beforeInclusivity: "exclusive" });
-      expect(page.hasNewer).toBe(true);
-      expect(page.reachesLiveFeed).toBe(false);
+  for (const { name, limit, cursor, filter, hasNewer, hasOlder, reachesLiveFeed } of LIVE_FEED_CASES) {
+    it(`should tell the window's end apart from the live feed: ${name}`, async () => {
+      // given
+      const { container, all } = await tenWrittenLines();
+      // when
+      const page = await repository.listEvents(container.id, limit ?? 100, cursor?.(all) ?? {}, filter?.() ?? {});
+      // then
+      expect(page.hasNewer).toBe(hasNewer);
+      expect(page.reachesLiveFeed).toBe(reachesLiveFeed);
+      if (hasOlder !== undefined) {
+        expect(page.hasOlder).toBe(hasOlder);
+      }
     });
-  });
+  }
 
   it("should report reaching the beginning when reading forwards from before anything was logged", async () => {
     // given
-    const container = TestFixture.container();
-    await write(Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` })));
+    const { container } = await tenWrittenLines();
 
     // when (arriving by time, at an instant older than every line there is)
     const beforeEverything = Uuid.fromBytes(Uuid.lowerBoundAt(Temporal.Instant.from("2000-01-01T00:00:00Z")));
@@ -220,59 +245,61 @@ describe(EventRepository.name, () => {
       return { container, all };
     }
 
-    it("should find the nearest match below the anchor, not the furthest", async () => {
-      // given
-      const { container, all } = await haystack();
-      // when
-      const found = await repository.findEvent(container.id, {
-        logPattern: { pattern: "needle", patternVariant: LogPattern.Variant.substr },
+    /**
+     * Where a search starts from, and whether the line it starts on may answer. The anchor is the
+     * only thing that varies: the needle and the haystack are the same throughout, so a wrong
+     * result here is always a statement about inclusivity or direction.
+     */
+    const ANCHOR_CASES: Array<{
+      name: string;
+      anchorIndex?: number;
+      anchorInclusivity?: "inclusive" | "exclusive";
+      direction: Direction;
+      expectedIndex: number;
+    }> = [
+      {
+        name: "with nothing to start from, the nearest match below -- not the furthest",
         direction: Direction.forwards_in_time,
-      });
-      // then
-      expect(found).toBe(all[2]!.id);
-    });
-
-    it("should find the nearest match above the anchor when reading up", async () => {
-      // given
-      const { container, all } = await haystack();
-      // when (standing at the very end and stepping back)
-      const found = await repository.findEvent(container.id, {
-        logPattern: { pattern: "needle", patternVariant: LogPattern.Variant.substr },
-        anchorId: all[9]!.id,
+        expectedIndex: 2,
+      },
+      {
+        name: "standing at the very end and stepping back, 7 rather than 2",
+        anchorIndex: 9,
         anchorInclusivity: "inclusive",
         direction: Direction.backwards_in_time,
-      });
-      // then (7, not 2 -- the first one met going up)
-      expect(found).toBe(all[7]!.id);
-    });
-
-    it("should step off a match it is standing on rather than returning it forever", async () => {
-      // given
-      const { container, all } = await haystack();
-      // when (anchored on the match at 2, which is how pressing the chevron again arrives here)
-      const found = await repository.findEvent(container.id, {
-        logPattern: { pattern: "needle", patternVariant: LogPattern.Variant.substr },
-        anchorId: all[2]!.id,
+        expectedIndex: 7,
+      },
+      {
+        name: "stepping off a match it is standing on, rather than returning it forever",
+        anchorIndex: 2,
         anchorInclusivity: "exclusive",
         direction: Direction.forwards_in_time,
-      });
-      // then
-      expect(found).toBe(all[7]!.id);
-    });
-
-    it("should let an anchor the reader merely happened to be looking at match on its own", async () => {
-      // given
-      const { container, all } = await haystack();
-      // when (the same line, but anchored the way an unmatched viewport edge is)
-      const found = await repository.findEvent(container.id, {
-        logPattern: { pattern: "needle", patternVariant: LogPattern.Variant.substr },
-        anchorId: all[2]!.id,
+        expectedIndex: 7,
+      },
+      {
+        name: "an anchor the reader merely happened to be looking at may match on its own",
+        anchorIndex: 2,
         anchorInclusivity: "inclusive",
         direction: Direction.forwards_in_time,
+        expectedIndex: 2,
+      },
+    ];
+
+    for (const { name, anchorIndex, anchorInclusivity, direction, expectedIndex } of ANCHOR_CASES) {
+      it(`should search out from where it was told to: ${name}`, async () => {
+        // given
+        const { container, all } = await haystack();
+        // when
+        const found = await repository.findEvent(container.id, {
+          logPattern: { pattern: "needle", patternVariant: LogPattern.Variant.substr },
+          anchorId: anchorIndex === undefined ? undefined : all[anchorIndex]!.id,
+          anchorInclusivity,
+          direction,
+        });
+        // then
+        expect(found).toBe(all[expectedIndex]!.id);
       });
-      // then
-      expect(found).toBe(all[2]!.id);
-    });
+    }
 
     it("should answer with nothing when the needle is not there, rather than guessing", async () => {
       // given
@@ -399,18 +426,6 @@ describe(EventRepository.name, () => {
       expect(fromBuffer.events.length).toBe(matches ? 1 : 0);
       expect(LogPattern.predicate(logPattern)(line)).toBe(matches);
     });
-  });
-
-  it("should report the live end for a window with no cursor at all", async () => {
-    // given
-    const container = TestFixture.container();
-    await write(Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` })));
-
-    // when
-    const page = await repository.listEvents(container.id, 100);
-    // then (sitting at the live feed, with nothing below it)
-    expect(page.hasNewer).toBe(false);
-    expect(page.hasOlder).toBe(false);
   });
 
   it("should keep unwritten events when the write fails, rather than losing them", async () => {
@@ -545,14 +560,14 @@ describe(EventRepository.name, () => {
     await write([
       aged(gone, longAgo, "goodbye"),
       // more than one prune chunk, so the loop has to go round
-      ...Array.from({ length: 15_000 }, (_, i) => aged(staying, longAgo.add({ seconds: i }), `old ${i}`)),
+      ...Array.from({ length: 10_050 }, (_, i) => aged(staying, longAgo.add({ seconds: i }), `old ${i}`)),
       ...Array.from({ length: 10 }, (_, i) => aged(staying, yesterday.add({ seconds: i }), `recent ${i}`)),
     ]);
 
     // when
     const pruned = await repository.pruneEventsOlderThan(Temporal.Now.instant().subtract({ hours: 24 * 30 }));
     // then
-    expect(pruned.eventDeleteCount).toEqual(15_001);
+    expect(pruned.eventDeleteCount).toEqual(10_051);
     expect(pruned.containerDeleteCount).toEqual(1);
     expect(await containers()).toEqual([staying]);
     // only what fell inside the window survived
@@ -574,6 +589,23 @@ describe(EventRepository.name, () => {
     // then (the seed, plus one emission for the container appearing -- not one per batch)
     expect(published).toEqual([[], [container]]);
   });
+
+  /** "line 0" .. "line 9", all of them written. */
+  async function tenWrittenLines(): Promise<{ container: Container; all: ContainerEvent[] }> {
+    const container = TestFixture.container();
+    const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
+    await write(all);
+    return { container, all };
+  }
+
+  /** The same ten, with the second half left in the buffer -- the seam a page must not show. */
+  async function tenLinesHalfBuffered(): Promise<{ container: Container; all: ContainerEvent[] }> {
+    const container = TestFixture.container();
+    const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
+    await write(all.slice(0, 5));
+    all.slice(5).forEach((event) => repository.saveEvent(event));
+    return { container, all };
+  }
 
   /**
    * An event that looks as though it were created then. A uuidv7 opens with the millisecond it was

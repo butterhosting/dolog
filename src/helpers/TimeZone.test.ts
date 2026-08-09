@@ -3,23 +3,14 @@ import { TimeZone } from "./TimeZone";
 
 describe(TimeZone.name, () => {
   describe("valid", () => {
+    // one per shape rather than per city: the check is a passthrough to `Intl`, and a fifth
+    // continent proves nothing a fourth did not
     it.each([
-      "UTC",
+      "UTC", //
       "America/New_York",
-      "America/Los_Angeles",
-      "America/Chicago",
-      "America/Sao_Paulo",
-      "Europe/London",
       "Europe/Amsterdam",
-      "Europe/Berlin",
-      "Europe/Moscow",
-      "Asia/Tokyo",
-      "Asia/Shanghai",
       "Asia/Kolkata",
-      "Asia/Dubai",
       "Australia/Sydney",
-      "Pacific/Auckland",
-      "Africa/Cairo",
     ])("%s", (timezone) => {
       // when
       const result = TimeZone.check(timezone);
