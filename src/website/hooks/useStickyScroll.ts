@@ -1,8 +1,5 @@
 import { RefObject, useCallback, useEffect, useRef, useState } from "react";
 
-/** How far off the bottom still counts as being at it, since scroll positions are fractional. */
-const BOTTOM_SLACK_PX = 24;
-
 /**
  * Keeps a scroll container pinned to the bottom as content arrives, and lets go the moment the
  * reader scrolls up -- because someone reading history does not want to be yanked away by a line
@@ -16,8 +13,6 @@ export function useStickyScroll<T extends HTMLElement>(dependency: unknown, pinT
   const ref = useRef<T>(null);
   const [stuck, setStuck] = useState(true);
 
-  const isAtBottom = (element: T) => element.scrollHeight - element.scrollTop - element.clientHeight <= BOTTOM_SLACK_PX;
-
   const scrollToBottom = useCallback(() => {
     const element = ref.current;
     if (element) {
@@ -29,7 +24,7 @@ export function useStickyScroll<T extends HTMLElement>(dependency: unknown, pinT
   const onScroll = useCallback(() => {
     const element = ref.current;
     if (element) {
-      setStuck(isAtBottom(element));
+      setStuck(useStickyScroll.isAtBottom(element));
     }
   }, []);
 
@@ -51,6 +46,18 @@ export function useStickyScroll<T extends HTMLElement>(dependency: unknown, pinT
 }
 
 export namespace useStickyScroll {
+  /** How far off the bottom still counts as being at it, since scroll positions are fractional. */
+  const BOTTOM_SLACK_PX = 24;
+
+  /**
+   * Exported because being at the bottom is asked twice and must be answered identically: this hook
+   * decides whether to stay stuck, and the log viewer decides whether to page forward. Two copies of
+   * the slack meant a gap where the list would neither follow nor fetch.
+   */
+  export function isAtBottom(element: HTMLElement): boolean {
+    return element.scrollHeight - element.scrollTop - element.clientHeight <= BOTTOM_SLACK_PX;
+  }
+
   export type Result<T extends HTMLElement> = {
     ref: RefObject<T | null>;
     /** False once the reader has scrolled away, which is when to offer them a way back. */

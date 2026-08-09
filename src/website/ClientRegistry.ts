@@ -5,6 +5,7 @@ import { createContext } from "react";
 import { Yesttp } from "yesttp";
 import { ContainerClient } from "./clients/ContainerClient";
 import { DialogClient } from "./clients/DialogClient";
+import { LogClient } from "./clients/LogClient";
 import { SocketClient } from "./clients/SocketClient";
 
 export class ClientRegistry {
@@ -43,6 +44,7 @@ export class ClientRegistry {
     this.registry[SocketClient.name] = new SocketClient();
     this.registry[DialogClient.name] = new DialogClient();
     this.registry[ContainerClient.name] = new ContainerClient(yesttp);
+    this.registry[LogClient.name] = new LogClient(yesttp);
   }
 
   public getEnv() {
