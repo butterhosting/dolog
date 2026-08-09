@@ -72,9 +72,9 @@ export namespace ContainerClient {
 
   export type LogsOptions = {
     limit?: number;
-    /** Ids of events already held: `before` reads backwards, `after` forwards, neither is the live end. */
-    before?: string;
-    after?: string;
+    /** Ids of events already held: `beforeExclusive` reads backwards, `after*` forwards, neither is the live end. */
+    beforeExclusive?: string;
+    afterExclusive?: string;
     /** Like `after`, but opening the window *with* that line rather than just past it. */
     afterInclusive?: string;
     /** A wall-clock instant to read forwards from, for arriving somewhere by time rather than by id. */

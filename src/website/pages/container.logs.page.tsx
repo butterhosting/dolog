@@ -278,7 +278,7 @@ export function containerLogsPage() {
        */
       const landing = anchor ? page.events.at(0) : undefined;
       const above = landing
-        ? await containerClient.logs(id, { limit: LINES_PER_PAGE, before: landing.id, filter: Internal.filterFor(applied) })
+        ? await containerClient.logs(id, { limit: LINES_PER_PAGE, beforeExclusive: landing.id, filter: Internal.filterFor(applied) })
         : undefined;
       if (cancelled) {
         return;
@@ -350,7 +350,7 @@ export function containerLogsPage() {
      * A stored one used to drift: trimming the list while tailing moved the top of the screen
      * forward while the cursor stayed put, and resuming from it skipped everything in between.
      */
-    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, before: oldest.id, filter: Internal.filterFor(applied) });
+    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, beforeExclusive: oldest.id, filter: Internal.filterFor(applied) });
     setHasOlder(page.hasOlder);
 
     /**
@@ -382,7 +382,7 @@ export function containerLogsPage() {
       return;
     }
     loadingNewer.current = true;
-    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, after: newest.id, filter: Internal.filterFor(applied) });
+    const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, afterExclusive: newest.id, filter: Internal.filterFor(applied) });
     setHasNewer(page.hasNewer);
     setEvents((current) => [...current, ...page.events]);
     loadingNewer.current = false;
@@ -595,7 +595,9 @@ export function containerLogsPage() {
           <Internal.Field>
             <Internal.RegexToggle
               on={filterVariant === "regex"}
-              onClick={() => setFilterVariant((c) => (c === LogLinePattern.Variant.regex ? LogLinePattern.Variant.substr : LogLinePattern.Variant.regex))}
+              onClick={() =>
+                setFilterVariant((c) => (c === LogLinePattern.Variant.regex ? LogLinePattern.Variant.substr : LogLinePattern.Variant.regex))
+              }
             />
             <input
               value={filterDraft}
@@ -674,7 +676,12 @@ export function containerLogsPage() {
         {finding && (
           <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-xl bg-c-dark-deep p-2 shadow-2xl">
             <Internal.Field>
-              <Internal.RegexToggle on={variant === "regex"} onClick={() => setVariant((c) => (c === LogLinePattern.Variant.regex ? LogLinePattern.Variant.substr : LogLinePattern.Variant.regex))} />
+              <Internal.RegexToggle
+                on={variant === "regex"}
+                onClick={() =>
+                  setVariant((c) => (c === LogLinePattern.Variant.regex ? LogLinePattern.Variant.substr : LogLinePattern.Variant.regex))
+                }
+              />
               <input
                 ref={findField}
                 autoFocus
@@ -758,8 +765,7 @@ namespace Internal {
   /** The filter in force, which lives in the url rather than in state -- a view worth linking to. */
   export function appliedFilter(parameters: URLSearchParams) {
     const pattern = parameters.get("filter") ?? "";
-    const variant =
-      parameters.get("filterVariant") === "regex" ? LogLinePattern.Variant.regex : LogLinePattern.Variant.substr;
+    const variant = parameters.get("filterVariant") === "regex" ? LogLinePattern.Variant.regex : LogLinePattern.Variant.substr;
     return { pattern, variant, range: LogRange.fromParams(parameters) };
   }
 

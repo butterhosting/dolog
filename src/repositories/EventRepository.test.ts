@@ -86,7 +86,7 @@ describe(EventRepository.name, () => {
     all.slice(5).forEach((event) => repository.saveEvent(event));
 
     // when (asking for what came before an event that is itself still buffered)
-    const { events } = await repository.listEvents(container.id, 100, { before: all[7]!.id });
+    const { events } = await repository.listEvents(container.id, 100, { before: all[7]!.id, beforeInclusivity: "exclusive" });
     // then (everything older, from both halves, and nothing at or after the cursor)
     expect(events.map((event) => event.id)).toEqual(all.slice(0, 7).map((event) => event.id));
   });
@@ -99,7 +99,7 @@ describe(EventRepository.name, () => {
     all.slice(5).forEach((event) => repository.saveEvent(event));
 
     // when (reading on from an event that is still on disk, into the part that is not)
-    const { events } = await repository.listEvents(container.id, 100, { after: all[2]!.id });
+    const { events } = await repository.listEvents(container.id, 100, { after: all[2]!.id, afterInclusivity: "exclusive" });
     // then (everything newer, from both halves, and nothing at or before the cursor)
     expect(events.map((event) => event.id)).toEqual(all.slice(3).map((event) => event.id));
   });
@@ -111,7 +111,7 @@ describe(EventRepository.name, () => {
     await write(all);
 
     // when
-    const page = await repository.listEvents(container.id, 3, { after: all[0]!.id });
+    const page = await repository.listEvents(container.id, 3, { after: all[0]!.id, afterInclusivity: "exclusive" });
     // then (the three immediately following the cursor -- reading on, not jumping to the end)
     expect(page.events.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["line 1", "line 2", "line 3"]);
     expect(page.hasNewer).toBe(true);
@@ -125,7 +125,7 @@ describe(EventRepository.name, () => {
     await write(all);
 
     // when (a window wider than what remains)
-    const page = await repository.listEvents(container.id, 100, { after: all[7]!.id });
+    const page = await repository.listEvents(container.id, 100, { after: all[7]!.id, afterInclusivity: "exclusive" });
     // then
     expect(page.events).toHaveLength(2);
     expect(page.hasNewer).toBe(false);
@@ -139,7 +139,7 @@ describe(EventRepository.name, () => {
 
     // when (arriving by time, at an instant older than every line there is)
     const beforeEverything = Uuid.fromBytes(Uuid.lowerBoundAt(Temporal.Instant.from("2000-01-01T00:00:00Z")));
-    const page = await repository.listEvents(container.id, 100, { after: beforeEverything });
+    const page = await repository.listEvents(container.id, 100, { after: beforeEverything, afterInclusivity: "exclusive" });
 
     // then (the whole history, and no pretending there is more above it)
     expect(page.events).toHaveLength(10);
@@ -234,8 +234,12 @@ describe(EventRepository.name, () => {
       const regex = LogLinePattern.Variant.regex;
       const literal = { logLinePattern: { pattern: "shouting", patternVariant: substr }, direction: "down" } as const;
       expect(await repository.findEvent(container.id, literal)).toBe(all[0]!.id);
-      expect(await repository.findEvent(container.id, { ...literal, logLinePattern: { pattern: "shout.ng", patternVariant: regex } })).toBeNull();
-      expect(await repository.findEvent(container.id, { ...literal, logLinePattern: { pattern: "SHOUT.NG", patternVariant: regex } })).toBe(all[0]!.id);
+      expect(
+        await repository.findEvent(container.id, { ...literal, logLinePattern: { pattern: "shout.ng", patternVariant: regex } }),
+      ).toBeNull();
+      expect(await repository.findEvent(container.id, { ...literal, logLinePattern: { pattern: "SHOUT.NG", patternVariant: regex } })).toBe(
+        all[0]!.id,
+      );
     });
 
     it("should not let sqlite's own wildcards leak out of a literal needle", async () => {
