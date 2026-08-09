@@ -46,7 +46,8 @@ test("the container endpoints are available", async ({ page }) => {
   // an unknown container has no history rather than an error
   const events = await page.request.get("/internal-api/containers/does-not-exist/logs");
   expect(events.status()).toEqual(200);
-  expect(await events.json()).toEqual({ events: [], hasOlder: false });
+  // nothing either side of it, and its bottom is the feed -- there is simply no history in the way
+  expect(await events.json()).toEqual({ events: [], hasOlder: false, hasNewer: false, reachesLiveFeed: true });
 });
 
 test("the health endpoint is available", async ({ page }) => {
