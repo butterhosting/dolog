@@ -71,7 +71,6 @@ export namespace useLogFilter {
   export type Options = {
     parameters: URLSearchParams;
     setParameters: SetURLSearchParams;
-    /** The marker in the url, which an applied filter keeps rather than clears. */
     pinnedAt: string | null;
   };
 

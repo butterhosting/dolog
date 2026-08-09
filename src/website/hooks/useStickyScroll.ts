@@ -24,8 +24,18 @@ export function useStickyScroll<T extends HTMLElement>(dependency: unknown, pinT
   const onScroll = useCallback(() => {
     const element = ref.current;
     if (element) {
-      setStuck(useStickyScroll.isAtBottom(element));
+      setStuck(Internal.isAtBottom(element));
     }
+  }, []);
+
+  /**
+   * Measured now rather than read off `stuck`, which is last render's answer. A scroll handler runs
+   * before React has re-rendered, so `stuck` is one scroll event stale at exactly the moment it
+   * would be asked -- which is why the caller gets a function to call and not the boolean.
+   */
+  const atBottom = useCallback(() => {
+    const element = ref.current;
+    return !!element && Internal.isAtBottom(element);
   }, []);
 
   /**
@@ -42,26 +52,27 @@ export function useStickyScroll<T extends HTMLElement>(dependency: unknown, pinT
     }
   }, [dependency, stuck, pinToBottom]);
 
-  return { ref, stuck, onScroll, scrollToBottom };
+  return { ref, stuck, atBottom, onScroll, scrollToBottom };
 }
 
-export namespace useStickyScroll {
-  /** How far off the bottom still counts as being at it, since scroll positions are fractional. */
-  const BOTTOM_SLACK_PX = 24;
-
-  /**
-   * Exported because being at the bottom is asked twice and must be answered identically: this hook
-   * decides whether to stay stuck, and the log viewer decides whether to page forward. Two copies of
-   * the slack meant a gap where the list would neither follow nor fetch.
-   */
+namespace Internal {
+  const BOTTOM_SLACK_PX = 24; // How far off the bottom still counts as being at it, since scroll positions are fractional
   export function isAtBottom(element: HTMLElement): boolean {
     return element.scrollHeight - element.scrollTop - element.clientHeight <= BOTTOM_SLACK_PX;
   }
+}
 
+export namespace useStickyScroll {
   export type Result<T extends HTMLElement> = {
     ref: RefObject<T | null>;
     /** False once the reader has scrolled away, which is when to offer them a way back. */
     stuck: boolean;
+    /**
+     * Whether the container is at its bottom *right now*. Asked by the log viewer to decide whether
+     * to page forward, and answered from the same slack this hook sticks by -- two measurements of
+     * "at the bottom" left a gap where the list would neither follow nor fetch.
+     */
+    atBottom: () => boolean;
     onScroll: () => void;
     scrollToBottom: () => void;
   };

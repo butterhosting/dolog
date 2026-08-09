@@ -28,7 +28,13 @@ const LINES_PER_PAGE = 300;
  * they are the same question asked from different ends -- what is on screen, and does the feed
  * still own the bottom of it.
  */
-export function useLogWindow({ id, applied, filterKey, pinnedAt, setParameters }: useLogWindow.Options): useLogWindow.Result {
+export function useVisibleLogWindow({
+  id,
+  applied,
+  filterKey,
+  pinnedAt,
+  setParameters,
+}: useVisibleLogWindow.Options): useVisibleLogWindow.Result {
   const logClient = useRegistry(LogClient);
   const socketClient = useRegistry(SocketClient);
   const dialogClient = useRegistry(DialogClient);
@@ -45,7 +51,7 @@ export function useLogWindow({ id, applied, filterKey, pinnedAt, setParameters }
    * a time, a search knows an id. A found line cannot be described by its timestamp -- several lines
    * share a millisecond -- so the distinction has to survive as far as the request.
    */
-  const [anchor, setAnchor] = useState<useLogWindow.Anchor | null>(pinnedAt ? { kind: "instant", value: pinnedAt } : null);
+  const [anchor, setAnchor] = useState<useVisibleLogWindow.Anchor | null>(pinnedAt ? { kind: "instant", value: pinnedAt } : null);
 
   const [events, setEvents] = useState<ContainerEvent[]>([]);
   /**
@@ -63,7 +69,7 @@ export function useLogWindow({ id, applied, filterKey, pinnedAt, setParameters }
   const loadingOlder = useRef(false);
   const loadingNewer = useRef(false);
 
-  const { ref, stuck, onScroll, scrollToBottom } = useStickyScroll<HTMLDivElement>(events, !anchor);
+  const { ref, stuck, atBottom, onScroll, scrollToBottom } = useStickyScroll<HTMLDivElement>(events, !anchor);
   /**
    * Read by the socket callback, which closes over its first render and would otherwise never see
    * the reader scroll away.
@@ -369,7 +375,7 @@ export function useLogWindow({ id, applied, filterKey, pinnedAt, setParameters }
     [anchor, ref, setParameters],
   );
 
-  const openJump = useCallback(async () => {
+  const openJumpDialog = useCallback(async () => {
     const chosen = await dialogClient.jumpTo(LogRows.parseInstant(pinnedAt) ?? undefined);
     if (chosen !== "cancel") {
       jumpTo(chosen);
@@ -411,10 +417,10 @@ export function useLogWindow({ id, applied, filterKey, pinnedAt, setParameters }
       void loadOlder();
       return;
     }
-    if (hasNewer && useStickyScroll.isAtBottom(element)) {
+    if (hasNewer && atBottom()) {
       void loadNewer();
     }
-  }, [hasNewer, loadNewer, loadOlder, onScroll, ref]);
+  }, [hasNewer, loadNewer, loadOlder, onScroll, ref, atBottom]);
 
   return {
     ref,
@@ -429,14 +435,14 @@ export function useLogWindow({ id, applied, filterKey, pinnedAt, setParameters }
     atLiveEnd,
     handleScroll,
     jumpToLive,
-    openJump,
+    openJumpDialog,
     dismissPin,
     anchorToLine,
     returnToLiveFeed,
   };
 }
 
-export namespace useLogWindow {
+export namespace useVisibleLogWindow {
   /** Where the window was fetched around: a moment that was asked for, or a line that was found. */
   export type Anchor = { kind: "instant"; value: string } | { kind: "line"; value: string };
 
@@ -466,7 +472,7 @@ export namespace useLogWindow {
     atLiveEnd: boolean;
     handleScroll: () => void;
     jumpToLive: () => Promise<void>;
-    openJump: () => Promise<void>;
+    openJumpDialog: () => Promise<void>;
     dismissPin: () => void;
     /** Moves the window onto a line outside it, which is how a search result is arrived at. */
     anchorToLine: (lineId: string) => void;
