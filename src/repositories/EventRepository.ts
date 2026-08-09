@@ -7,10 +7,11 @@ import { Uuid } from "@/helpers/Uuid";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";
-import { LogLinePattern } from "@/models/LogLinePattern";
+import { LogPattern } from "@/models/LogPattern";
 import { Temporal } from "@js-temporal/polyfill";
-import { and, asc, BinaryOperator, desc, eq, gt, gte, lt, lte, notExists, SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, lt, lte, notExists, sql } from "drizzle-orm";
 import { BehaviorSubject, catchError, concatMap, defer, EMPTY, interval, Observable } from "rxjs";
+import { EventPredicateFactory } from "./EventPredicateFactory";
 
 /**
  * Recent events are held in a `pending` memory buffer until they are flushed
@@ -66,8 +67,8 @@ export class EventRepository {
   }
 
   public async findEvent(dockerId: string, search: EventRepository.Search, filter: EventRepository.Filter = {}): Promise<string | null> {
-    const searchPredicate = Internal.searchPredicate(search);
-    const filterPredicate = Internal.filterPredicate(filter);
+    const searchPredicate = EventPredicateFactory.forSearch(search);
+    const filterPredicate = EventPredicateFactory.forFilter(filter);
 
     //
     // Part A: search the buffer for a candidate
@@ -111,7 +112,7 @@ export class EventRepository {
       }
 
       for (const row of chunk) {
-        const databaseCandidate: Internal.Candidate = {
+        const databaseCandidate: EventPredicateFactory.Candidate = {
           id: Uuid.fromBytes(row.id),
           line: row.line,
         };
@@ -148,12 +149,15 @@ export class EventRepository {
     // If we didn't get any cursor, we default to showing the latest logs, and walking backwards_in_time
     const direction = cursor.after !== undefined ? Direction.forwards_in_time : Direction.backwards_in_time;
 
-    const cursorPredicate = Internal.cursorPredicate(cursor);
-    const filterPredicate = Internal.filterPredicate(filter);
+    const cursorPredicate = EventPredicateFactory.forCursor(cursor);
+    const filterPredicate = EventPredicateFactory.forFilter(filter);
 
     let dbEvents: ContainerEvent[] = [];
     const dbContainer = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
 
+    //
+    // Part A: list the database
+    //
     if (dbContainer) {
       const container = ContainerEventConverter.containerFromDatabase(dbContainer);
       dbEvents = this.queryEventsUpToLimitWithPredicate({
@@ -168,105 +172,42 @@ export class EventRepository {
         mapper: (row) => ContainerEventConverter.fromDatabase(row, container),
       });
     }
+    //
+    // Part B: list the buffer
+    //
     const bufferEvents = this.pending
       .filter((event): event is ContainerEvent.Log => event.container.id === dockerId && event.type === ContainerEvent.Type.log)
       .filter((event) => cursorPredicate.fullInMemoryTest(event)) // only logs matching the specific cursor constraints...
       .filter((event) => filterPredicate.fullInMemoryTest(event)); // ...but only if they match the general filter window as well
-
-    // Deduplicate events by id, and always sort from old to new
-    const events = [...new Map([...dbEvents, ...bufferEvents].map((event) => [event.id, event])).values()].sort((a, b) =>
-      a.id.localeCompare(b.id),
-    );
+    //
+    // Part C: combine both lists, deduplicate events by ID, and (always) sort from old to new
+    //
+    const events = [...new Map([...dbEvents, ...bufferEvents].map((event) => [event.id, event])).values()] //
+      .sort((a, b) => a.id.localeCompare(b.id)); // UUIDv7
 
     switch (direction) {
       case Direction.forwards_in_time: {
         const page = events.slice(0, limit);
+        const hasNewer = events.length > limit;
         return {
           events: page,
-          hasNewer: events.length > limit,
+          hasNewer,
           hasOlder: this.hasAnythingOlderThan(dbContainer?.id, page.at(0)?.id, cursor.after, filter),
+          reachesLiveFeed: this.reachesLiveFeed({ hasNewer, filter }),
         };
       }
       case Direction.backwards_in_time: {
         // quick reminder that `cursor.before` is always "exclusive"
         if (cursor.beforeInclusivity && cursor.beforeInclusivity !== "exclusive") cursor.beforeInclusivity satisfies never;
+        const hasNewer = cursor.before !== undefined;
         return {
           events: events.slice(-limit),
           hasOlder: events.length > limit,
-          hasNewer: cursor.before !== undefined,
+          hasNewer,
+          reachesLiveFeed: this.reachesLiveFeed({ hasNewer, filter }),
         };
       }
     }
-  }
-
-  private queryEventsUpToLimitWithPredicate<T = typeof $containerEvent.$inferSelect>({
-    where,
-    direction,
-    limit,
-    predicate,
-    mapper = (x) => x as T,
-  }: {
-    where: ReturnType<typeof and>;
-    direction: Direction;
-    limit: number;
-    predicate?: (candidate: Internal.Candidate) => boolean;
-    mapper?: (from: typeof $containerEvent.$inferSelect) => T;
-  }): Array<T> {
-    const CHUNK = 1_000;
-    const towardsFuture = direction === "forwards_in_time";
-    const order = towardsFuture ? asc($containerEvent.id) : desc($containerEvent.id);
-    const query = (extra: ReturnType<typeof and>, take: number) =>
-      this.sqlite.select().from($containerEvent).where(and(where, extra)).orderBy(order).limit(take).all();
-
-    if (!predicate) {
-      return query(undefined, limit).map(mapper);
-    }
-    const collected: ReturnType<typeof query> = [];
-    let cursor: Buffer | undefined;
-    while (collected.length < limit) {
-      const chunk = query(cursor === undefined ? undefined : (towardsFuture ? gt : lt)($containerEvent.id, cursor), CHUNK);
-      if (chunk.length === 0) {
-        break;
-      }
-      for (const row of chunk) {
-        if (collected.length < limit && predicate({ id: Uuid.fromBytes(row.id), line: row.line })) {
-          collected.push(row);
-        }
-      }
-      cursor = chunk.at(-1)!.id as Buffer;
-    }
-    return collected.map(mapper);
-  }
-
-  private hasAnythingOlderThan(
-    container: number | undefined,
-    oldestShown: string | undefined,
-    cursor: string | undefined,
-    filter: EventRepository.Filter,
-  ): boolean {
-    const bound =
-      oldestShown !== undefined
-        ? lt($containerEvent.id, Uuid.toBytes(oldestShown))
-        : cursor !== undefined
-          ? lte($containerEvent.id, Uuid.toBytes(cursor))
-          : undefined;
-    // nothing is written for this container yet, so nothing can be older than the page
-    if (container === undefined || !bound) {
-      return false;
-    }
-    /**
-     * Under a filter this stops being a free existence check: "is there anything above" becomes "is
-     * there another *match* above", which is the same walk the page does, stopped at one.
-     */
-    const filterPredicate = Internal.filterPredicate(filter);
-    return (
-      this.queryEventsUpToLimitWithPredicate({
-        limit: 1,
-        direction: Direction.backwards_in_time,
-        where: and(eq($containerEvent.containerId, container), bound, ...filterPredicate.partialDatabaseTest()),
-        predicate: filterPredicate.fullInMemoryTest,
-      }).length > 0
-    );
   }
 
   @Initialize
@@ -375,6 +316,88 @@ export class EventRepository {
     this.publishContainers();
   }
 
+  private queryEventsUpToLimitWithPredicate<T = typeof $containerEvent.$inferSelect>({
+    where,
+    direction,
+    limit,
+    predicate,
+    mapper = (x) => x as T,
+  }: {
+    where: ReturnType<typeof and>;
+    direction: Direction;
+    limit: number;
+    predicate?: (candidate: EventPredicateFactory.Candidate) => boolean;
+    mapper?: (from: typeof $containerEvent.$inferSelect) => T;
+  }): Array<T> {
+    const CHUNK = 1_000;
+    const towardsFuture = direction === "forwards_in_time";
+    const order = towardsFuture ? asc($containerEvent.id) : desc($containerEvent.id);
+    const query = (extra: ReturnType<typeof and>, take: number) =>
+      this.sqlite.select().from($containerEvent).where(and(where, extra)).orderBy(order).limit(take).all();
+
+    if (!predicate) {
+      return query(undefined, limit).map(mapper);
+    }
+    const collected: ReturnType<typeof query> = [];
+    let cursor: Buffer | undefined;
+    while (collected.length < limit) {
+      const chunk = query(cursor === undefined ? undefined : (towardsFuture ? gt : lt)($containerEvent.id, cursor), CHUNK);
+      if (chunk.length === 0) {
+        break;
+      }
+      for (const row of chunk) {
+        if (collected.length < limit && predicate({ id: Uuid.fromBytes(row.id), line: row.line })) {
+          collected.push(row);
+        }
+      }
+      cursor = chunk.at(-1)!.id as Buffer;
+    }
+    return collected.map(mapper);
+  }
+
+  private hasAnythingOlderThan(
+    container: number | undefined,
+    oldestShown: string | undefined,
+    cursor: string | undefined,
+    filter: EventRepository.Filter,
+  ): boolean {
+    const bound =
+      oldestShown !== undefined
+        ? lt($containerEvent.id, Uuid.toBytes(oldestShown))
+        : cursor !== undefined
+          ? lte($containerEvent.id, Uuid.toBytes(cursor))
+          : undefined;
+    // nothing is written for this container yet, so nothing can be older than the page
+    if (container === undefined || !bound) {
+      return false;
+    }
+    /**
+     * Under a filter this stops being a free existence check: "is there anything above" becomes "is
+     * there another *match* above", which is the same walk the page does, stopped at one.
+     */
+    const filterPredicate = EventPredicateFactory.forFilter(filter);
+    return (
+      this.queryEventsUpToLimitWithPredicate({
+        limit: 1,
+        direction: Direction.backwards_in_time,
+        where: and(eq($containerEvent.containerId, container), bound, ...filterPredicate.partialDatabaseTest()),
+        predicate: filterPredicate.fullInMemoryTest,
+      }).length > 0
+    );
+  }
+
+  public reachesLiveFeed({
+    hasNewer,
+    filter,
+    now = Temporal.Now.instant(),
+  }: {
+    hasNewer: boolean;
+    filter: EventRepository.Filter;
+    now?: Temporal.Instant;
+  }): boolean {
+    return !hasNewer && (filter.until === undefined || Temporal.Instant.compare(filter.until, now) > 0);
+  }
+
   /**
    * Caps how much history (number of events) any one container may hold
    */
@@ -454,216 +477,40 @@ export class EventRepository {
   }
 }
 
-/**
- * Each concept owns both halves of itself: the test that decides, and the clauses that narrow what
- * sqlite hands over before it is asked.
- *
- * The contract between the two halves is that `partialDatabaseTest` is a *prefilter*, never the
- * verdict -- it only has to be no stricter than `fullInMemoryTest`. That is what lets a substring
- * narrow the scan while a regular expression, which sqlite cannot evaluate, narrows nothing.
- */
-namespace Internal {
-  export type Candidate = {
-    id: string;
-    line: string | null;
-  };
-
-  export function cursorPredicate({ before, beforeInclusivity, after, afterInclusivity }: EventRepository.Cursor): {
-    fullDatabaseTest(): Array<SQL<unknown> | undefined>;
-    fullInMemoryTest(event: ContainerEvent): boolean;
-  } {
-    const clauses: Array<SQL<unknown> | undefined> = [];
-    if (before) {
-      switch (beforeInclusivity) {
-        case "exclusive": {
-          clauses.push(lt($containerEvent.id, Uuid.toBytes(before)));
-          break;
-        }
-        default:
-          throw new Error(`Unsupported inclusivity: ${beforeInclusivity}`);
-      }
-    }
-    if (after) {
-      switch (afterInclusivity) {
-        case "inclusive":
-          clauses.push(gte($containerEvent.id, Uuid.toBytes(after)));
-          break;
-        case "exclusive":
-          clauses.push(gt($containerEvent.id, Uuid.toBytes(after)));
-          break;
-        default:
-          throw new Error(`Unsupported inclusivity: ${afterInclusivity}`);
-      }
-    }
-    return {
-      fullDatabaseTest() {
-        return clauses;
-      },
-      fullInMemoryTest(event: ContainerEvent) {
-        return (
-          (before === undefined || event.id < before) &&
-          (after === undefined || (afterInclusivity === "inclusive" ? event.id >= after : event.id > after))
-        );
-      },
-    };
-  }
-
-  export function filterBound({ since, until }: Pick<EventRepository.Filter, "since" | "until">) {
-    return [
-      since === undefined ? undefined : gte($containerEvent.id, Uuid.lowerBoundAt(since)),
-      until === undefined ? undefined : lt($containerEvent.id, Uuid.lowerBoundAt(until)),
-    ];
-  }
-
-  /**
-   * The span is compared as *ids*, exactly as {@link filterBound} hands it to sqlite -- a uuidv7 opens with
-   * the millisecond, so the comparison the index performs and the one performed here are the same
-   * one. Comparing timestamps instead would be a shade more precise on one side than the other, and
-   * would cost an `Instant` parse per row on a scan that reads every row in the range.
-   */
-  export function filterPredicate({ logLinePattern, since, until }: EventRepository.Filter): {
-    fullInMemoryTest(candidate: Candidate): boolean;
-    partialDatabaseTest(): Array<SQL<unknown> | undefined>;
-  } {
-    // full in-memory test
-    const patternPredicate = logLinePattern ? LogLinePattern.predicate(logLinePattern) : undefined;
-    const sinceId = since === undefined ? undefined : Uuid.fromBytes(Uuid.lowerBoundAt(since));
-    const untilId = until === undefined ? undefined : Uuid.fromBytes(Uuid.lowerBoundAt(until));
-    // partial database test
-    const clauses: Array<SQL<unknown> | undefined> = [
-      ...Internal.filterBound({ since, until }),
-      logLinePattern?.patternVariant === LogLinePattern.Variant.substr ? Internal.sqlContaining(logLinePattern.pattern) : undefined,
-    ];
-    return {
-      fullInMemoryTest(candidate) {
-        return (
-          (sinceId === undefined || candidate.id >= sinceId) &&
-          (untilId === undefined || candidate.id < untilId) &&
-          (patternPredicate === undefined || (candidate.line !== null && patternPredicate(candidate.line)))
-        );
-      },
-      partialDatabaseTest() {
-        return clauses;
-      },
-    };
-  }
-
-  /**
-   * The `like` prefilter for a literal needle, with sqlite's own wildcards defanged.
-   *
-   * It may stand in for the predicate across every needle because the predicate folds case exactly
-   * as `like` does -- see {@link LogLinePattern.predicate}. Were it to fold more, this would become
-   * the stricter of the two, and a row rejected here is never carried back to be tested.
-   */
-  export function sqlContaining(needle: string): SQL<unknown> {
-    const escaped = needle.replace(/[\\%_]/g, (character) => `\\${character}`);
-    return sql`${$containerEvent.line} like ${`%${escaped}%`} escape '\\'`;
-  }
-
-  export function searchPredicate({ logLinePattern, anchorId, anchorInclusivity, direction }: EventRepository.Search): {
-    fullInMemoryTest(candidate: Candidate): boolean;
-    partialDatabaseTest(cursor: string | undefined): Array<SQL<unknown> | undefined>;
-  } {
-    const isInclusive = anchorInclusivity === "inclusive";
-    // full in-memory test
-    const patternPredicate = LogLinePattern.predicate(logLinePattern);
-    const beyondPredicate = ({ id }: Candidate): boolean => {
-      if (anchorId === undefined) {
-        return true;
-      }
-      if (id === anchorId) {
-        return isInclusive;
-      }
-      switch (direction) {
-        case Direction.forwards_in_time:
-          return id > anchorId;
-        case Direction.backwards_in_time:
-          return id < anchorId;
-      }
-    };
-    // partial database test
-    const extraClause =
-      logLinePattern.patternVariant === LogLinePattern.Variant.substr ? Internal.sqlContaining(logLinePattern.pattern) : undefined;
-    return {
-      fullInMemoryTest: (candidate) => beyondPredicate(candidate) && candidate.line !== null && patternPredicate(candidate.line),
-      partialDatabaseTest: (cursor) => {
-        if (cursor === undefined) {
-          return [extraClause];
-        }
-        /**
-         * Inclusivity belongs to the anchor, never to a resumption: a walk resuming from the last row
-         * it read must exclude it, or it would read that row forever. Rather than have the caller
-         * remember to say so, the anchor is recognised here -- any other cursor is a resumption.
-         */
-        const openingTheWalk = isInclusive && cursor === anchorId;
-        let anchorBound: BinaryOperator;
-        switch (direction) {
-          case Direction.forwards_in_time:
-            anchorBound = openingTheWalk ? gte : gt;
-            break;
-          case Direction.backwards_in_time:
-            anchorBound = openingTheWalk ? lte : lt;
-            break;
-        }
-        return [anchorBound($containerEvent.id, Uuid.toBytes(cursor)), extraClause];
-      },
-    };
-  }
-}
-
 export namespace EventRepository {
   /**
-   * Where to read from. All are ids of events the caller already holds; none means the live end.
-   *
-   * They are independent bounds rather than a choice of one: `beforeExclusive` alone reads back,
-   * a forwards anchor alone reads on from one, and the two together are simply a bounded range.
-   * What the combination also settles is the direction -- naming a forwards anchor fills the page
-   * from the older end, so it wins over `beforeExclusive` when both are given.
-   */
-  export type Cursor = {
-    /**
-     * Reading back only ever starts from a line already in hand, so there is no inclusive form to
-     * choose between -- including it would hand the caller a line it is already holding. The name
-     * carries that rather than a second field whose only legal value is the one it always has.
-     */
-    before?: string;
-    beforeInclusivity?: "exclusive"; // only allowed variant
-    /**
-     * Forwards, and inclusive or not. Arriving at a *found* line differs from paging on from one
-     * already read: the whole point is to be shown it, so it has to open the window rather than sit
-     * just off the top of it.
-     */
-    after?: string;
-    afterInclusivity?: "inclusive" | "exclusive";
-  };
-
-  /**
-   * The narrowed view everything else operates inside. Absent parts narrow nothing, so `{}` is the
-   * whole log.
-   *
-   * The span is expressed as *ids* rather than timestamps once it reaches sqlite: uuidv7s are
-   * time-ordered, so a time range is a key range, and the walk is bounded by the index instead of
-   * being filtered after the fact.
-   */
-  export type Filter = {
-    logLinePattern?: LogLinePattern;
-    since?: Temporal.Instant;
-    until?: Temporal.Instant;
-  };
-
-  /**
-   * The line to search out from, and whether it may itself be the answer
+   * The single specific line to search for
    */
   export type Search = {
-    logLinePattern: LogLinePattern;
+    logPattern: LogPattern;
     anchorId?: string;
     anchorInclusivity?: "inclusive" | "exclusive";
     direction: Direction;
   };
 
+  /**
+   * Where to read, using cursor-based navigation
+   */
+  export type Cursor = {
+    before?: string;
+    beforeInclusivity?: "exclusive"; // only allowed variant
+    after?: string;
+    afterInclusivity?: "inclusive" | "exclusive";
+  };
+
+  /**
+   * The overally filter, applied to every search or cursor context
+   */
+  export type Filter = {
+    logPattern?: LogPattern;
+    since?: Temporal.Instant;
+    until?: Temporal.Instant;
+  };
+
   export type Page = {
     events: ContainerEvent[];
     hasOlder: boolean;
-    hasNewer: boolean; // false means: it reaches the live feed
+    hasNewer: boolean;
+    reachesLiveFeed: boolean;
   };
 }

@@ -3,7 +3,7 @@ import { Container } from "@/models/Container";
 import { Temporal } from "@js-temporal/polyfill";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";
-import { LogLinePattern } from "@/models/LogLinePattern";
+import { LogPattern } from "@/models/LogPattern";
 import { StreamVariant } from "@/models/StreamVariant";
 import { TestEnvironment } from "@/testing/TestEnvironment.test";
 import { TestFixture } from "@/testing/TestFixture.test";
@@ -151,6 +151,50 @@ describe(EventRepository.name, () => {
     expect(page.hasNewer).toBe(false);
   });
 
+  describe("reaching the live feed", () => {
+    /**
+     * `hasNewer` runs out at the top of the *window*; the feed is a different edge. They agree only
+     * while the window is still open at the top, and reading one for the other is what puts a line
+     * from today underneath one from yesterday.
+     */
+    async function tenLines() {
+      const container = TestFixture.container();
+      const all = Array.from({ length: 10 }, (_, i) => TestFixture.logEvent({ container, line: `line ${i}` }));
+      await write(all);
+      return { container, all };
+    }
+
+    it("should reach the feed when the window has no end", async () => {
+      const { container } = await tenLines();
+      const page = await repository.listEvents(container.id, 100);
+      expect(page.hasNewer).toBe(false);
+      expect(page.reachesLiveFeed).toBe(true);
+    });
+
+    it("should not reach the feed when the window closes in the past", async () => {
+      const { container } = await tenLines();
+      const page = await repository.listEvents(container.id, 100, {}, { until: Temporal.Now.instant() });
+      // out of window and out of feed are not the same thing, and only the second is reported here
+      expect(page.hasNewer).toBe(false);
+      expect(page.reachesLiveFeed).toBe(false);
+    });
+
+    it("should reach the feed when the window closes in the future", async () => {
+      const { container } = await tenLines();
+      const tomorrow = Temporal.Now.instant().add({ hours: 24 });
+      const page = await repository.listEvents(container.id, 100, {}, { until: tomorrow });
+      // an end was named, but the feed is comfortably inside it -- a named end is not a closed one
+      expect(page.reachesLiveFeed).toBe(true);
+    });
+
+    it("should not reach the feed from a window parked in history", async () => {
+      const { container, all } = await tenLines();
+      const page = await repository.listEvents(container.id, 3, { before: all[8]!.id, beforeInclusivity: "exclusive" });
+      expect(page.hasNewer).toBe(true);
+      expect(page.reachesLiveFeed).toBe(false);
+    });
+  });
+
   it("should report reaching the beginning when reading forwards from before anything was logged", async () => {
     // given
     const container = TestFixture.container();
@@ -181,7 +225,7 @@ describe(EventRepository.name, () => {
       const { container, all } = await haystack();
       // when
       const found = await repository.findEvent(container.id, {
-        logLinePattern: { pattern: "needle", patternVariant: LogLinePattern.Variant.substr },
+        logPattern: { pattern: "needle", patternVariant: LogPattern.Variant.substr },
         direction: Direction.forwards_in_time,
       });
       // then
@@ -193,7 +237,7 @@ describe(EventRepository.name, () => {
       const { container, all } = await haystack();
       // when (standing at the very end and stepping back)
       const found = await repository.findEvent(container.id, {
-        logLinePattern: { pattern: "needle", patternVariant: LogLinePattern.Variant.substr },
+        logPattern: { pattern: "needle", patternVariant: LogPattern.Variant.substr },
         anchorId: all[9]!.id,
         anchorInclusivity: "inclusive",
         direction: Direction.backwards_in_time,
@@ -207,7 +251,7 @@ describe(EventRepository.name, () => {
       const { container, all } = await haystack();
       // when (anchored on the match at 2, which is how pressing the chevron again arrives here)
       const found = await repository.findEvent(container.id, {
-        logLinePattern: { pattern: "needle", patternVariant: LogLinePattern.Variant.substr },
+        logPattern: { pattern: "needle", patternVariant: LogPattern.Variant.substr },
         anchorId: all[2]!.id,
         anchorInclusivity: "exclusive",
         direction: Direction.forwards_in_time,
@@ -221,7 +265,7 @@ describe(EventRepository.name, () => {
       const { container, all } = await haystack();
       // when (the same line, but anchored the way an unmatched viewport edge is)
       const found = await repository.findEvent(container.id, {
-        logLinePattern: { pattern: "needle", patternVariant: LogLinePattern.Variant.substr },
+        logPattern: { pattern: "needle", patternVariant: LogPattern.Variant.substr },
         anchorId: all[2]!.id,
         anchorInclusivity: "inclusive",
         direction: Direction.forwards_in_time,
@@ -235,7 +279,7 @@ describe(EventRepository.name, () => {
       const { container } = await haystack();
       // when
       const found = await repository.findEvent(container.id, {
-        logLinePattern: { pattern: "haystack", patternVariant: LogLinePattern.Variant.substr },
+        logPattern: { pattern: "haystack", patternVariant: LogPattern.Variant.substr },
         direction: Direction.forwards_in_time,
       });
       // then
@@ -249,14 +293,14 @@ describe(EventRepository.name, () => {
       await write(all);
 
       // when / then
-      const substr = LogLinePattern.Variant.substr;
-      const regex = LogLinePattern.Variant.regex;
-      const literal = { logLinePattern: { pattern: "shouting", patternVariant: substr }, direction: Direction.forwards_in_time } as const;
+      const substr = LogPattern.Variant.substr;
+      const regex = LogPattern.Variant.regex;
+      const literal = { logPattern: { pattern: "shouting", patternVariant: substr }, direction: Direction.forwards_in_time } as const;
       expect(await repository.findEvent(container.id, literal)).toBe(all[0]!.id);
       expect(
-        await repository.findEvent(container.id, { ...literal, logLinePattern: { pattern: "shout.ng", patternVariant: regex } }),
+        await repository.findEvent(container.id, { ...literal, logPattern: { pattern: "shout.ng", patternVariant: regex } }),
       ).toBeNull();
-      expect(await repository.findEvent(container.id, { ...literal, logLinePattern: { pattern: "SHOUT.NG", patternVariant: regex } })).toBe(
+      expect(await repository.findEvent(container.id, { ...literal, logPattern: { pattern: "SHOUT.NG", patternVariant: regex } })).toBe(
         all[0]!.id,
       );
     });
@@ -269,7 +313,7 @@ describe(EventRepository.name, () => {
 
       // when
       const found = await repository.findEvent(container.id, {
-        logLinePattern: { pattern: "100%", patternVariant: LogLinePattern.Variant.substr },
+        logPattern: { pattern: "100%", patternVariant: LogPattern.Variant.substr },
         direction: Direction.forwards_in_time,
       });
       // then (the literal "100%", not "100" followed by anything)
@@ -285,7 +329,7 @@ describe(EventRepository.name, () => {
 
       // when
       const found = await repository.findEvent(container.id, {
-        logLinePattern: { pattern: "needle", patternVariant: LogLinePattern.Variant.substr },
+        logPattern: { pattern: "needle", patternVariant: LogPattern.Variant.substr },
         direction: Direction.forwards_in_time,
       });
       // then
@@ -306,7 +350,7 @@ describe(EventRepository.name, () => {
 
       // when (anchored on the very first line, and inclusive of it)
       const found = await repository.findEvent(container.id, {
-        logLinePattern: { pattern: "nothing-matches-this", patternVariant: LogLinePattern.Variant.regex },
+        logPattern: { pattern: "nothing-matches-this", patternVariant: LogPattern.Variant.regex },
         anchorId: all[0]!.id,
         anchorInclusivity: "inclusive",
         direction: Direction.forwards_in_time,
@@ -344,16 +388,16 @@ describe(EventRepository.name, () => {
       const buffered = TestFixture.container({ name: "buffered" });
       await write([TestFixture.logEvent({ container: written, line })]);
       repository.saveEvent(TestFixture.logEvent({ container: buffered, line }));
-      const logLinePattern = { pattern: needle, patternVariant: LogLinePattern.Variant.substr };
+      const logPattern = { pattern: needle, patternVariant: LogPattern.Variant.substr };
 
       // when (sqlite answers for the first, the predicate for the second)
-      const fromDisk = await repository.listEvents(written.id, 100, {}, { logLinePattern });
-      const fromBuffer = await repository.listEvents(buffered.id, 100, {}, { logLinePattern });
+      const fromDisk = await repository.listEvents(written.id, 100, {}, { logPattern });
+      const fromBuffer = await repository.listEvents(buffered.id, 100, {}, { logPattern });
 
       // then (one verdict, whichever half is asked)
       expect(fromDisk.events.length).toBe(matches ? 1 : 0);
       expect(fromBuffer.events.length).toBe(matches ? 1 : 0);
-      expect(LogLinePattern.predicate(logLinePattern)(line)).toBe(matches);
+      expect(LogPattern.predicate(logPattern)(line)).toBe(matches);
     });
   });
 

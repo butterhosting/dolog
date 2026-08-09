@@ -1,6 +1,6 @@
 import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
-import { LogLinePattern } from "@/models/LogLinePattern";
+import { LogPattern } from "@/models/LogPattern";
 import { LogError } from "@/errors/LogError";
 import { ServerError } from "@/errors/ServerError";
 import { Uuid } from "@/helpers/Uuid";
@@ -57,17 +57,28 @@ export class LogService {
     // boundary-based listing (around a specific `at`-anchor in a specific directions)
     if (listQuery.at) {
       const boundary = Uuid.fromBytes(Uuid.lowerBoundAt(listQuery.at));
-      const forwards = await this.eventRepository.listEvents(containerId, listQuery.limit, { after: boundary, afterInclusivity: "exclusive" }, listQuery.filter);
+      const forwards = await this.eventRepository.listEvents(
+        containerId,
+        listQuery.limit,
+        { after: boundary, afterInclusivity: "exclusive" },
+        listQuery.filter,
+      );
       if (forwards.events.length > 0) {
         return {
           ...forwards,
           landedOn: forwards.events[0].id,
         };
       }
-      const backwards = await this.eventRepository.listEvents(containerId, listQuery.limit, { before: boundary, beforeInclusivity: "exclusive" }, listQuery.filter);
+      const backwards = await this.eventRepository.listEvents(
+        containerId,
+        listQuery.limit,
+        { before: boundary, beforeInclusivity: "exclusive" },
+        listQuery.filter,
+      );
       return {
         ...backwards,
         hasNewer: false,
+        reachesLiveFeed: this.eventRepository.reachesLiveFeed({ hasNewer: false, filter: listQuery.filter }),
         landedOn: null, // indicates that we couldn't find any logs past the provided `at`-boundary
       };
     }
@@ -86,14 +97,14 @@ export namespace LogService {
 
   const FILTER = {
     filterPattern: z.string().optional(),
-    filterPatternVariant: z.enum(LogLinePattern.Variant).optional(),
+    filterPatternVariant: z.enum(LogPattern.Variant).optional(),
     filterSince: z.string().transform(ZodParser.instant).optional(),
     filterUntil: z.string().transform(ZodParser.instant).optional(),
   };
   const FILTER_TRANSFORM = <
     T extends {
       filterPattern?: string;
-      filterPatternVariant?: LogLinePattern.Variant;
+      filterPatternVariant?: LogPattern.Variant;
       filterSince?: Temporal.Instant;
       filterUntil?: Temporal.Instant;
     },
@@ -106,7 +117,7 @@ export namespace LogService {
     return {
       ...fields,
       filter: {
-        logLinePattern:
+        logPattern:
           filterPattern && filterPatternVariant
             ? {
                 pattern: filterPattern,
@@ -122,7 +133,7 @@ export namespace LogService {
   export const FindQuery = z
     .object({
       searchPattern: z.string(),
-      searchPatternVariant: z.enum(LogLinePattern.Variant),
+      searchPatternVariant: z.enum(LogPattern.Variant),
       anchorInclusive: z.string().optional(),
       anchorExclusive: z.string().optional(),
       direction: z.enum(Direction),
@@ -134,7 +145,7 @@ export namespace LogService {
     .transform(FILTER_TRANSFORM)
     .transform(({ searchPattern, searchPatternVariant, anchorInclusive, anchorExclusive, direction, ...fields }) => ({
       search: {
-        logLinePattern: { pattern: searchPattern, patternVariant: searchPatternVariant },
+        logPattern: { pattern: searchPattern, patternVariant: searchPatternVariant },
         anchorId: anchorInclusive ?? anchorExclusive,
         anchorInclusivity: anchorInclusive !== undefined ? "inclusive" : anchorExclusive !== undefined ? "exclusive" : undefined,
         direction,

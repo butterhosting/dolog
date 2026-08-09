@@ -2,25 +2,25 @@ import { LogError } from "@/errors/LogError";
 import { ZodParser } from "../helpers/ZodParser";
 import z from "zod/v4";
 
-export type LogLinePattern = {
+export type LogPattern = {
   pattern: string;
-  patternVariant: LogLinePattern.Variant;
+  patternVariant: LogPattern.Variant;
 };
 
-export namespace LogLinePattern {
+export namespace LogPattern {
   export enum Variant {
     substr = "substr",
     regex = "regex",
   }
 
-  export function predicate({ pattern, patternVariant }: LogLinePattern): (line: string) => boolean {
+  export function predicate({ pattern, patternVariant }: LogPattern): (line: string) => boolean {
     try {
       switch (patternVariant) {
-        case LogLinePattern.Variant.substr: {
+        case LogPattern.Variant.substr: {
           const lowered = Internal.asciiLower(pattern);
           return (line) => Internal.asciiLower(line).includes(lowered);
         }
-        case LogLinePattern.Variant.regex: {
+        case LogPattern.Variant.regex: {
           const compiled = new RegExp(pattern);
           return (line) => compiled.test(line);
         }
@@ -52,11 +52,11 @@ export namespace LogLinePattern {
     }
   }
 
-  export const parse = ZodParser.forType<LogLinePattern>()
+  export const parse = ZodParser.forType<LogPattern>()
     .ensureSchemaMatchesType(() =>
       z.object({
         pattern: z.string(),
-        patternVariant: z.enum(LogLinePattern.Variant),
+        patternVariant: z.enum(LogPattern.Variant),
       }),
     )
     .ensureTypeMatchesSchema();

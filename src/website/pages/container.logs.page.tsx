@@ -1,4 +1,4 @@
-import { LogLinePattern } from "@/models/LogLinePattern";
+import { LogPattern } from "@/models/LogPattern";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";
 import { Temporal } from "@js-temporal/polyfill";
@@ -66,12 +66,13 @@ export function containerLogsPage() {
   const [hasOlder, setHasOlder] = useState(false);
   /** True once the window sits somewhere in history rather than at the live feed. */
   const [hasNewer, setHasNewer] = useState(false);
+  const [reachesLiveFeed, setReachesLiveFeed] = useState(false);
   const [loading, setLoading] = useState(true);
   const loadingOlder = useRef(false);
   const loadingNewer = useRef(false);
 
   const [needle, setNeedle] = useState("");
-  const [variant, setVariant] = useState<LogLinePattern.Variant>(LogLinePattern.Variant.substr);
+  const [variant, setVariant] = useState<LogPattern.Variant>(LogPattern.Variant.substr);
   /**
    * The match last stepped to. The only state search keeps, and it cannot go stale: every step
    * re-checks it against the viewport and drops it the moment it is not on screen, so it can never
@@ -126,7 +127,7 @@ export function containerLogsPage() {
    */
   const applied = useMemo(() => Internal.appliedFilter(parameters), [parameters]);
   const [filterDraft, setFilterDraft] = useState(applied.pattern);
-  const [filterVariant, setFilterVariant] = useState<LogLinePattern.Variant>(applied.variant);
+  const [filterVariant, setFilterVariant] = useState<LogPattern.Variant>(applied.variant);
   const [rangeDraft, setRangeDraft] = useState<LogRange.Value>(applied.range);
   const filterDirty =
     filterDraft.trim() !== applied.pattern || filterVariant !== applied.variant || !LogRange.equals(rangeDraft, applied.range);
@@ -161,6 +162,8 @@ export function containerLogsPage() {
     if (!pinnedAt) {
       setAnchor(null);
       setHasNewer(false);
+      // the new window has not answered yet, so nothing may be appended to the old one meanwhile
+      setReachesLiveFeed(false);
     }
   }, [filterDraft, filterVariant, pinnedAt, rangeDraft, setParameters]);
 
@@ -299,6 +302,7 @@ export function containerLogsPage() {
       setLandedOn(page.landedOn);
       setHasOlder(above ? above.hasOlder : page.hasOlder);
       setHasNewer(page.hasNewer);
+      setReachesLiveFeed(page.reachesLiveFeed);
       setLoading(false);
       historyLoaded = true;
       if (landing) {
@@ -388,6 +392,7 @@ export function containerLogsPage() {
     loadingNewer.current = true;
     const page = await containerClient.logs(id, { limit: LINES_PER_PAGE, afterExclusive: newest.id, filter: Internal.filterFor(applied) });
     setHasNewer(page.hasNewer);
+    setReachesLiveFeed(page.reachesLiveFeed);
     setEvents((current) => [...current, ...page.events]);
     loadingNewer.current = false;
   }, [applied, containerClient, events, hasNewer, id]);
@@ -431,14 +436,7 @@ export function containerLogsPage() {
    * with nothing after it leaves `hasNewer` false -- true, but not because we are at the live end --
    * and following on that alone quietly turned a history view back into a live one.
    */
-  /**
-   * A closed end is the other way to be parked in history, and the quieter one. `hasNewer` is false
-   * there too -- honestly, since nothing newer is *in the window* -- but the live feed lies outside
-   * what the reader asked for, and following it prints today's lines beneath yesterday's under a
-   * heading that still says Yesterday.
-   */
-  const boundedEnd = LogRange.window(applied.range, Temporal.Now.instant()).until !== undefined;
-  const atLiveEnd = stuck && !hasNewer && !anchor && !boundedEnd;
+  const atLiveEnd = stuck && reachesLiveFeed && !anchor;
   useEffect(() => {
     following.current = atLiveEnd;
     if (atLiveEnd) {
@@ -458,6 +456,7 @@ export function containerLogsPage() {
        * back meant hundreds of round trips to travel a distance one request already covered.
        */
       setHasNewer(false);
+      setReachesLiveFeed(false); // ...and not followed until the reload says the feed was reached
       setParameters({}, { replace: true });
       setAnchor(null);
       return;
@@ -607,7 +606,7 @@ export function containerLogsPage() {
             <Internal.RegexToggle
               on={filterVariant === "regex"}
               onClick={() =>
-                setFilterVariant((c) => (c === LogLinePattern.Variant.regex ? LogLinePattern.Variant.substr : LogLinePattern.Variant.regex))
+                setFilterVariant((c) => (c === LogPattern.Variant.regex ? LogPattern.Variant.substr : LogPattern.Variant.regex))
               }
             />
             <input
@@ -689,9 +688,7 @@ export function containerLogsPage() {
             <Internal.Field>
               <Internal.RegexToggle
                 on={variant === "regex"}
-                onClick={() =>
-                  setVariant((c) => (c === LogLinePattern.Variant.regex ? LogLinePattern.Variant.substr : LogLinePattern.Variant.regex))
-                }
+                onClick={() => setVariant((c) => (c === LogPattern.Variant.regex ? LogPattern.Variant.substr : LogPattern.Variant.regex))}
               />
               <input
                 ref={findField}
@@ -778,7 +775,7 @@ namespace Internal {
   /** The filter in force, which lives in the url rather than in state -- a view worth linking to. */
   export function appliedFilter(parameters: URLSearchParams) {
     const pattern = parameters.get("filter") ?? "";
-    const variant = parameters.get("filterVariant") === "regex" ? LogLinePattern.Variant.regex : LogLinePattern.Variant.substr;
+    const variant = parameters.get("filterVariant") === "regex" ? LogPattern.Variant.regex : LogPattern.Variant.substr;
     return { pattern, variant, range: LogRange.fromParams(parameters) };
   }
 
@@ -828,14 +825,14 @@ namespace Internal {
   export function highlight(
     events: ContainerEvent[],
     needle: string,
-    variant: LogLinePattern.Variant,
+    variant: LogPattern.Variant,
   ): { matched: Set<string>; broken: boolean } {
     const term = needle.trim();
     if (!term) {
       return { matched: new Set(), broken: false };
     }
     try {
-      const matches = LogLinePattern.predicate({ pattern: term, patternVariant: variant });
+      const matches = LogPattern.predicate({ pattern: term, patternVariant: variant });
       return {
         matched: new Set(events.filter((event) => event.type === ContainerEvent.Type.log && matches(event.line)).map((e) => e.id)),
         broken: false,

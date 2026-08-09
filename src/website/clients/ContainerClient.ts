@@ -1,4 +1,4 @@
-import { LogLinePattern } from "@/models/LogLinePattern";
+import { LogPattern } from "@/models/LogPattern";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";
 import { ContainerRM } from "@/models/ContainerRM";
@@ -19,6 +19,7 @@ export class ContainerClient {
       events: unknown[];
       hasOlder: boolean;
       hasNewer: boolean;
+      reachesLiveFeed: boolean;
       landedOn?: string | null;
     }>(`/containers/${containerId}/logs`, {
       searchParams: Internal.listParams(options),
@@ -27,6 +28,7 @@ export class ContainerClient {
       events: json.events.map(ContainerEvent.parse),
       hasOlder: json.hasOlder,
       hasNewer: json.hasNewer,
+      reachesLiveFeed: json.reachesLiveFeed,
       landedOn: json.landedOn ?? null,
     };
   }
@@ -103,7 +105,7 @@ namespace Internal {
 export namespace ContainerClient {
   export type FindOptions = {
     pattern: string;
-    patternVariant: LogLinePattern.Variant;
+    patternVariant: LogPattern.Variant;
     /** Anchored on an ordinary line the reader was looking at, which may itself match. */
     anchorInclusive?: string;
     /** Stepping off a match already found -- including it would return that same line forever. */
@@ -132,7 +134,7 @@ export namespace ContainerClient {
    */
   export type Filter = {
     pattern?: string;
-    variant?: LogLinePattern.Variant;
+    variant?: LogPattern.Variant;
     since?: string;
     until?: string;
   };
@@ -140,8 +142,10 @@ export namespace ContainerClient {
   export type Page = {
     events: ContainerEvent[];
     hasOlder: boolean;
-    /** False once the window reaches the live feed, so there is nothing further down to fetch. */
+    /** More of this window below the page. Not a claim about the feed -- see `reachesLiveFeed`. */
     hasNewer: boolean;
+    /** Whether the bottom of this window is the feed itself, so a streamed line belongs beneath it. */
+    reachesLiveFeed: boolean;
     /**
      * Where an `at` request settled: the id of the line it landed on, or null when the instant was
      * past everything logged and the end of history was served instead. Null too when no instant was
