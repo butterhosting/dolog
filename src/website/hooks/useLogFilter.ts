@@ -6,12 +6,6 @@ import { LogFilter } from "../models/LogFilter";
 import { LogRange } from "../models/LogRange";
 import { useRegistry } from "./useRegistry";
 
-/**
- * The filter as the toolbar works it: what is in force, and what is being composed beside it.
- *
- * The two are kept apart because applying one re-defines the window. Unlike search, it therefore
- * waits for the button rather than following every keystroke.
- */
 export function useLogFilter({ parameters, setParameters, pinnedAt }: useLogFilter.Options): useLogFilter.Result {
   const dialogClient = useRegistry(DialogClient);
 
@@ -25,18 +19,19 @@ export function useLogFilter({ parameters, setParameters, pinnedAt }: useLogFilt
    */
   const applied = useMemo(() => LogFilter.from(parameters), [key]);
 
-  const [draft, setDraft] = useState(applied.pattern);
+  // the filter being composed, which is only the filter in force once Apply says so
+  const [pattern, setPattern] = useState(applied.pattern);
   const [variant, setVariant] = useState<LogPattern.Variant>(applied.variant);
   const [range, setRange] = useState<LogRange.Value>(applied.range);
 
-  const composed = { pattern: draft.trim(), variant, range };
+  const composed = { pattern: pattern.trim(), variant, range };
   const dirty = !LogFilter.equals(composed, applied);
 
   const toggleVariant = useCallback(() => {
     setVariant((current) => (current === LogPattern.Variant.regex ? LogPattern.Variant.substr : LogPattern.Variant.regex));
   }, []);
 
-  const openRange = useCallback(async () => {
+  const promptRangeDialog = useCallback(async () => {
     const chosen = await dialogClient.pickRange(range);
     if (chosen !== "cancel") {
       setRange(chosen);
@@ -49,21 +44,15 @@ export function useLogFilter({ parameters, setParameters, pinnedAt }: useLogFilt
    * moving them is the window's business, and the page asks for it separately.
    */
   const apply = useCallback(() => {
-    setParameters(LogFilter.toParams({ pattern: draft.trim(), variant, range }, pinnedAt));
-  }, [draft, variant, range, pinnedAt, setParameters]);
+    setParameters(LogFilter.toParams({ pattern: pattern.trim(), variant, range }, pinnedAt));
+  }, [pattern, variant, range, pinnedAt, setParameters]);
 
   return {
-    applied,
     key,
+    applied,
     narrows: LogFilter.narrows(applied),
-    draft,
-    setDraft,
-    variant,
-    toggleVariant,
-    range,
-    dirty,
-    apply,
-    openRange,
+    form: { pattern, setPattern, variant, toggleVariant, range, promptRangeDialog },
+    formState: { dirty, apply },
   };
 }
 
@@ -75,20 +64,20 @@ export namespace useLogFilter {
   };
 
   export type Result = {
-    /** The filter in force. */
+    key: string; // hash of the applied filter (for triggering reloads, etc)
     applied: LogFilter.Applied;
-    /** The same filter as a string, for the effects that must re-run when it changes and only then. */
-    key: string;
-    /** Whether anything is being narrowed at all, which changes what an empty window means. */
     narrows: boolean;
-    draft: string;
-    setDraft: (value: string) => void;
-    variant: LogPattern.Variant;
-    toggleVariant: () => void;
-    range: LogRange.Value;
-    /** Whether the draft differs from what is in force, which is when Apply is worth pressing. */
-    dirty: boolean;
-    apply: () => void;
-    openRange: () => Promise<void>;
+    form: {
+      pattern: string;
+      setPattern: (value: string) => void;
+      variant: LogPattern.Variant;
+      toggleVariant: () => void;
+      range: LogRange.Value;
+      promptRangeDialog: () => Promise<void>;
+    };
+    formState: {
+      dirty: boolean;
+      apply: () => void;
+    };
   };
 }

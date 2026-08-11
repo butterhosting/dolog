@@ -14,7 +14,16 @@ import { Temporal } from "@js-temporal/polyfill";
 export namespace LogRange {
   type PresetId = "all" | "last10m" | "last30m" | "last1h" | "last24h" | "last7d" | "last30d" | "today" | "yesterday";
 
-  export type Value = { kind: "preset"; id: PresetId } | { kind: "custom"; since?: Temporal.Instant; until?: Temporal.Instant };
+  export type Value =
+    | {
+        kind: "preset";
+        id: PresetId;
+      }
+    | {
+        kind: "custom";
+        since?: Temporal.Instant;
+        until?: Temporal.Instant;
+      };
 
   /** What the server is told: two optional instants, and nothing about how they were arrived at. */
   type Window = { since?: Temporal.Instant; until?: Temporal.Instant };

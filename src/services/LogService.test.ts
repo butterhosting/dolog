@@ -26,10 +26,7 @@ describe(LogService.name, () => {
      * frontend makes on mount carries a filter and a limit, and no cursor whatsoever.
      */
     const container = TestFixture.container();
-    const all = [
-      TestFixture.logEvent({ container, line: "older" }),
-      TestFixture.logEvent({ container, line: "newer" }),
-    ];
+    const all = [TestFixture.logEvent({ container, line: "older" }), TestFixture.logEvent({ container, line: "newer" })];
     all.forEach((event) => context.eventRepository.saveEvent(event));
     context.flushTrigger.next();
     await Bun.sleep(0);
@@ -38,7 +35,7 @@ describe(LogService.name, () => {
     const page = await service.list(container.id, { limit: "300", filterSince: "2020-01-01T00:00:00Z" });
 
     // then (the newest lines, and a window that reaches the feed)
-    expect(page.events.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["older", "newer"]);
+    expect(page.data.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["older", "newer"]);
     expect(page.hasNewer).toBe(false);
   });
 
@@ -67,8 +64,8 @@ describe(LogService.name, () => {
       const page = await service.list(container.id, { at: "2020-01-01T00:00:00Z" });
 
       // then (it opened on the first line at or after the instant, and says which that was)
-      expect(page.landedOn).toBe(page.events[0]!.id);
-      expect(page.events.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["older", "newer"]);
+      expect(page.landedOn).toBe(page.data[0]!.id);
+      expect(page.data.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["older", "newer"]);
     });
 
     it("should serve the end of history when the instant lies past everything logged", async () => {
@@ -79,7 +76,7 @@ describe(LogService.name, () => {
 
       // then (`landedOn` is null precisely because it did not land where it was asked)
       expect(page.landedOn).toBeNull();
-      expect(page.events.map((event) => event.id)).toEqual(all.map((event) => event.id));
+      expect(page.data.map((event) => event.id)).toEqual(all.map((event) => event.id));
       expect(page.hasNewer).toBe(false);
     });
 

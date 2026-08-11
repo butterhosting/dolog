@@ -34,20 +34,20 @@ describe(EventRepository.name, () => {
     // when
     await write(events);
     // then
-    const { events: stored } = await repository.listEvents(container.id, 100);
-    expect(stored.map(({ type }) => type)).toEqual([
+    const { data } = await repository.listEvents(container.id, 100);
+    expect(data.map(({ type }) => type)).toEqual([
       ContainerEvent.Type.start,
       ContainerEvent.Type.log,
       ContainerEvent.Type.log,
       ContainerEvent.Type.log_throttle,
       ContainerEvent.Type.stop,
     ]);
-    expect(stored.at(1)).toEqual(
+    expect(data.at(1)).toEqual(
       expect.objectContaining({ line: "GET / 200", streamVariant: StreamVariant.stdout } satisfies Partial<ContainerEvent>),
     );
-    expect(stored.at(2)).toEqual(expect.objectContaining({ streamVariant: StreamVariant.stderr } satisfies Partial<ContainerEvent>));
-    expect(stored.at(3)).toEqual(expect.objectContaining({ foldCount: 12 } satisfies Partial<ContainerEvent>));
-    expect(stored.at(1)?.container).toEqual(container);
+    expect(data.at(2)).toEqual(expect.objectContaining({ streamVariant: StreamVariant.stderr } satisfies Partial<ContainerEvent>));
+    expect(data.at(3)).toEqual(expect.objectContaining({ foldCount: 12 } satisfies Partial<ContainerEvent>));
+    expect(data.at(1)?.container).toEqual(container);
   });
 
   it("should answer with events that have been recorded but not yet written", async () => {
@@ -56,13 +56,13 @@ describe(EventRepository.name, () => {
     repository.saveEvent(TestFixture.logEvent({ container, line: "not on disk yet" }));
 
     // when
-    const { events } = await repository.listEvents(container.id, 100);
+    const { data } = await repository.listEvents(container.id, 100);
     // then
-    expect(events.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["not on disk yet"]);
+    expect(data.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["not on disk yet"]);
 
     // and the same events are not served twice once they do land
     await flush();
-    const { events: afterFlush } = await repository.listEvents(container.id, 100);
+    const { data: afterFlush } = await repository.listEvents(container.id, 100);
     expect(afterFlush).toHaveLength(1);
   });
 
@@ -71,9 +71,9 @@ describe(EventRepository.name, () => {
     const { container, all } = await tenLinesHalfBuffered();
 
     // when
-    const { events } = await repository.listEvents(container.id, 100);
+    const { data } = await repository.listEvents(container.id, 100);
     // then
-    expect(events.map((event) => event.id)).toEqual(all.map((event) => event.id));
+    expect(data.map((event) => event.id)).toEqual(all.map((event) => event.id));
   });
 
   /**
@@ -103,9 +103,9 @@ describe(EventRepository.name, () => {
       // given
       const { container, all } = await tenLinesHalfBuffered();
       // when
-      const { events } = await repository.listEvents(container.id, 100, cursor(all));
+      const { data } = await repository.listEvents(container.id, 100, cursor(all));
       // then (nothing at the cursor itself, and nothing beyond it in the other direction)
-      expect(events.map((event) => event.id)).toEqual(expected(all).map((event) => event.id));
+      expect(data.map((event) => event.id)).toEqual(expected(all).map((event) => event.id));
     });
   }
 
@@ -157,7 +157,7 @@ describe(EventRepository.name, () => {
       // when
       const page = await repository.listEvents(container.id, limit, { after: all[fromIndex]!.id, afterInclusivity: "exclusive" });
       // then
-      expect(page.events.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(expectedLines);
+      expect(page.data.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(expectedLines);
       expect(page.hasNewer).toBe(hasNewer);
       expect(page.hasOlder).toBe(hasOlder);
     });
@@ -230,7 +230,7 @@ describe(EventRepository.name, () => {
     const page = await repository.listEvents(container.id, 100, { after: beforeEverything, afterInclusivity: "exclusive" });
 
     // then (the whole history, and no pretending there is more above it)
-    expect(page.events).toHaveLength(10);
+    expect(page.data).toHaveLength(10);
     expect(page.hasOlder).toBe(false);
   });
 
@@ -422,8 +422,8 @@ describe(EventRepository.name, () => {
       const fromBuffer = await repository.listEvents(buffered.id, 100, {}, { logPattern });
 
       // then (one verdict, whichever half is asked)
-      expect(fromDisk.events.length).toBe(matches ? 1 : 0);
-      expect(fromBuffer.events.length).toBe(matches ? 1 : 0);
+      expect(fromDisk.data.length).toBe(matches ? 1 : 0);
+      expect(fromBuffer.data.length).toBe(matches ? 1 : 0);
       expect(LogPattern.predicate(logPattern)(line)).toBe(matches);
     });
   });
@@ -439,10 +439,10 @@ describe(EventRepository.name, () => {
     // when (a flush that fails)
     await flush();
     // then (still readable, and the next flush still writes them)
-    expect((await repository.listEvents(container.id, 100)).events).toHaveLength(1);
+    expect((await repository.listEvents(container.id, 100)).data).toHaveLength(1);
     transaction.mockRestore();
     await flush();
-    expect((await repository.listEvents(container.id, 100)).events).toHaveLength(1);
+    expect((await repository.listEvents(container.id, 100)).data).toHaveLength(1);
   });
 
   it("should give up on a batch the database will never accept, rather than wedging every write behind it", async () => {
@@ -462,7 +462,7 @@ describe(EventRepository.name, () => {
     // then (the bad batch is gone, and events queued after it are written normally)
     repository.saveEvent(TestFixture.logEvent({ container, line: "written after the bad batch" }));
     await flush();
-    const { events } = await repository.listEvents(container.id, 100);
+    const { data: events } = await repository.listEvents(container.id, 100);
     expect(events.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["written after the bad batch"]);
   });
 
@@ -478,8 +478,8 @@ describe(EventRepository.name, () => {
     ]);
     // then
     expect(await containers()).toEqual([web, worker]);
-    expect((await repository.listEvents(web.id, 1_000)).events).toHaveLength(50);
-    expect((await repository.listEvents(worker.id, 1_000)).events).toHaveLength(50);
+    expect((await repository.listEvents(web.id, 1_000)).data).toHaveLength(50);
+    expect((await repository.listEvents(worker.id, 1_000)).data).toHaveLength(50);
   });
 
   it("should record the newest timestamp in a batch as when a container was last seen", async () => {
@@ -519,8 +519,8 @@ describe(EventRepository.name, () => {
     const pruned = await repository.pruneEventsPerContainer(10);
     // then (the quiet one is untouched -- its own history is not the chatty one's to spend)
     expect(pruned.eventDeleteCount).toEqual(90);
-    expect((await repository.listEvents(quiet.id, 1_000)).events).toHaveLength(3);
-    const { events: remaining } = await repository.listEvents(chatty.id, 1_000);
+    expect((await repository.listEvents(quiet.id, 1_000)).data).toHaveLength(3);
+    const { data: remaining } = await repository.listEvents(chatty.id, 1_000);
     expect(remaining).toHaveLength(10);
     expect(remaining.at(0)).toEqual(expect.objectContaining({ line: "chatty 90" } satisfies Partial<ContainerEvent>));
     expect(remaining.at(-1)).toEqual(expect.objectContaining({ line: "chatty 99" } satisfies Partial<ContainerEvent>));
@@ -535,7 +535,7 @@ describe(EventRepository.name, () => {
     const pruned = await repository.pruneEventsPerContainer(10);
     // then
     expect(pruned.eventDeleteCount).toEqual(0);
-    expect((await repository.listEvents(container.id, 1_000)).events).toHaveLength(5);
+    expect((await repository.listEvents(container.id, 1_000)).data).toHaveLength(5);
   });
 
   it("should do nothing while everything is inside the window", async () => {
@@ -547,7 +547,7 @@ describe(EventRepository.name, () => {
     const pruned = await repository.pruneEventsOlderThan(Temporal.Now.instant().subtract({ hours: 24 }));
     // then
     expect(pruned).toEqual({ eventDeleteCount: 0, containerDeleteCount: 0 });
-    expect((await repository.listEvents(container.id, 1_000)).events).toHaveLength(10);
+    expect((await repository.listEvents(container.id, 1_000)).data).toHaveLength(10);
   });
 
   it("should forget events past the window, and containers left with none", async () => {
@@ -571,7 +571,7 @@ describe(EventRepository.name, () => {
     expect(pruned.containerDeleteCount).toEqual(1);
     expect(await containers()).toEqual([staying]);
     // only what fell inside the window survived
-    const { events: remaining } = await repository.listEvents(staying.id, 100_000);
+    const { data: remaining } = await repository.listEvents(staying.id, 100_000);
     expect(remaining).toHaveLength(10);
     expect(remaining.at(0)).toEqual(expect.objectContaining({ line: "recent 0" } satisfies Partial<ContainerEvent>));
   });

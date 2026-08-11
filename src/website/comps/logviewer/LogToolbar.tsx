@@ -18,7 +18,8 @@ type Props = {
  * spelling them out one by one would only put a second copy of its shape in the middle.
  */
 export function LogToolbar({ filter, onApply, onJump }: Props) {
-  const period = LogRange.label(filter.range);
+  const { form, formState } = filter;
+  const period = LogRange.label(form.range);
   return (
     <div className="flex items-end gap-7 bg-c-dark-deep px-4 pb-3 pt-2">
       <LogControls.Group label="Navigate">
@@ -27,16 +28,16 @@ export function LogToolbar({ filter, onApply, onJump }: Props) {
 
       <LogControls.Group label="Filter">
         <LogControls.Field>
-          <LogControls.RegexToggle on={filter.variant === LogPattern.Variant.regex} onClick={filter.toggleVariant} />
+          <LogControls.RegexToggle on={form.variant === LogPattern.Variant.regex} onClick={form.toggleVariant} />
           <input
-            value={filter.draft}
-            onChange={(event) => filter.setDraft(event.target.value)}
-            onKeyDown={(event) => event.key === "Enter" && filter.dirty && onApply()}
+            value={form.pattern}
+            onChange={(event) => form.setPattern(event.target.value)}
+            onKeyDown={(event) => event.key === "Enter" && formState.dirty && onApply()}
             placeholder="type to filter"
             className="w-72 bg-transparent font-mono text-xs text-c-dark-full outline-none placeholder:text-c-dark-half"
           />
         </LogControls.Field>
-        <LogControls.Action onClick={onApply} disabled={!filter.dirty}>
+        <LogControls.Action onClick={onApply} disabled={!formState.dirty}>
           Apply
         </LogControls.Action>
       </LogControls.Group>
@@ -45,7 +46,7 @@ export function LogToolbar({ filter, onApply, onJump }: Props) {
 
       <LogControls.Group label="Period">
         {/* the whole span is one control: it says what is covered, and opens the picker */}
-        <LogControls.Readout onClick={() => void filter.openRange()} title="choose the time span this filter covers">
+        <LogControls.Readout onClick={() => void form.promptRangeDialog()} title="choose the time span this filter covers">
           {period}
         </LogControls.Readout>
       </LogControls.Group>

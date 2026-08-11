@@ -55,7 +55,14 @@ export namespace LogFilter {
    * request for exactly that reason -- a memoised result would freeze "the last hour" at the hour
    * the filter was typed in.
    */
-  export function toRequest(applied: Applied): LogClient.Filter {
+  type Filter = {
+    pattern?: string;
+    variant?: LogPattern.Variant;
+    since?: string;
+    until?: string;
+  };
+
+  export function toRequest(applied: Applied): Filter {
     const { since, until } = LogRange.window(applied.range, Temporal.Now.instant());
     return {
       pattern: applied.pattern || undefined,

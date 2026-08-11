@@ -17,21 +17,21 @@ export function containerLogsPage() {
   const [parameters, setParameters] = useSearchParams();
 
   const pinnedAt = parameters.get("at");
-  const filter = useLogFilter({
+  const logFilter = useLogFilter({
     parameters,
     setParameters,
     pinnedAt,
   });
   const visibleLogWindow = useVisibleLogWindow({
     id,
-    applied: filter.applied,
-    filterKey: filter.key,
+    applied: logFilter.applied,
+    filterKey: logFilter.key,
     pinnedAt,
     setParameters,
   });
-  const search = useLogSearch({
+  const logSearch = useLogSearch({
     id,
-    applied: filter.applied,
+    applied: logFilter.applied,
     element: visibleLogWindow.ref,
     rendered: visibleLogWindow.rendered,
     events: visibleLogWindow.events,
@@ -42,11 +42,11 @@ export function containerLogsPage() {
   useDocumentTitle(`${name} | Dolog`);
 
   const applyFilter = useCallback(() => {
-    filter.apply();
+    logFilter.formState.apply();
     if (!pinnedAt) {
       visibleLogWindow.returnToLiveFeed();
     }
-  }, [filter, pinnedAt, visibleLogWindow]);
+  }, [logFilter, pinnedAt, visibleLogWindow]);
   return (
     <div className="full-bleed flex h-screen flex-col">
       <header className="relative flex items-center justify-center px-4 pb-3 pt-4">
@@ -56,7 +56,7 @@ export function containerLogsPage() {
         <span className="font-bold">{name}</span>
       </header>
 
-      <LogToolbar filter={filter} onApply={applyFilter} onJump={() => void visibleLogWindow.openJumpDialog()} />
+      <LogToolbar filter={logFilter} onApply={applyFilter} onJump={() => void visibleLogWindow.openJumpDialog()} />
 
       <div className="relative flex-1 min-h-0">
         {/*
@@ -80,7 +80,7 @@ export function containerLogsPage() {
               {/* an empty window means something different once a time was asked for: logs may well exist, just not there */}
               {visibleLogWindow.events.length === 0 && (
                 <div className="text-c-dark-half py-8 text-center">
-                  {filter.narrows
+                  {logFilter.narrows
                     ? "Nothing in this container matches the filter"
                     : visibleLogWindow.anchor?.kind === "instant"
                       ? "Nothing was logged at or after that time"
@@ -100,8 +100,8 @@ export function containerLogsPage() {
                 event={event}
                 landedOn={landedOn === "line"}
                 onDismiss={visibleLogWindow.dismissPin}
-                matched={search.matched.has(event.id)}
-                current={event.id === search.currentMatch}
+                matched={logSearch.matched.has(event.id)}
+                current={event.id === logSearch.currentMatch}
               />
             </Fragment>
           ))}
@@ -111,7 +111,7 @@ export function containerLogsPage() {
           )}
         </div>
 
-        {search.finding && <FindBar search={search} />}
+        {logSearch.finding && <FindBar search={logSearch} />}
 
         {/* offered whenever the feed is not being followed -- scrolled up, or parked in history */}
         {!visibleLogWindow.atLiveEnd && (
@@ -121,7 +121,7 @@ export function containerLogsPage() {
             className={clsx(
               "absolute right-4 flex items-center gap-2 rounded-full bg-c-accent text-white text-xs pl-3 pr-4 py-2 shadow-lg cursor-pointer hover:opacity-90",
               // stacked above the find bar rather than under it, since both live in this corner
-              search.finding ? "bottom-20" : "bottom-4",
+              logSearch.finding ? "bottom-20" : "bottom-4",
             )}
           >
             <span className="rounded-full bg-yellow-400 text-c-dark-full font-bold px-2 py-0.5">paused</span>

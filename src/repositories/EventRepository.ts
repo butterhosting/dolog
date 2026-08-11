@@ -66,7 +66,11 @@ export class EventRepository {
     this.enforcePendingCeiling();
   }
 
-  public async findEvent(dockerId: string, search: EventRepository.Search, filter: EventRepository.Filter = {}): Promise<string | null> {
+  public async findEvent(
+    dockerId: string,
+    search: EventRepository.Search,
+    filter: EventRepository.Filter = {},
+  ): Promise<{ id: string | undefined }> {
     const searchPredicate = EventPredicateFactory.forSearch(search);
     const filterPredicate = EventPredicateFactory.forFilter(filter);
 
@@ -88,7 +92,7 @@ export class EventRepository {
     const CHUNK = 1_000;
     const container = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
     if (!container) {
-      return bufferMatch ?? null; // nothing was ever flushed, so the buffer contains all history
+      return { id: bufferMatch }; // nothing was ever flushed, so the buffer contains all history
     }
 
     // the anchor opens the walk; every chunk after it resumes from the last row already read
@@ -123,13 +127,17 @@ export class EventRepository {
           // Part C: compare both matches
           //
           if (!bufferMatch) {
-            return databaseMatch;
+            return { id: databaseMatch };
           }
           switch (search.direction) {
             case Direction.forwards_in_time:
-              return bufferMatch < databaseMatch ? bufferMatch : databaseMatch;
+              return {
+                id: bufferMatch < databaseMatch ? bufferMatch : databaseMatch,
+              };
             case Direction.backwards_in_time:
-              return bufferMatch > databaseMatch ? bufferMatch : databaseMatch;
+              return {
+                id: bufferMatch > databaseMatch ? bufferMatch : databaseMatch,
+              };
           }
         }
       }
@@ -137,7 +145,7 @@ export class EventRepository {
     }
 
     // no database match, so the buffer match is our best (and only) candidate ...
-    return bufferMatch ?? null;
+    return { id: bufferMatch };
   }
 
   public async listEvents(
@@ -145,7 +153,7 @@ export class EventRepository {
     limit: number,
     cursor: EventRepository.Cursor = {},
     filter: EventRepository.Filter = {},
-  ): Promise<EventRepository.Page> {
+  ): Promise<EventRepository.ListResult> {
     // If we didn't get any cursor, we default to showing the latest logs, and walking backwards_in_time
     const direction = cursor.after !== undefined ? Direction.forwards_in_time : Direction.backwards_in_time;
 
@@ -190,7 +198,7 @@ export class EventRepository {
         const page = events.slice(0, limit);
         const hasNewer = events.length > limit;
         return {
-          events: page,
+          data: page,
           hasNewer,
           hasOlder: this.hasAnythingOlderThan(dbContainer?.id, page.at(0)?.id, cursor.after, filter),
           reachesLiveFeed: this.reachesLiveFeed({ hasNewer, filter }),
@@ -201,7 +209,7 @@ export class EventRepository {
         if (cursor.beforeInclusivity && cursor.beforeInclusivity !== "exclusive") cursor.beforeInclusivity satisfies never;
         const hasNewer = cursor.before !== undefined;
         return {
-          events: events.slice(-limit),
+          data: events.slice(-limit),
           hasOlder: events.length > limit,
           hasNewer,
           reachesLiveFeed: this.reachesLiveFeed({ hasNewer, filter }),
@@ -507,8 +515,11 @@ export namespace EventRepository {
     until?: Temporal.Instant;
   };
 
-  export type Page = {
-    events: ContainerEvent[];
+  /**
+   * Return page
+   */
+  export type ListResult = {
+    data: ContainerEvent[];
     hasOlder: boolean;
     hasNewer: boolean;
     reachesLiveFeed: boolean;

@@ -104,8 +104,8 @@ export function useLogSearch({ id, applied, element, rendered, events, onFoundOu
       setSearching(direction);
       try {
         const found = await logClient.find(id, {
-          pattern: term,
-          patternVariant: variant,
+          searchPattern: term,
+          searchPatternVariant: variant,
           ...(onMatch ? { anchorExclusive: from } : { anchorInclusive: from }),
           direction,
           filter: LogFilter.toRequest(applied),

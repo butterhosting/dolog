@@ -145,7 +145,7 @@ export function useVisibleLogWindow({
     socketClient.declareStreamInterest(id, applied.pattern ? { pattern: applied.pattern, patternVariant: applied.variant } : null);
 
     void (async () => {
-      const page = await logClient.page(id, {
+      const page = await logClient.list(id, {
         limit: LINES_PER_PAGE,
         at: anchor?.kind === "instant" ? anchor.value : undefined,
         afterInclusive: anchor?.kind === "line" ? anchor.value : undefined,
@@ -162,7 +162,7 @@ export function useVisibleLogWindow({
        */
       const landing = anchor ? page.events.at(0) : undefined;
       const above = landing
-        ? await logClient.page(id, { limit: LINES_PER_PAGE, beforeExclusive: landing.id, filter: LogFilter.toRequest(applied) })
+        ? await logClient.list(id, { limit: LINES_PER_PAGE, beforeExclusive: landing.id, filter: LogFilter.toRequest(applied) })
         : undefined;
       if (cancelled) {
         return;
@@ -238,7 +238,7 @@ export function useVisibleLogWindow({
      * A stored one used to drift: trimming the list while tailing moved the top of the screen
      * forward while the cursor stayed put, and resuming from it skipped everything in between.
      */
-    const page = await logClient.page(id, { limit: LINES_PER_PAGE, beforeExclusive: oldest.id, filter: LogFilter.toRequest(applied) });
+    const page = await logClient.list(id, { limit: LINES_PER_PAGE, beforeExclusive: oldest.id, filter: LogFilter.toRequest(applied) });
     setHasOlder(page.hasOlder);
 
     /**
@@ -270,7 +270,7 @@ export function useVisibleLogWindow({
       return;
     }
     loadingNewer.current = true;
-    const page = await logClient.page(id, { limit: LINES_PER_PAGE, afterExclusive: newest.id, filter: LogFilter.toRequest(applied) });
+    const page = await logClient.list(id, { limit: LINES_PER_PAGE, afterExclusive: newest.id, filter: LogFilter.toRequest(applied) });
     setHasNewer(page.hasNewer);
     setReachesLiveFeed(page.reachesLiveFeed);
     setEvents((current) => [...current, ...page.events]);
@@ -290,7 +290,7 @@ export function useVisibleLogWindow({
       return;
     }
     missedWhilePaused.current = false;
-    const page = await logClient.page(id, { limit: LINES_PER_PAGE, filter: LogFilter.toRequest(applied) });
+    const page = await logClient.list(id, { limit: LINES_PER_PAGE, filter: LogFilter.toRequest(applied) });
     const known = new Set(rendered.current.map((event) => event.id));
 
     /**
