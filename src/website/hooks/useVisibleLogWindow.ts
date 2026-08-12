@@ -7,8 +7,8 @@ import { DialogClient } from "../clients/DialogClient";
 import { LogClient } from "../clients/LogClient";
 import { SocketClient } from "../clients/SocketClient";
 import { LogRow } from "../comps/logviewer/LogRow";
-import { LogFilter } from "../models/LogFilter";
 import { LogRows } from "../models/LogRows";
+import { useLogFilter } from "./useLogFilter";
 import { useRegistry } from "./useRegistry";
 import { useStickyScroll } from "./useStickyScroll";
 
@@ -149,7 +149,7 @@ export function useVisibleLogWindow({
         limit: LINES_PER_PAGE,
         at: anchor?.kind === "instant" ? LogRows.parseInstant(anchor.value) ?? undefined : undefined,
         afterInclusive: anchor?.kind === "line" ? anchor.value : undefined,
-        ...LogFilter.toRequest(applied),
+        ...useLogFilter.toRequest(applied),
       });
       if (cancelled) {
         return;
@@ -162,7 +162,7 @@ export function useVisibleLogWindow({
        */
       const landing = anchor ? page.data.at(0) : undefined;
       const above = landing
-        ? await logClient.list(id, { limit: LINES_PER_PAGE, beforeExclusive: landing.id, ...LogFilter.toRequest(applied) })
+        ? await logClient.list(id, { limit: LINES_PER_PAGE, beforeExclusive: landing.id, ...useLogFilter.toRequest(applied) })
         : undefined;
       if (cancelled) {
         return;
@@ -238,7 +238,7 @@ export function useVisibleLogWindow({
      * A stored one used to drift: trimming the list while tailing moved the top of the screen
      * forward while the cursor stayed put, and resuming from it skipped everything in between.
      */
-    const page = await logClient.list(id, { limit: LINES_PER_PAGE, beforeExclusive: oldest.id, ...LogFilter.toRequest(applied) });
+    const page = await logClient.list(id, { limit: LINES_PER_PAGE, beforeExclusive: oldest.id, ...useLogFilter.toRequest(applied) });
     setHasOlder(page.hasOlder);
 
     /**
@@ -270,7 +270,7 @@ export function useVisibleLogWindow({
       return;
     }
     loadingNewer.current = true;
-    const page = await logClient.list(id, { limit: LINES_PER_PAGE, afterExclusive: newest.id, ...LogFilter.toRequest(applied) });
+    const page = await logClient.list(id, { limit: LINES_PER_PAGE, afterExclusive: newest.id, ...useLogFilter.toRequest(applied) });
     setHasNewer(page.hasNewer);
     setReachesLiveFeed(page.reachesLiveFeed);
     setEvents((current) => [...current, ...page.data]);
@@ -290,7 +290,7 @@ export function useVisibleLogWindow({
       return;
     }
     missedWhilePaused.current = false;
-    const page = await logClient.list(id, { limit: LINES_PER_PAGE, ...LogFilter.toRequest(applied) });
+    const page = await logClient.list(id, { limit: LINES_PER_PAGE, ...useLogFilter.toRequest(applied) });
     const known = new Set(rendered.current.map((event) => event.id));
 
     /**
@@ -449,7 +449,7 @@ export namespace useVisibleLogWindow {
   export type Options = {
     id: string;
     /** The filter in force, as every request applies it. */
-    applied: LogFilter.Applied;
+    applied: useLogFilter.Applied;
     /** The same filter reduced to a comparable string, which is what a re-fetch is decided on. */
     filterKey: string;
     /** The marker in the url, which is where the window first opens. */

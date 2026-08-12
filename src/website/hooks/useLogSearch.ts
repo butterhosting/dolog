@@ -5,8 +5,8 @@ import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { LogClient } from "../clients/LogClient";
 import { LogControls } from "../comps/logviewer/LogControls";
 import { LogRow } from "../comps/logviewer/LogRow";
-import { LogFilter } from "../models/LogFilter";
 import { LogMatches } from "../models/LogMatches";
+import { useLogFilter } from "./useLogFilter";
 import { useRegistry } from "./useRegistry";
 
 /**
@@ -109,7 +109,7 @@ export function useLogSearch({ id, applied, element, rendered, events, onFoundOu
           ...(onMatch ? { anchorExclusive: from } : { anchorInclusive: from }),
           direction,
           // the corpus the search happens inside, so it never lands on a line the view hides
-          ...LogFilter.toRequest(applied),
+          ...useLogFilter.toRequest(applied),
         });
         if (!found) {
           // deliberately no wrapping: in a log of unknown length, silently reappearing at the other
@@ -159,7 +159,7 @@ export namespace useLogSearch {
   export type Options = {
     id: string;
     /** The corpus the search happens inside, so it never lands on a line the view hides. */
-    applied: LogFilter.Applied;
+    applied: useLogFilter.Applied;
     /** The scrolling log, which is what "on screen" is measured against. */
     element: RefObject<HTMLElement | null>;
     /** The lines currently held, read at press time rather than closed over. */
