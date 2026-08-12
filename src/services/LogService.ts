@@ -175,6 +175,7 @@ export namespace LogService {
     filterUntil: z.string().transform(ZodParser.instant).optional(),
   };
 
+  export type FindQuery = z.infer<typeof FindQuery>;
   export const FindQuery = z.object({
     searchPattern: z.string(),
     searchPatternVariant: z.enum(LogPattern.Variant),
@@ -191,16 +192,17 @@ export namespace LogService {
   const MAX_EVENTS_PER_PAGE = 500;
   const DEFAULT_EVENTS_PER_PAGE = 100;
 
+  export type ListQuery = z.infer<typeof ListQuery>;
   export const ListQuery = z.object({
+    beforeExclusive: z.string().optional(),
+    afterExclusive: z.string().optional(),
+    afterInclusive: z.string().optional(),
     limit: z.coerce
       .number()
       .int()
       .positive()
       .default(DEFAULT_EVENTS_PER_PAGE)
       .transform((requested) => Math.min(requested, MAX_EVENTS_PER_PAGE)),
-    beforeExclusive: z.string().optional(),
-    afterExclusive: z.string().optional(),
-    afterInclusive: z.string().optional(),
     at: z.string().transform(ZodParser.instant).optional(),
     ...FILTER,
   });

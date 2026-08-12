@@ -297,7 +297,7 @@ describe(EventRepository.name, () => {
           direction,
         });
         // then
-        expect(found).toBe(all[expectedIndex]!.id);
+        expect(found.id).toBe(all[expectedIndex]!.id);
       });
     }
 
@@ -310,7 +310,7 @@ describe(EventRepository.name, () => {
         direction: Direction.forwards_in_time,
       });
       // then
-      expect(found).toBeNull();
+      expect(found.id).toBeUndefined();
     });
 
     it("should ignore case for a literal needle, and take a regular expression as written", async () => {
@@ -323,13 +323,13 @@ describe(EventRepository.name, () => {
       const substr = LogPattern.Variant.substr;
       const regex = LogPattern.Variant.regex;
       const literal = { logPattern: { pattern: "shouting", patternVariant: substr }, direction: Direction.forwards_in_time } as const;
-      expect(await repository.findEvent(container.id, literal)).toBe(all[0]!.id);
+      expect((await repository.findEvent(container.id, literal)).id).toBe(all[0]!.id);
       expect(
-        await repository.findEvent(container.id, { ...literal, logPattern: { pattern: "shout.ng", patternVariant: regex } }),
-      ).toBeNull();
-      expect(await repository.findEvent(container.id, { ...literal, logPattern: { pattern: "SHOUT.NG", patternVariant: regex } })).toBe(
-        all[0]!.id,
-      );
+        (await repository.findEvent(container.id, { ...literal, logPattern: { pattern: "shout.ng", patternVariant: regex } })).id,
+      ).toBeUndefined();
+      expect(
+        (await repository.findEvent(container.id, { ...literal, logPattern: { pattern: "SHOUT.NG", patternVariant: regex } })).id,
+      ).toBe(all[0]!.id);
     });
 
     it("should not let sqlite's own wildcards leak out of a literal needle", async () => {
@@ -344,7 +344,7 @@ describe(EventRepository.name, () => {
         direction: Direction.forwards_in_time,
       });
       // then (the literal "100%", not "100" followed by anything)
-      expect(found).toBe(all[0]!.id);
+      expect(found.id).toBe(all[0]!.id);
     });
 
     it("should search lines that have not been written yet", async () => {
@@ -360,7 +360,7 @@ describe(EventRepository.name, () => {
         direction: Direction.forwards_in_time,
       });
       // then
-      expect(found).toBe(unwritten.id);
+      expect(found.id).toBe(unwritten.id);
     });
 
     it("should finish a walk that crosses chunks from an inclusive anchor and matches nothing", async () => {
@@ -383,7 +383,7 @@ describe(EventRepository.name, () => {
         direction: Direction.forwards_in_time,
       });
       // then (it ends, rather than spinning on the last row for ever)
-      expect(found).toBeNull();
+      expect(found.id).toBeUndefined();
     });
   });
 

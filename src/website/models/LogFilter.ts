@@ -1,6 +1,6 @@
 import { LogPattern } from "@/models/LogPattern";
 import { Temporal } from "@js-temporal/polyfill";
-import type { LogClient } from "../clients/LogClient";
+import type { LogService } from "@/services/LogService";
 import { LogRange } from "./LogRange";
 
 /**
@@ -9,7 +9,7 @@ import { LogRange } from "./LogRange";
  * It lives in the url rather than in state, because a narrowed view is one worth linking to and
  * reloading. Everything here is therefore a function of `URLSearchParams` and nothing else.
  *
- * The import of `LogClient` is type-only, so this stays a description of the filter rather than a
+ * The import of `LogService` is type-only, so this stays a description of the filter rather than a
  * thing that knows how to send one.
  */
 export namespace LogFilter {
@@ -55,20 +55,21 @@ export namespace LogFilter {
    * request for exactly that reason -- a memoised result would freeze "the last hour" at the hour
    * the filter was typed in.
    */
-  type Filter = {
-    pattern?: string;
-    variant?: LogPattern.Variant;
-    since?: string;
-    until?: string;
-  };
+  /**
+   * Named through `Pick` off the service's own query rather than written out, so a field renamed on
+   * the server fails here, on the key. A request is spread flat into the query it belongs to, which
+   * is why these carry their `filter` prefix all the way from here.
+   */
+  type Filter = Pick<LogService.ListQuery, "filterPattern" | "filterPatternVariant" | "filterSince" | "filterUntil">;
 
   export function toRequest(applied: Applied): Filter {
     const { since, until } = LogRange.window(applied.range, Temporal.Now.instant());
     return {
-      pattern: applied.pattern || undefined,
-      variant: applied.variant,
-      since: since?.toString(),
-      until: until?.toString(),
+      filterPattern: applied.pattern || undefined,
+      // meaningless without something to read, and sending it alone would look like a filter
+      filterPatternVariant: applied.pattern ? applied.variant : undefined,
+      filterSince: since,
+      filterUntil: until,
     };
   }
 

@@ -147,9 +147,9 @@ export function useVisibleLogWindow({
     void (async () => {
       const page = await logClient.list(id, {
         limit: LINES_PER_PAGE,
-        at: anchor?.kind === "instant" ? anchor.value : undefined,
+        at: anchor?.kind === "instant" ? LogRows.parseInstant(anchor.value) ?? undefined : undefined,
         afterInclusive: anchor?.kind === "line" ? anchor.value : undefined,
-        filter: LogFilter.toRequest(applied),
+        ...LogFilter.toRequest(applied),
       });
       if (cancelled) {
         return;
@@ -160,9 +160,9 @@ export function useVisibleLogWindow({
        * they asked about. A page of context is fetched above it so they arrive in the middle of
        * events rather than at their leading edge.
        */
-      const landing = anchor ? page.events.at(0) : undefined;
+      const landing = anchor ? page.data.at(0) : undefined;
       const above = landing
-        ? await logClient.list(id, { limit: LINES_PER_PAGE, beforeExclusive: landing.id, filter: LogFilter.toRequest(applied) })
+        ? await logClient.list(id, { limit: LINES_PER_PAGE, beforeExclusive: landing.id, ...LogFilter.toRequest(applied) })
         : undefined;
       if (cancelled) {
         return;
@@ -172,11 +172,11 @@ export function useVisibleLogWindow({
        * rather than merged. Arriving at the live end is the opposite: the tail of the page and the
        * head of the buffer overlap, and whatever the page missed is appended.
        */
-      const shown = new Set(page.events.map((event) => event.id));
+      const shown = new Set(page.data.map((event) => event.id));
       const missed = anchor ? [] : arrivedDuringFetch.filter((event) => !shown.has(event.id));
-      const window = [...(above?.events ?? []), ...page.events, ...missed];
+      const window = [...(above?.data ?? []), ...page.data, ...missed];
       setEvents(anchor ? window : window.slice(-LINES_PER_PAGE));
-      setLandedOn(page.landedOn);
+      setLandedOn(page.landedOn ?? null);
       setHasOlder(above ? above.hasOlder : page.hasOlder);
       setHasNewer(page.hasNewer);
       setReachesLiveFeed(page.reachesLiveFeed);
@@ -238,7 +238,7 @@ export function useVisibleLogWindow({
      * A stored one used to drift: trimming the list while tailing moved the top of the screen
      * forward while the cursor stayed put, and resuming from it skipped everything in between.
      */
-    const page = await logClient.list(id, { limit: LINES_PER_PAGE, beforeExclusive: oldest.id, filter: LogFilter.toRequest(applied) });
+    const page = await logClient.list(id, { limit: LINES_PER_PAGE, beforeExclusive: oldest.id, ...LogFilter.toRequest(applied) });
     setHasOlder(page.hasOlder);
 
     /**
@@ -250,7 +250,7 @@ export function useVisibleLogWindow({
      * The height change therefore sits entirely above the viewport, which is what makes this one
      * correction sufficient.
      */
-    setEvents((current) => [...page.events, ...current]);
+    setEvents((current) => [...page.data, ...current]);
     requestAnimationFrame(() => {
       element.scrollTop += element.scrollHeight - before;
       loadingOlder.current = false;
@@ -270,10 +270,10 @@ export function useVisibleLogWindow({
       return;
     }
     loadingNewer.current = true;
-    const page = await logClient.list(id, { limit: LINES_PER_PAGE, afterExclusive: newest.id, filter: LogFilter.toRequest(applied) });
+    const page = await logClient.list(id, { limit: LINES_PER_PAGE, afterExclusive: newest.id, ...LogFilter.toRequest(applied) });
     setHasNewer(page.hasNewer);
     setReachesLiveFeed(page.reachesLiveFeed);
-    setEvents((current) => [...current, ...page.events]);
+    setEvents((current) => [...current, ...page.data]);
     loadingNewer.current = false;
   }, [applied, logClient, events, hasNewer, id]);
 
@@ -290,7 +290,7 @@ export function useVisibleLogWindow({
       return;
     }
     missedWhilePaused.current = false;
-    const page = await logClient.list(id, { limit: LINES_PER_PAGE, filter: LogFilter.toRequest(applied) });
+    const page = await logClient.list(id, { limit: LINES_PER_PAGE, ...LogFilter.toRequest(applied) });
     const known = new Set(rendered.current.map((event) => event.id));
 
     /**
@@ -298,13 +298,13 @@ export function useVisibleLogWindow({
      * history read so far survives. Sharing none means more than a page went by while the reader was
      * away, and the gap cannot be bridged from one request -- then the page is all we honestly have.
      */
-    if (!page.events.some((event) => known.has(event.id))) {
-      setEvents(page.events);
+    if (!page.data.some((event) => known.has(event.id))) {
+      setEvents(page.data);
       setHasOlder(page.hasOlder);
       return;
     }
     const merged = new Map(rendered.current.map((event) => [event.id, event]));
-    page.events.forEach((event) => merged.set(event.id, event));
+    page.data.forEach((event) => merged.set(event.id, event));
     setEvents([...merged.values()].sort((a, b) => a.id.localeCompare(b.id)));
   }, [applied, logClient, id]);
 

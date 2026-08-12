@@ -60,15 +60,31 @@ describe("LogFilter", () => {
       // when
       const request = LogFilter.toRequest(LogFilter.from(params("")));
       // then
-      expect(request.pattern).toEqual(undefined);
+      expect(request.filterPattern).toBeUndefined();
+    });
+
+    it("sends no variant without a pattern for it to read", () => {
+      // when
+      const request = LogFilter.toRequest(LogFilter.from(params("filterVariant=regex")));
+      // then -- a lone variant would look like a filter to the server
+      expect(request.filterPattern).toBeUndefined();
+      expect(request.filterPatternVariant).toBeUndefined();
+    });
+
+    it("sends the variant once there is a pattern", () => {
+      // when
+      const request = LogFilter.toRequest(LogFilter.from(params("filter=boom&filterVariant=regex")));
+      // then
+      expect(request.filterPattern).toEqual("boom");
+      expect(request.filterPatternVariant).toEqual(LogPattern.Variant.regex);
     });
 
     it("resolves a relative span into instants", () => {
       // when
       const request = LogFilter.toRequest(LogFilter.from(params("range=last1h")));
       // then -- an open end, because "the last hour" has no future edge
-      expect(request.since).toBeString();
-      expect(request.until).toEqual(undefined);
+      expect(request.filterSince).toBeInstanceOf(Temporal.Instant);
+      expect(request.filterUntil).toBeUndefined();
     });
 
     it("resolves against the clock now, so a relative span keeps sliding", () => {
@@ -78,16 +94,15 @@ describe("LogFilter", () => {
       // when (the same applied filter, asked again a moment later)
       const after = LogFilter.toRequest(applied);
       // then
-      const moved = Temporal.Instant.compare(Temporal.Instant.from(after.since!), Temporal.Instant.from(before.since!));
-      expect(moved).toBeGreaterThanOrEqual(0);
+      expect(Temporal.Instant.compare(after.filterSince!, before.filterSince!)).toBeGreaterThanOrEqual(0);
     });
 
     it("closes both ends for the one preset that has a past", () => {
       // when
       const request = LogFilter.toRequest(LogFilter.from(params("range=yesterday")));
       // then
-      expect(request.since).toBeString();
-      expect(request.until).toBeString();
+      expect(request.filterSince).toBeInstanceOf(Temporal.Instant);
+      expect(request.filterUntil).toBeInstanceOf(Temporal.Instant);
     });
   });
 

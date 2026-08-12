@@ -108,7 +108,8 @@ export function useLogSearch({ id, applied, element, rendered, events, onFoundOu
           searchPatternVariant: variant,
           ...(onMatch ? { anchorExclusive: from } : { anchorInclusive: from }),
           direction,
-          filter: LogFilter.toRequest(applied),
+          // the corpus the search happens inside, so it never lands on a line the view hides
+          ...LogFilter.toRequest(applied),
         });
         if (!found) {
           // deliberately no wrapping: in a log of unknown length, silently reappearing at the other

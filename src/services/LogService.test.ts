@@ -74,8 +74,8 @@ describe(LogService.name, () => {
       // when (an instant in the future, so reading forwards from it finds nothing)
       const page = await service.list(container.id, { at: "2030-01-01T00:00:00Z" });
 
-      // then (`landedOn` is null precisely because it did not land where it was asked)
-      expect(page.landedOn).toBeNull();
+      // then (`landedOn` is absent precisely because it did not land where it was asked)
+      expect(page.landedOn).toBeUndefined();
       expect(page.data.map((event) => event.id)).toEqual(all.map((event) => event.id));
       expect(page.hasNewer).toBe(false);
     });
@@ -106,13 +106,17 @@ describe(LogService.name, () => {
     ).rejects.toThrow(/conflicting_position/);
   });
 
-  it("should refuse two forwards anchors at once", () => {
-    // both read forwards, so sending them together says two different things about where to open
-    expect(() =>
-      LogService.ListQuery.parse({
+  it("should refuse two forwards anchors at once", async () => {
+    const container = TestFixture.container();
+
+    // both read forwards, so sending them together says two different things about where to open.
+    // Asked of the service rather than of `ListQuery`, because the rule is a refinement the service
+    // adds -- the bare schema describes the shape of a query, not whether it makes sense.
+    expect(
+      service.list(container.id, {
         afterExclusive: "019fe10e-4a9f-700d-8f7c-f6ec636e67dc",
         afterInclusive: "019fe10e-4ad6-7061-9172-2c3ecf40c00d",
       }),
-    ).toThrow(/invalid_request_query/);
+    ).rejects.toThrow(/invalid_request_query/);
   });
 });
