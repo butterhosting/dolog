@@ -159,7 +159,7 @@ export namespace useLogSearch {
   export type Options = {
     id: string;
     /** The corpus the search happens inside, so it never lands on a line the view hides. */
-    applied: useLogFilter.Applied;
+    applied: useLogFilter.Filter;
     /** The scrolling log, which is what "on screen" is measured against. */
     element: RefObject<HTMLElement | null>;
     /** The lines currently held, read at press time rather than closed over. */

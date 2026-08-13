@@ -10,26 +10,27 @@ import { useRegistry } from "./useRegistry";
 export function useLogFilter({ parameters, setParameters, pinnedAt }: useLogFilter.Options): useLogFilter.Result {
   const dialogClient = useRegistry(DialogClient);
 
-  const key = Internal.key(parameters);
-  /**
-   * Memoised on the key rather than on `parameters`, so it holds its identity for as long as the
-   * filter itself is unchanged -- `parameters` also carries the marker, and a dismissed marker must
-   * not look like a new filter. The key is built from exactly the parameters read here, so the two
-   * cannot disagree, and everything downstream can depend on this object instead of on a string
-   * standing in for it.
-   */
-  const activeFilter = useMemo(() => Internal.from(parameters), [key]);
+  const key = Object.values(LogService.FilterKey)
+    .map((param) => parameters.get(param) || "")
+    .join(" ");
+
+  const activeFilter = useMemo(() => Internal.toFilter(parameters), [key]);
 
   // the filter being composed, which is only the filter in force once Apply says so
   const [pattern, setPattern] = useState(activeFilter.pattern);
   const [variant, setVariant] = useState<LogPattern.Variant>(activeFilter.variant);
   const [range, setRange] = useState<LogRange.Value>(activeFilter.range);
 
-  const composed = { pattern: pattern.trim(), variant, range };
-  const dirty = !Internal.equals(composed, activeFilter);
+  const dirty = !Internal.equals(activeFilter, {
+    pattern: pattern.trim(),
+    variant,
+    range,
+  });
 
   const toggleVariant = useCallback(() => {
-    setVariant((current) => (current === LogPattern.Variant.regex ? LogPattern.Variant.substr : LogPattern.Variant.regex));
+    setVariant((current) => {
+      return current === LogPattern.Variant.regex ? LogPattern.Variant.substr : LogPattern.Variant.regex;
+    });
   }, []);
 
   const promptRangeDialog = useCallback(async () => {
@@ -58,7 +59,7 @@ export function useLogFilter({ parameters, setParameters, pinnedAt }: useLogFilt
 }
 
 namespace Internal {
-  export function from(parameters: URLSearchParams): useLogFilter.Applied {
+  export function toFilter(parameters: URLSearchParams): useLogFilter.Filter {
     return {
       pattern: parameters.get("filter") ?? "",
       variant: parameters.get("filterVariant") === "regex" ? LogPattern.Variant.regex : LogPattern.Variant.substr,
@@ -66,13 +67,7 @@ namespace Internal {
     };
   }
 
-  export function key(parameters: URLSearchParams): string {
-    return Object.values(LogService.FilterKey)
-      .map((param) => parameters.get(param) ?? "")
-      .join(" ");
-  }
-
-  export function toParams(applied: useLogFilter.Applied, pinnedAt: string | null): Record<string, string> {
+  export function toParams(applied: useLogFilter.Filter, pinnedAt: string | null): Record<string, string> {
     return {
       ...(pinnedAt ? { at: pinnedAt } : {}),
       ...(applied.pattern ? { filter: applied.pattern, filterVariant: applied.variant } : {}),
@@ -81,11 +76,11 @@ namespace Internal {
   }
 
   // Whether anything is being narrowed at all, which changes what an empty window means
-  export function isNarrowing(applied: useLogFilter.Applied): boolean {
+  export function isNarrowing(applied: useLogFilter.Filter): boolean {
     return applied.pattern !== "" || !LogRange.isAll(applied.range);
   }
 
-  export function equals(one: useLogFilter.Applied, other: useLogFilter.Applied): boolean {
+  export function equals(one: useLogFilter.Filter, other: useLogFilter.Filter): boolean {
     return one.pattern === other.pattern && one.variant === other.variant && LogRange.equals(one.range, other.range);
   }
 }
@@ -99,7 +94,7 @@ export namespace useLogFilter {
 
   export type Result = {
     key: string; // hash of the applied filter (for triggering reloads, etc)
-    activeFilter: Applied;
+    activeFilter: Filter;
     isActiveFilterNarrowing: boolean;
     form: {
       pattern: string;
@@ -115,13 +110,13 @@ export namespace useLogFilter {
     };
   };
 
-  export type Applied = {
+  export type Filter = {
     pattern: string;
     variant: LogPattern.Variant;
     range: LogRange.Value;
   };
 
-  export function toRequest(applied: Applied): LogService.FilterSubQuery {
+  export function toRequest(applied: Filter): LogService.FilterSubQuery {
     const { since, until } = LogRange.window(applied.range, Temporal.Now.instant());
     return {
       filterPattern: applied.pattern || undefined,

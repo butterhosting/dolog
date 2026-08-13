@@ -147,7 +147,7 @@ export function useVisibleLogWindow({
     void (async () => {
       const page = await logClient.list(id, {
         limit: LINES_PER_PAGE,
-        at: anchor?.kind === "instant" ? LogRows.parseInstant(anchor.value) ?? undefined : undefined,
+        at: anchor?.kind === "instant" ? (LogRows.parseInstant(anchor.value) ?? undefined) : undefined,
         afterInclusive: anchor?.kind === "line" ? anchor.value : undefined,
         ...useLogFilter.toRequest(applied),
       });
@@ -449,7 +449,7 @@ export namespace useVisibleLogWindow {
   export type Options = {
     id: string;
     /** The filter in force, as every request applies it. */
-    applied: useLogFilter.Applied;
+    applied: useLogFilter.Filter;
     /** The same filter reduced to a comparable string, which is what a re-fetch is decided on. */
     filterKey: string;
     /** The marker in the url, which is where the window first opens. */

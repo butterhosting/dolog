@@ -9,7 +9,7 @@ import { useLogFilter } from "./useLogFilter";
  * pinning down from outside. Everything else the hook does to a filter is private to it.
  */
 describe("useLogFilter", () => {
-  function applied(overrides: Partial<useLogFilter.Applied> = {}): useLogFilter.Applied {
+  function applied(overrides: Partial<useLogFilter.Filter> = {}): useLogFilter.Filter {
     return {
       pattern: "",
       variant: LogPattern.Variant.substr,
