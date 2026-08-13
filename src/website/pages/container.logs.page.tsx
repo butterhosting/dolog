@@ -24,14 +24,14 @@ export function containerLogsPage() {
   });
   const visibleLogWindow = useVisibleLogWindow({
     id,
-    applied: logFilter.applied,
+    applied: logFilter.activeFilter,
     filterKey: logFilter.key,
     pinnedAt,
     setParameters,
   });
   const logSearch = useLogSearch({
     id,
-    applied: logFilter.applied,
+    applied: logFilter.activeFilter,
     element: visibleLogWindow.ref,
     rendered: visibleLogWindow.rendered,
     events: visibleLogWindow.events,
@@ -80,7 +80,7 @@ export function containerLogsPage() {
               {/* an empty window means something different once a time was asked for: logs may well exist, just not there */}
               {visibleLogWindow.events.length === 0 && (
                 <div className="text-c-dark-half py-8 text-center">
-                  {logFilter.narrows
+                  {logFilter.isActiveFilterNarrowing
                     ? "Nothing in this container matches the filter"
                     : visibleLogWindow.anchor?.kind === "instant"
                       ? "Nothing was logged at or after that time"

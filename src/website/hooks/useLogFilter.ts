@@ -1,11 +1,11 @@
 import { LogPattern } from "@/models/LogPattern";
+import { LogService } from "@/services/LogService";
+import { Temporal } from "@js-temporal/polyfill";
 import { useCallback, useMemo, useState } from "react";
 import type { SetURLSearchParams } from "react-router";
 import { DialogClient } from "../clients/DialogClient";
 import { LogRange } from "../models/LogRange";
 import { useRegistry } from "./useRegistry";
-import { LogService } from "@/services/LogService";
-import { Temporal } from "@js-temporal/polyfill";
 
 export function useLogFilter({ parameters, setParameters, pinnedAt }: useLogFilter.Options): useLogFilter.Result {
   const dialogClient = useRegistry(DialogClient);
@@ -18,15 +18,15 @@ export function useLogFilter({ parameters, setParameters, pinnedAt }: useLogFilt
    * cannot disagree, and everything downstream can depend on this object instead of on a string
    * standing in for it.
    */
-  const applied = useMemo(() => Internal.from(parameters), [key]);
+  const activeFilter = useMemo(() => Internal.from(parameters), [key]);
 
   // the filter being composed, which is only the filter in force once Apply says so
-  const [pattern, setPattern] = useState(applied.pattern);
-  const [variant, setVariant] = useState<LogPattern.Variant>(applied.variant);
-  const [range, setRange] = useState<LogRange.Value>(applied.range);
+  const [pattern, setPattern] = useState(activeFilter.pattern);
+  const [variant, setVariant] = useState<LogPattern.Variant>(activeFilter.variant);
+  const [range, setRange] = useState<LogRange.Value>(activeFilter.range);
 
   const composed = { pattern: pattern.trim(), variant, range };
-  const dirty = !Internal.equals(composed, applied);
+  const dirty = !Internal.equals(composed, activeFilter);
 
   const toggleVariant = useCallback(() => {
     setVariant((current) => (current === LogPattern.Variant.regex ? LogPattern.Variant.substr : LogPattern.Variant.regex));
@@ -50,16 +50,14 @@ export function useLogFilter({ parameters, setParameters, pinnedAt }: useLogFilt
 
   return {
     key,
-    applied,
-    narrows: Internal.narrows(applied),
+    activeFilter,
+    isActiveFilterNarrowing: Internal.isNarrowing(activeFilter),
     form: { pattern, setPattern, variant, toggleVariant, range, promptRangeDialog },
     formState: { dirty, apply },
   };
 }
 
 namespace Internal {
-  const PARAMS = ["filter", "filterVariant", "range", "since", "until"];
-
   export function from(parameters: URLSearchParams): useLogFilter.Applied {
     return {
       pattern: parameters.get("filter") ?? "",
@@ -69,7 +67,9 @@ namespace Internal {
   }
 
   export function key(parameters: URLSearchParams): string {
-    return PARAMS.map((param) => parameters.get(param) ?? "").join(" ");
+    return Object.values(LogService.FilterKey)
+      .map((param) => parameters.get(param) ?? "")
+      .join(" ");
   }
 
   export function toParams(applied: useLogFilter.Applied, pinnedAt: string | null): Record<string, string> {
@@ -81,7 +81,7 @@ namespace Internal {
   }
 
   // Whether anything is being narrowed at all, which changes what an empty window means
-  export function narrows(applied: useLogFilter.Applied): boolean {
+  export function isNarrowing(applied: useLogFilter.Applied): boolean {
     return applied.pattern !== "" || !LogRange.isAll(applied.range);
   }
 
@@ -99,8 +99,8 @@ export namespace useLogFilter {
 
   export type Result = {
     key: string; // hash of the applied filter (for triggering reloads, etc)
-    applied: Applied;
-    narrows: boolean;
+    activeFilter: Applied;
+    isActiveFilterNarrowing: boolean;
     form: {
       pattern: string;
       setPattern: (value: string) => void;
@@ -121,9 +121,7 @@ export namespace useLogFilter {
     range: LogRange.Value;
   };
 
-  export function toRequest(
-    applied: Applied,
-  ): Pick<LogService.ListQuery, "filterPattern" | "filterPatternVariant" | "filterSince" | "filterUntil"> {
+  export function toRequest(applied: Applied): LogService.FilterSubQuery {
     const { since, until } = LogRange.window(applied.range, Temporal.Now.instant());
     return {
       filterPattern: applied.pattern || undefined,

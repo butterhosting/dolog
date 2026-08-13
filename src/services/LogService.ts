@@ -168,49 +168,54 @@ export class LogService {
 }
 
 export namespace LogService {
-  const FILTER = {
-    filterPattern: z.string().optional(),
-    filterPatternVariant: z.enum(LogPattern.Variant).optional(),
-    filterSince: z.string().transform(ZodParser.instant).optional(),
-    filterUntil: z.string().transform(ZodParser.instant).optional(),
-  };
+  export enum FilterKey {
+    filterPattern = "filterPattern",
+    filterPatternVariant = "filterPatternVariant",
+    filterSince = "filterSince",
+    filterUntil = "filterUntil",
+  }
+  export type FilterSubQuery = z.infer<typeof FilterSubQuery>;
+  const FilterSubQuery = z.object({
+    [FilterKey.filterPattern]: z.string().optional(),
+    [FilterKey.filterPatternVariant]: z.enum(LogPattern.Variant).optional(),
+    [FilterKey.filterSince]: z.string().transform(ZodParser.instant).optional(),
+    [FilterKey.filterUntil]: z.string().transform(ZodParser.instant).optional(),
+  });
 
   export type FindQuery = z.infer<typeof FindQuery>;
-  export const FindQuery = z.object({
-    searchPattern: z.string(),
-    searchPatternVariant: z.enum(LogPattern.Variant),
-    anchorInclusive: z.string().optional(),
-    anchorExclusive: z.string().optional(),
-    direction: z.enum(Direction),
-    ...FILTER,
-  });
+  export const FindQuery = z
+    .object({
+      searchPattern: z.string(),
+      searchPatternVariant: z.enum(LogPattern.Variant),
+      anchorInclusive: z.string().optional(),
+      anchorExclusive: z.string().optional(),
+      direction: z.enum(Direction),
+    })
+    .and(FilterSubQuery);
 
   export type FindResult = {
     id: string | undefined;
   };
 
-  const MAX_EVENTS_PER_PAGE = 500;
-  const DEFAULT_EVENTS_PER_PAGE = 100;
-
   export type ListQuery = z.infer<typeof ListQuery>;
-  export const ListQuery = z.object({
-    beforeExclusive: z.string().optional(),
-    afterExclusive: z.string().optional(),
-    afterInclusive: z.string().optional(),
-    limit: z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(DEFAULT_EVENTS_PER_PAGE)
-      .transform((requested) => Math.min(requested, MAX_EVENTS_PER_PAGE)),
-    at: z.string().transform(ZodParser.instant).optional(),
-    ...FILTER,
-  });
+  export const ListQuery = z
+    .object({
+      beforeExclusive: z.string().optional(),
+      afterExclusive: z.string().optional(),
+      afterInclusive: z.string().optional(),
+      limit: z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(100) // = default number of events per page
+        .transform((requested) => Math.min(requested, 500)), // = maximum number of events per page
+      at: z.string().transform(ZodParser.instant).optional(),
+    })
+    .and(FilterSubQuery);
 
   export type ListResult = EventRepository.ListResult & {
     landedOn?: string;
   };
-
   export namespace ListResult {
     export const parse = ZodParser.forType<ListResult>()
       .ensureSchemaMatchesType(() =>
