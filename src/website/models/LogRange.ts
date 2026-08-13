@@ -1,3 +1,4 @@
+import { LogService } from "@/services/LogService";
 import { Temporal } from "@js-temporal/polyfill";
 
 /**
@@ -74,20 +75,30 @@ export namespace LogRange {
     return value.kind === "preset" ? preset(value.id).window(now) : { since: value.since, until: value.until };
   }
 
-  /** What the browser's address bar carries: the choice, not the instants it resolved to. */
+  /**
+   * The url parameter naming the *choice* of span. The one filter parameter with no api equivalent,
+   * for the reason given at the top: the server is only ever told two instants, so a preset has to
+   * survive in the address bar as the preset it is.
+   */
+  export const PARAM = "range";
+
+  /**
+   * What the browser's address bar carries: the choice, not the instants it resolved to. The two
+   * ends are named exactly as the api names them, so the url and the request speak one vocabulary.
+   */
   export function toParams(value: LogRange.Value): Record<string, string> {
     if (value.kind === "preset") {
-      return value.id === DEFAULT_ID ? {} : { range: value.id };
+      return value.id === DEFAULT_ID ? {} : { [PARAM]: value.id };
     }
     return {
-      range: "custom",
-      ...(value.since ? { since: value.since.toString() } : {}),
-      ...(value.until ? { until: value.until.toString() } : {}),
+      [PARAM]: "custom",
+      ...(value.since ? { [LogService.FilterKey.filterSince]: value.since.toString() } : {}),
+      ...(value.until ? { [LogService.FilterKey.filterUntil]: value.until.toString() } : {}),
     };
   }
 
   export function fromParams(params: URLSearchParams): LogRange.Value {
-    const range = params.get("range");
+    const range = params.get(PARAM);
     if (range === "custom") {
       const read = (key: string) => {
         const raw = params.get(key);
@@ -97,7 +108,7 @@ export namespace LogRange {
           return undefined;
         }
       };
-      return { kind: "custom", since: read("since"), until: read("until") };
+      return { kind: "custom", since: read(LogService.FilterKey.filterSince), until: read(LogService.FilterKey.filterUntil) };
     }
     return { kind: "preset", id: PRESETS.some((candidate) => candidate.id === range) ? (range as PresetId) : DEFAULT_ID };
   }

@@ -20,7 +20,6 @@ export function containerLogsPage() {
   const logFilter = useLogFilter({
     parameters,
     setParameters,
-    pinnedAt,
   });
   const visibleLogWindow = useVisibleLogWindow({
     id,
