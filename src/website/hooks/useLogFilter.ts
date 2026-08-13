@@ -121,13 +121,12 @@ export namespace useLogFilter {
     variant: LogPattern.Variant;
     range: LogRange.Value;
   };
-
-  export function toRequest(applied: Filter): LogService.FilterSubQuery {
-    const { since, until } = LogRange.window(applied.range, Temporal.Now.instant());
+  export function serialize(filter: Filter): LogService.FilterSubQuery {
+    const { since, until } = LogRange.window(filter.range, Temporal.Now.instant());
     return {
-      filterPattern: applied.pattern || undefined,
+      filterPattern: filter.pattern || undefined,
       // meaningless without something to read, and sending it alone would look like a filter
-      filterPatternVariant: applied.pattern ? applied.variant : undefined,
+      filterPatternVariant: filter.pattern ? filter.variant : undefined,
       filterSince: since,
       filterUntil: until,
     };

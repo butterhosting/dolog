@@ -149,7 +149,7 @@ export function useVisibleLogWindow({
         limit: LINES_PER_PAGE,
         at: anchor?.kind === "instant" ? (LogRows.parseInstant(anchor.value) ?? undefined) : undefined,
         afterInclusive: anchor?.kind === "line" ? anchor.value : undefined,
-        ...useLogFilter.toRequest(applied),
+        ...useLogFilter.serialize(applied),
       });
       if (cancelled) {
         return;
@@ -162,7 +162,7 @@ export function useVisibleLogWindow({
        */
       const landing = anchor ? page.data.at(0) : undefined;
       const above = landing
-        ? await logClient.list(id, { limit: LINES_PER_PAGE, beforeExclusive: landing.id, ...useLogFilter.toRequest(applied) })
+        ? await logClient.list(id, { limit: LINES_PER_PAGE, beforeExclusive: landing.id, ...useLogFilter.serialize(applied) })
         : undefined;
       if (cancelled) {
         return;
@@ -238,7 +238,7 @@ export function useVisibleLogWindow({
      * A stored one used to drift: trimming the list while tailing moved the top of the screen
      * forward while the cursor stayed put, and resuming from it skipped everything in between.
      */
-    const page = await logClient.list(id, { limit: LINES_PER_PAGE, beforeExclusive: oldest.id, ...useLogFilter.toRequest(applied) });
+    const page = await logClient.list(id, { limit: LINES_PER_PAGE, beforeExclusive: oldest.id, ...useLogFilter.serialize(applied) });
     setHasOlder(page.hasOlder);
 
     /**
@@ -270,7 +270,7 @@ export function useVisibleLogWindow({
       return;
     }
     loadingNewer.current = true;
-    const page = await logClient.list(id, { limit: LINES_PER_PAGE, afterExclusive: newest.id, ...useLogFilter.toRequest(applied) });
+    const page = await logClient.list(id, { limit: LINES_PER_PAGE, afterExclusive: newest.id, ...useLogFilter.serialize(applied) });
     setHasNewer(page.hasNewer);
     setReachesLiveFeed(page.reachesLiveFeed);
     setEvents((current) => [...current, ...page.data]);
@@ -290,7 +290,7 @@ export function useVisibleLogWindow({
       return;
     }
     missedWhilePaused.current = false;
-    const page = await logClient.list(id, { limit: LINES_PER_PAGE, ...useLogFilter.toRequest(applied) });
+    const page = await logClient.list(id, { limit: LINES_PER_PAGE, ...useLogFilter.serialize(applied) });
     const known = new Set(rendered.current.map((event) => event.id));
 
     /**
@@ -347,7 +347,7 @@ export function useVisibleLogWindow({
        * anchor being cleared, re-triggering the scroll each time its own output landed. Four days
        * back meant hundreds of round trips to travel a distance one request already covered.
        */
-      setParameters({}, { replace: true });
+      setParameters(Internal.withoutPin, { replace: true });
       returnToLiveFeed();
       return;
     }
@@ -365,7 +365,7 @@ export function useVisibleLogWindow({
   const jumpTo = useCallback(
     (instant: Temporal.Instant) => {
       const at = instant.toString();
-      setParameters({ at });
+      setParameters((previous) => Internal.withPin(previous, at));
       if (anchor?.kind !== "instant" || anchor.value !== at) {
         setAnchor({ kind: "instant", value: at });
         return;
@@ -388,7 +388,7 @@ export function useVisibleLogWindow({
    */
   const anchorToLine = useCallback(
     (lineId: string) => {
-      setParameters({}, { replace: true });
+      setParameters(Internal.withoutPin, { replace: true });
       setAnchor({ kind: "line", value: lineId });
     },
     [setParameters],
@@ -399,7 +399,7 @@ export function useVisibleLogWindow({
    * -- see where it is declared.
    */
   const dismissPin = useCallback(() => {
-    setParameters({}, { replace: true });
+    setParameters(Internal.withoutPin, { replace: true });
   }, [setParameters]);
 
   /**
@@ -442,7 +442,32 @@ export function useVisibleLogWindow({
   };
 }
 
+namespace Internal {
+  /**
+   * The marker written into a url that holds more than the marker, and taken back out of one.
+   *
+   * Only {@link useVisibleLogWindow.PIN_PARAM} is touched; the filter beside it is left exactly as
+   * it was found. Restating the whole query string instead is what used to make dismissing the
+   * marker quietly drop the reader's filter and re-fetch the log unfiltered -- a wholesale write
+   * deletes by omission, and this hook has no business deleting a parameter it does not own.
+   */
+  export function withPin(previous: URLSearchParams, at: string): URLSearchParams {
+    const next = new URLSearchParams(previous);
+    next.set(useVisibleLogWindow.PIN_PARAM, at);
+    return next;
+  }
+
+  export function withoutPin(previous: URLSearchParams): URLSearchParams {
+    const next = new URLSearchParams(previous);
+    next.delete(useVisibleLogWindow.PIN_PARAM);
+    return next;
+  }
+}
+
 export namespace useVisibleLogWindow {
+  /** Where the marker lives in the url. The only parameter this hook owns. */
+  export const PIN_PARAM = "at";
+
   /** Where the window was fetched around: a moment that was asked for, or a line that was found. */
   export type Anchor = { kind: "instant"; value: string } | { kind: "line"; value: string };
 

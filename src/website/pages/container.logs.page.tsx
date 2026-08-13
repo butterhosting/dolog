@@ -16,7 +16,7 @@ export function containerLogsPage() {
   const { id = "" } = useParams();
   const [parameters, setParameters] = useSearchParams();
 
-  const pinnedAt = parameters.get("at");
+  const pinnedAt = parameters.get(useVisibleLogWindow.PIN_PARAM);
   const logFilter = useLogFilter({
     parameters,
     setParameters,
