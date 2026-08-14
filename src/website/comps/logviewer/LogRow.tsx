@@ -17,21 +17,32 @@ export namespace LogRow {
    *
    * Its host is whichever row edge the instant fell on, so it needs a positioned parent either way.
    */
+  /**
+   * The one thing in the column that takes a click, so it is the one thing that keeps its pointer
+   * events. Straddling the left edge puts it clear of the timestamps at any width. It wears the
+   * marker's own colour, because it belongs to the marker rather than to the log.
+   */
+  function DismissPin({ onDismiss, className }: { onDismiss: () => void; className: string }) {
+    return (
+      <button
+        onClick={onDismiss}
+        title="dismiss this marker"
+        className={clsx(
+          "absolute -left-4 z-10 flex size-4 cursor-pointer items-center justify-center rounded-full",
+          "bg-c-action text-[10px] font-bold leading-none text-c-dark-full transition hover:brightness-110",
+          className,
+        )}
+      >
+        ×
+      </button>
+    );
+  }
+
   function LandingRule({ onDismiss }: { onDismiss: () => void }) {
     return (
       <>
         <span aria-hidden className="pointer-events-none absolute -left-4 -right-4 -top-px h-px bg-c-action" />
-        {/*
-         * The one thing in the column that takes a click, so it is the one thing that keeps its
-         * pointer events. Straddling the left edge puts it clear of the timestamps at any width.
-         */}
-        <button
-          onClick={onDismiss}
-          title="dismiss this marker"
-          className="absolute -left-4 -top-2 z-10 flex size-4 cursor-pointer items-center justify-center rounded-full bg-green-400 text-[10px] font-bold leading-none text-c-dark-full hover:bg-green-300"
-        >
-          ×
-        </button>
+        <DismissPin onDismiss={onDismiss} className="-top-2" />
       </>
     );
   }
@@ -66,13 +77,18 @@ export namespace LogRow {
   export function Line({
     event,
     landedOn,
+    pinned,
     onDismiss,
+    onTogglePin,
     matched,
     current,
   }: {
     event: ContainerEvent;
     landedOn: boolean;
+    /** Whether this is the message the reader pinned, as opposed to a moment landing above it. */
+    pinned: boolean;
     onDismiss: () => void;
+    onTogglePin: () => void;
     matched: boolean;
     current: boolean;
   }) {
@@ -85,17 +101,34 @@ export namespace LogRow {
        */
       <div
         data-event={event.id}
-        data-landed={landedOn ? "" : undefined}
+        data-landed={landedOn || pinned ? "" : undefined}
         className={clsx(
           "relative flex gap-3 whitespace-pre-wrap break-all",
           // every match is lit, faintly; the one being stepped through is lit enough to find at a glance
           matched && "-mx-1 rounded-sm px-1",
           matched && !current && "bg-yellow-400/15",
           current && "bg-yellow-400/35 ring-1 ring-yellow-400/60",
+          // a pinned message is boxed rather than ruled: the mark is about *this line*, not a seam
+          pinned && "-mx-1 rounded-sm px-1 ring-2 ring-c-action",
         )}
       >
         {landedOn && <LandingRule onDismiss={onDismiss} />}
-        <span className="text-gray-500 shrink-0">{time}</span>
+        {pinned && <DismissPin onDismiss={onDismiss} className="top-1/2 -translate-y-1/2" />}
+        {/*
+         * The timestamp is the handle for pinning, which is why it is the one part of a line that
+         * takes a click: it is already the line's name in every other context -- what the day marker
+         * groups, what a jump lands on -- so it is where a reader reaches to mean "this message".
+         */}
+        <button
+          onClick={onTogglePin}
+          title={pinned ? "unpin this message" : "pin this message"}
+          className={clsx(
+            "shrink-0 cursor-pointer text-left transition-colors",
+            pinned ? "text-c-action" : "text-gray-500 hover:text-gray-300",
+          )}
+        >
+          {time}
+        </button>
         <span className={clsx("flex-1", colour(event))}>{describe(event)}</span>
       </div>
     );

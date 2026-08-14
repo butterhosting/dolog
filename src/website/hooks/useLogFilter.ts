@@ -10,8 +10,8 @@ import { useRegistry } from "./useRegistry";
 export function useLogFilter({ parameters, setParameters }: useLogFilter.Options): useLogFilter.Result {
   const dialogClient = useRegistry(DialogClient);
 
-  const key = Internal.PARAMS.map((param) => parameters.get(param) || "").join(" ");
-  const activeFilter = useMemo(() => Internal.parse(parameters), [key]);
+  const activeFilterKey = Internal.PARAMS.map((param) => parameters.get(param) || "").join(" ");
+  const activeFilter = useMemo(() => Internal.parse(parameters), [activeFilterKey]);
 
   // form
   const [pattern, setPattern] = useState(activeFilter.pattern);
@@ -46,8 +46,8 @@ export function useLogFilter({ parameters, setParameters }: useLogFilter.Options
   }, [pattern, variant, range, setParameters]);
 
   return {
-    key,
     activeFilter,
+    activeFilterKey,
     isActiveFilterNarrowing: Internal.isNarrowing(activeFilter),
     form: { pattern, setPattern, variant, toggleVariant, range, promptRangeDialog },
     formState: { dirty, apply },
@@ -99,7 +99,7 @@ export namespace useLogFilter {
   };
 
   export type Result = {
-    key: string; // hash of the applied filter (for triggering reloads, etc)
+    activeFilterKey: string; // hash of the applied filter (for triggering reloads, etc)
     activeFilter: Filter;
     isActiveFilterNarrowing: boolean;
     form: {

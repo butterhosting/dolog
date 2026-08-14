@@ -13,23 +13,22 @@ import { useVisibleLogWindow } from "../hooks/useVisibleLogWindow";
 import { Route } from "../Route";
 
 export function containerLogsPage() {
-  const { id = "" } = useParams();
+  const { id: containerId = "" } = useParams();
   const [parameters, setParameters] = useSearchParams();
 
-  const pinnedAt = parameters.get(useVisibleLogWindow.PIN_PARAM);
   const logFilter = useLogFilter({
     parameters,
     setParameters,
   });
   const visibleLogWindow = useVisibleLogWindow({
-    id,
-    applied: logFilter.activeFilter,
-    filterKey: logFilter.key,
-    pinnedAt,
+    containerId,
+    activeFilter: logFilter.activeFilter,
+    activeFilterKey: logFilter.activeFilterKey,
+    parameters,
     setParameters,
   });
   const logSearch = useLogSearch({
-    id,
+    id: containerId,
     applied: logFilter.activeFilter,
     element: visibleLogWindow.ref,
     rendered: visibleLogWindow.rendered,
@@ -37,15 +36,15 @@ export function containerLogsPage() {
     onFoundOutsideWindow: visibleLogWindow.anchorToLine,
   });
 
-  const name = useContainerName(id, visibleLogWindow.events);
+  const name = useContainerName(containerId, visibleLogWindow.events);
   useDocumentTitle(`${name} | Dolog`);
 
   const applyFilter = useCallback(() => {
     logFilter.formState.apply();
-    if (!pinnedAt) {
+    if (!visibleLogWindow.pinnedAt) {
       visibleLogWindow.returnToLiveFeed();
     }
-  }, [logFilter, pinnedAt, visibleLogWindow]);
+  }, [logFilter, visibleLogWindow]);
   return (
     <div className="full-bleed flex h-screen flex-col">
       <header className="relative flex items-center justify-center px-4 pb-3 pt-4">
@@ -92,13 +91,15 @@ export function containerLogsPage() {
               )}
             </>
           )}
-          {visibleLogWindow.rows.map(({ event, opensDay, landedOn }) => (
+          {visibleLogWindow.rows.map(({ event, opensDay, landedOn, pinned }) => (
             <Fragment key={event.id}>
               {opensDay && <LogRow.DayMarker date={opensDay} landedOn={landedOn === "day"} onDismiss={visibleLogWindow.dismissPin} />}
               <LogRow.Line
                 event={event}
                 landedOn={landedOn === "line"}
+                pinned={pinned}
                 onDismiss={visibleLogWindow.dismissPin}
+                onTogglePin={() => visibleLogWindow.togglePinnedLine(event.id)}
                 matched={logSearch.matched.has(event.id)}
                 current={event.id === logSearch.currentMatch}
               />

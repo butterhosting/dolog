@@ -1,3 +1,4 @@
+import { Uuid } from "@/helpers/Uuid";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { ServerMessage } from "@/models/socket/ServerMessage";
 import { Temporal } from "@js-temporal/polyfill";
@@ -12,14 +13,6 @@ import { useLogFilter } from "./useLogFilter";
 import { useRegistry } from "./useRegistry";
 import { useStickyScroll } from "./useStickyScroll";
 
-/**
- * How many lines a request asks for, and how many the live feed keeps -- following holds one page.
- *
- * Deliberately not a cap on what is rendered: paging back adds a page at a time and discards
- * nothing, so the list grows for as long as the reader keeps climbing and only returns to one page
- * once they rejoin the live feed. Bounding that too would mean being able to fetch *forward* when
- * they scroll down again, which needs an `after` cursor the API does not have.
- */
 const LINES_PER_PAGE = 300;
 
 /**
@@ -29,37 +22,21 @@ const LINES_PER_PAGE = 300;
  * still own the bottom of it.
  */
 export function useVisibleLogWindow({
-  id,
-  applied,
-  filterKey,
-  pinnedAt,
+  containerId,
+  activeFilter,
+  activeFilterKey,
+  parameters,
   setParameters,
 }: useVisibleLogWindow.Options): useVisibleLogWindow.Result {
   const logClient = useRegistry(LogClient);
   const socketClient = useRegistry(SocketClient);
   const dialogClient = useRegistry(DialogClient);
 
-  /**
-   * Where the window was fetched around, which is a different question from where the marker is.
-   *
-   * They begin life together and part company when the marker is dismissed: taking it away is a
-   * change of mind about an annotation, not about where the reader is standing. Fetching off the
-   * marker would mean the little `x` silently re-ran the load and threw them back to the live feed,
-   * losing the history they had paged in -- so the anchor is moved by jumping, and by nothing else.
-   *
-   * It names a moment or a line, because those are the two ways of arriving somewhere: a jump knows
-   * a time, a search knows an id. A found line cannot be described by its timestamp -- several lines
-   * share a millisecond -- so the distinction has to survive as far as the request.
-   */
-  const [anchor, setAnchor] = useState<useVisibleLogWindow.Anchor | null>(pinnedAt ? { kind: "instant", value: pinnedAt } : null);
+  const pinnedAt = parameters.get(useVisibleLogWindow.AT_PARAM);
 
+  const [anchor, setAnchor] = useState<useVisibleLogWindow.Anchor | null>(() => Internal.toAnchor(pinnedAt));
   const [events, setEvents] = useState<ContainerEvent[]>([]);
-  /**
-   * The line the server settled on for the current anchor, straight from its answer rather than
-   * re-derived here. Its boundary is a millisecond and an instant can sit inside one, so a scan for
-   * the first timestamp at or after the instant could pick a different line than the one the window
-   * was actually fetched around.
-   */
+
   const [landedOn, setLandedOn] = useState<string | null>(null);
   const [hasOlder, setHasOlder] = useState(false);
   /** True once the window sits somewhere in history rather than at the live feed. */
@@ -87,11 +64,49 @@ export function useVisibleLogWindow({
       LogRows.build({
         events,
         reachedBeginning: !hasOlder,
+        // a pinned line is `at` too, so only an instant may draw a seam -- see `Internal.toAnchor`
         landedAt: LogRows.parseInstant(pinnedAt),
         landedOn,
+        pinnedLine: pinnedAt && Uuid.check(pinnedAt) ? pinnedAt : null,
       }),
     [events, hasOlder, pinnedAt, landedOn],
   );
+
+  /**
+   * Puts the reader on what they navigated to, once it has actually been drawn.
+   *
+   * This waits for a render rather than living in the load itself, because the load only *asks* for
+   * the rows -- React draws them when it draws them, and for a few hundred of them that is not the
+   * next frame. Scrolling from inside the fetch aimed at a row that did not exist yet, found
+   * nothing, and left the window sitting at the top of the page above the one that was asked for.
+   *
+   * `scrolledTo` is what keeps it to once per anchor: `rows` changes with every arriving line, and
+   * without it the view would be dragged back to the marker for as long as the marker existed.
+   */
+  const scrolledTo = useRef<string | null>(null);
+  useEffect(() => {
+    if (!anchor || loading || rows.length === 0 || scrolledTo.current === anchor.value) {
+      return;
+    }
+    const element = ref.current;
+    /**
+     * A line anchor is aimed at the line itself; a moment anchor at whatever marker was drawn for
+     * it, which is not always on the first row -- asking for a time past the end of the log puts it
+     * below the last one.
+     */
+    const target = anchor.kind === "line" ? LogRow.element(element, anchor.value) : LogRow.landed(element);
+    if (!target) {
+      // nothing was drawn for it: what they were shown instead is the end of history
+      if (element) {
+        element.scrollTop = element.scrollHeight;
+        scrolledTo.current = anchor.value;
+      }
+      return;
+    }
+    scrolledTo.current = anchor.value;
+    // put what they asked for in the middle of the view rather than at an edge
+    target.scrollIntoView({ block: "center" });
+  }, [anchor, loading, rows, ref]);
 
   /** What is on screen, for callbacks that would otherwise be rebuilt on every arriving line. */
   const rendered = useRef<ContainerEvent[]>([]);
@@ -118,7 +133,7 @@ export function useVisibleLogWindow({
     const subscription = socketClient.subscribe({
       type: ServerMessage.Type.log,
       callback: ({ data }) => {
-        if (data.container.id !== id) {
+        if (data.container.id !== containerId) {
           return;
         }
         if (!historyLoaded) {
@@ -142,14 +157,17 @@ export function useVisibleLogWindow({
         }
       },
     });
-    socketClient.declareStreamInterest(id, applied.pattern ? { pattern: applied.pattern, patternVariant: applied.variant } : null);
+    socketClient.declareStreamInterest(
+      containerId,
+      activeFilter.pattern ? { pattern: activeFilter.pattern, patternVariant: activeFilter.variant } : null,
+    );
 
     void (async () => {
-      const page = await logClient.list(id, {
+      const page = await logClient.list(containerId, {
         limit: LINES_PER_PAGE,
         at: anchor?.kind === "instant" ? (LogRows.parseInstant(anchor.value) ?? undefined) : undefined,
         afterInclusive: anchor?.kind === "line" ? anchor.value : undefined,
-        ...useLogFilter.serialize(applied),
+        ...useLogFilter.serialize(activeFilter),
       });
       if (cancelled) {
         return;
@@ -162,7 +180,7 @@ export function useVisibleLogWindow({
        */
       const landing = anchor ? page.data.at(0) : undefined;
       const above = landing
-        ? await logClient.list(id, { limit: LINES_PER_PAGE, beforeExclusive: landing.id, ...useLogFilter.serialize(applied) })
+        ? await logClient.list(containerId, { limit: LINES_PER_PAGE, beforeExclusive: landing.id, ...useLogFilter.serialize(activeFilter) })
         : undefined;
       if (cancelled) {
         return;
@@ -182,24 +200,7 @@ export function useVisibleLogWindow({
       setReachesLiveFeed(page.reachesLiveFeed);
       setLoading(false);
       historyLoaded = true;
-      if (landing) {
-        requestAnimationFrame(() => {
-          const element = ref.current;
-          /**
-           * A line anchor is aimed at the line itself; a moment anchor at whatever marker was drawn
-           * for it, which is not always on the first row -- asking for a time past the end of the
-           * log puts it below the last one.
-           */
-          const target = anchor?.kind === "line" ? LogRow.element(element, anchor.value) : LogRow.landed(element);
-          if (target) {
-            // put what they asked for in the middle of the view rather than at an edge
-            target.scrollIntoView({ block: "center" });
-          } else if (element) {
-            // nothing was logged at or after it, so what they were shown instead is the end of history
-            element.scrollTop = element.scrollHeight;
-          }
-        });
-      } else {
+      if (!landing) {
         /**
          * A window with no anchor *is* the live end, so it opens at the bottom -- said outright
          * rather than left to whether the reader happened to be stuck to the bottom of whatever
@@ -219,7 +220,7 @@ export function useVisibleLogWindow({
     // a spinner, so it must happen when the filter changes and on no other occasion -- and `useMemo`
     // promises a cache, not an identity. The effect still reads `applied`, which is the one matching
     // whichever key it re-ran on.
-  }, [id, anchor, filterKey, logClient, socketClient, ref, scrollToBottom]);
+  }, [containerId, anchor, activeFilterKey, logClient, socketClient, ref, scrollToBottom]);
 
   /**
    * Scrolling to the very top pulls in the page above. The scroll position is restored afterwards by
@@ -238,7 +239,11 @@ export function useVisibleLogWindow({
      * A stored one used to drift: trimming the list while tailing moved the top of the screen
      * forward while the cursor stayed put, and resuming from it skipped everything in between.
      */
-    const page = await logClient.list(id, { limit: LINES_PER_PAGE, beforeExclusive: oldest.id, ...useLogFilter.serialize(applied) });
+    const page = await logClient.list(containerId, {
+      limit: LINES_PER_PAGE,
+      beforeExclusive: oldest.id,
+      ...useLogFilter.serialize(activeFilter),
+    });
     setHasOlder(page.hasOlder);
 
     /**
@@ -255,7 +260,7 @@ export function useVisibleLogWindow({
       element.scrollTop += element.scrollHeight - before;
       loadingOlder.current = false;
     });
-  }, [applied, logClient, events, id, hasOlder, ref]);
+  }, [activeFilter, logClient, events, containerId, hasOlder, ref]);
 
   /**
    * The downward twin of {@link loadOlder}, and a simpler one: content appended below the viewport
@@ -270,12 +275,16 @@ export function useVisibleLogWindow({
       return;
     }
     loadingNewer.current = true;
-    const page = await logClient.list(id, { limit: LINES_PER_PAGE, afterExclusive: newest.id, ...useLogFilter.serialize(applied) });
+    const page = await logClient.list(containerId, {
+      limit: LINES_PER_PAGE,
+      afterExclusive: newest.id,
+      ...useLogFilter.serialize(activeFilter),
+    });
     setHasNewer(page.hasNewer);
     setReachesLiveFeed(page.reachesLiveFeed);
     setEvents((current) => [...current, ...page.data]);
     loadingNewer.current = false;
-  }, [applied, logClient, events, hasNewer, id]);
+  }, [activeFilter, logClient, events, hasNewer, containerId]);
 
   /**
    * Catches up on whatever arrived while the reader was away. Reaching the bottom by scrolling and
@@ -290,7 +299,7 @@ export function useVisibleLogWindow({
       return;
     }
     missedWhilePaused.current = false;
-    const page = await logClient.list(id, { limit: LINES_PER_PAGE, ...useLogFilter.serialize(applied) });
+    const page = await logClient.list(containerId, { limit: LINES_PER_PAGE, ...useLogFilter.serialize(activeFilter) });
     const known = new Set(rendered.current.map((event) => event.id));
 
     /**
@@ -303,10 +312,8 @@ export function useVisibleLogWindow({
       setHasOlder(page.hasOlder);
       return;
     }
-    const merged = new Map(rendered.current.map((event) => [event.id, event]));
-    page.data.forEach((event) => merged.set(event.id, event));
-    setEvents([...merged.values()].sort((a, b) => a.id.localeCompare(b.id)));
-  }, [applied, logClient, id]);
+    setEvents(Internal.mergeById(rendered.current, page.data));
+  }, [activeFilter, logClient, containerId]);
 
   /**
    * Following means sitting at the bottom *of the live feed*. Being at the bottom of a window parked
@@ -383,6 +390,27 @@ export function useVisibleLogWindow({
   }, [dialogClient, jumpTo, pinnedAt]);
 
   /**
+   * Pins one message, by the reader clicking its timestamp.
+   *
+   * The window does not move: they are already looking at the line, so this only writes the marker.
+   * Pressing it again takes the pin off, which makes the timestamp a toggle rather than a one-way
+   * door -- the little `x` is the other way out, and reaching for the line itself is the obvious
+   * one. The anchor moves with it so a reload opens here rather than at the live feed.
+   */
+  const togglePinnedLine = useCallback(
+    (lineId: string) => {
+      if (pinnedAt === lineId) {
+        setParameters(Internal.withoutPin, { replace: true });
+        setAnchor(null);
+        return;
+      }
+      setParameters((previous) => Internal.withPin(previous, lineId), { replace: true });
+      setAnchor({ kind: "line", value: lineId });
+    },
+    [pinnedAt, setParameters],
+  );
+
+  /**
    * Moves the window onto a line found outside it -- and the jump marker, which described the window
    * being left behind, goes with it rather than being redrawn somewhere it never pointed at.
    */
@@ -432,11 +460,13 @@ export function useVisibleLogWindow({
     hasOlder,
     hasNewer,
     anchor,
+    pinnedAt,
     atLiveEnd,
     handleScroll,
     jumpToLive,
     openJumpDialog,
     dismissPin,
+    togglePinnedLine,
     anchorToLine,
     returnToLiveFeed,
   };
@@ -444,41 +474,75 @@ export function useVisibleLogWindow({
 
 namespace Internal {
   /**
+   * The marker as an anchor. `at` holds one of two things, and which one decides what is drawn.
+   *
+   * A uuid is a *line* the reader pinned by clicking its timestamp: they meant that message and no
+   * other, so it is boxed where it sits. An instant came from the jump dialog, which names a moment
+   * rather than a message -- nothing was logged *at* it, so it is drawn on the seam it falls
+   * between. The two cannot be told apart by intent once they are in the url, only by shape.
+   *
+   * Anything else marks nothing. The url is whatever was typed into it, and an unparseable one used
+   * to become an anchor all the same -- no marker could be drawn for it, but the window believed it
+   * was parked in history, so the feed read as paused and the reader opened halfway up a log they
+   * had never asked to leave.
+   */
+  export function toAnchor(pinnedAt: string | null): useVisibleLogWindow.Anchor | null {
+    if (!pinnedAt) {
+      return null;
+    }
+    if (Uuid.check(pinnedAt)) {
+      return { kind: "line", value: pinnedAt };
+    }
+    const instant = LogRows.parseInstant(pinnedAt);
+    return instant ? { kind: "instant", value: instant.toString() } : null;
+  }
+
+  /**
+   * Two overlapping stretches of one log, as one. Keyed by id so a line held twice is held once,
+   * and sorted by it because a uuidv7 sorts the way the log reads.
+   */
+  export function mergeById(held: ContainerEvent[], arriving: ContainerEvent[]): ContainerEvent[] {
+    const merged = new Map(held.map((event) => [event.id, event]));
+    arriving.forEach((event) => merged.set(event.id, event));
+    return [...merged.values()].sort((one, other) => one.id.localeCompare(other.id));
+  }
+
+  /**
    * The marker written into a url that holds more than the marker, and taken back out of one.
    *
-   * Only {@link useVisibleLogWindow.PIN_PARAM} is touched; the filter beside it is left exactly as
+   * Only {@link useVisibleLogWindow.AT_PARAM} is touched; the filter beside it is left exactly as
    * it was found. Restating the whole query string instead is what used to make dismissing the
    * marker quietly drop the reader's filter and re-fetch the log unfiltered -- a wholesale write
    * deletes by omission, and this hook has no business deleting a parameter it does not own.
    */
   export function withPin(previous: URLSearchParams, at: string): URLSearchParams {
     const next = new URLSearchParams(previous);
-    next.set(useVisibleLogWindow.PIN_PARAM, at);
+    next.set(useVisibleLogWindow.AT_PARAM, at);
     return next;
   }
 
   export function withoutPin(previous: URLSearchParams): URLSearchParams {
     const next = new URLSearchParams(previous);
-    next.delete(useVisibleLogWindow.PIN_PARAM);
+    next.delete(useVisibleLogWindow.AT_PARAM);
     return next;
   }
 }
 
 export namespace useVisibleLogWindow {
-  /** Where the marker lives in the url. The only parameter this hook owns. */
-  export const PIN_PARAM = "at";
+  export const AT_PARAM = "at";
 
-  /** Where the window was fetched around: a moment that was asked for, or a line that was found. */
-  export type Anchor = { kind: "instant"; value: string } | { kind: "line"; value: string };
+  export type Anchor =
+    | { kind: "instant"; value: string } //
+    | { kind: "line"; value: string };
 
   export type Options = {
-    id: string;
+    containerId: string;
     /** The filter in force, as every request applies it. */
-    applied: useLogFilter.Filter;
+    activeFilter: useLogFilter.Filter;
     /** The same filter reduced to a comparable string, which is what a re-fetch is decided on. */
-    filterKey: string;
-    /** The marker in the url, which is where the window first opens. */
-    pinnedAt: string | null;
+    activeFilterKey: string;
+    /** The whole url, since the marker inside it is this hook's to read as well as to move. */
+    parameters: URLSearchParams;
     setParameters: SetURLSearchParams;
   };
 
@@ -493,12 +557,19 @@ export namespace useVisibleLogWindow {
     hasOlder: boolean;
     hasNewer: boolean;
     anchor: Anchor | null;
+    /**
+     * The marker as it stands, for the few decisions outside this hook that turn on whether the
+     * reader deliberately marked a spot -- applying a filter being the one that does.
+     */
+    pinnedAt: string | null;
     /** Sitting at the bottom *of the live feed*, which is not the same as the bottom of the window. */
     atLiveEnd: boolean;
     handleScroll: () => void;
     jumpToLive: () => Promise<void>;
     openJumpDialog: () => Promise<void>;
     dismissPin: () => void;
+    /** Pins one message, or unpins it if it is the one already pinned. */
+    togglePinnedLine: (lineId: string) => void;
     /** Moves the window onto a line outside it, which is how a search result is arrived at. */
     anchorToLine: (lineId: string) => void;
     returnToLiveFeed: () => void;

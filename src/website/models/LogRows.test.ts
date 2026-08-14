@@ -113,6 +113,45 @@ describe("LogRows", () => {
     });
   });
 
+  describe("pinned", () => {
+    it("marks nothing when no line is pinned", () => {
+      // given
+      const events = [at("2026-03-01T09:00:00Z"), at("2026-03-01T10:00:00Z")];
+      // when
+      const { rows } = build({ events });
+      // then
+      expect(rows.map((row) => row.pinned)).toEqual([false, false]);
+    });
+
+    it("marks the one line that was pinned", () => {
+      // given
+      const events = [at("2026-03-01T09:00:00Z"), at("2026-03-01T10:00:00Z")];
+      // when
+      const { rows } = build({ events, pinnedLine: "2026-03-01T10:00:00Z" });
+      // then
+      expect(rows.map((row) => row.pinned)).toEqual([false, true]);
+    });
+
+    it("draws no seam for a pinned line", () => {
+      // given -- a pinned line arrives with no instant, since `at` holds one or the other
+      const events = [at("2026-03-01T09:00:00Z"), at("2026-03-01T10:00:00Z")];
+      // when
+      const { rows, landedAtEnd } = build({ events, pinnedLine: "2026-03-01T10:00:00Z" });
+      // then -- the mark is about the message, not about a moment falling between two of them
+      expect(rows.map((row) => row.landedOn)).toEqual([null, null]);
+      expect(landedAtEnd).toEqual(false);
+    });
+
+    it("marks nothing when the pinned line is not in this window", () => {
+      // given (paged away from it, or a url naming a line from another container)
+      const events = [at("2026-03-01T09:00:00Z")];
+      // when
+      const { rows } = build({ events, pinnedLine: "019fe578-e38b-7000-971e-04858335d7ff" });
+      // then
+      expect(rows.map((row) => row.pinned)).toEqual([false]);
+    });
+  });
+
   describe("landedAtEnd", () => {
     it("is set when the instant was past everything logged", () => {
       // given (the server says so by landing on nothing while still returning history)

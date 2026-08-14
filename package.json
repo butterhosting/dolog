@@ -7,7 +7,7 @@
   "main": "src/index.ts",
   "module": "src/index.ts",
   "scripts": {
-    "dev": "bun start:dev",
+    "dev": "docker compose up",
     "drizzle": "sh -c ': \"${1:?Please pass a migration name}\"; bunx drizzle-kit generate --name=$1 --custom' _",
     "e2e": "playwright test --ui",
     "e2e:headless": "playwright test --max-failures 1 --reporter github",

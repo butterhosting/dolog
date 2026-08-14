@@ -22,6 +22,14 @@ export namespace LogRows {
      * marker, or between it and the line itself.
      */
     landedOn: "day" | "line" | null;
+    /**
+     * Whether this is the line the reader pinned outright.
+     *
+     * Kept apart from `landedOn` because the two are different claims and are drawn differently: a
+     * seam says "the moment you asked for falls here, between these two lines", and a pin says
+     * "this message". A pinned line is boxed where it sits rather than given a rule above it.
+     */
+    pinned: boolean;
   };
 
   /** The rendered list, plus the one landing position that belongs to no row: past the last line. */
@@ -38,6 +46,8 @@ export namespace LogRows {
     landedAt: Temporal.Instant | null;
     /** The line the *server* settled on for that instant, rather than one re-derived here. */
     landedOn: string | null;
+    /** The line the reader pinned outright, which is a different marker from a landed instant. */
+    pinnedLine?: string | null;
   };
 
   /** Dates as displayed: the same UTC the timestamps beside each line are printed in. */
@@ -65,7 +75,7 @@ export namespace LogRows {
     }
   }
 
-  export function build({ events, reachedBeginning, landedAt, landedOn }: Options): Result {
+  export function build({ events, reachedBeginning, landedAt, landedOn, pinnedLine = null }: Options): Result {
     // `landedAt` says whether a marker is wanted at all; `landedOn` says where the server put it
     const landedIndex = !landedAt || !landedOn ? -1 : events.findIndex((event) => event.id === landedOn);
     /**
@@ -98,6 +108,7 @@ export namespace LogRows {
             : opensDay && landedAt && Temporal.Instant.compare(landedAt, midnight(opensDay)) <= 0
               ? "day"
               : "line",
+        pinned: event.id === pinnedLine,
       };
     });
     return { rows, landedAtEnd };

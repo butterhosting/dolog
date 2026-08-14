@@ -4,6 +4,11 @@ import { Temporal } from "@js-temporal/polyfill";
 export namespace Uuid {
   const TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+  /** Whether this is a uuid at all -- which is how a pinned line is told from a pinned instant. */
+  export function check(value: string): boolean {
+    return TEXT.test(value);
+  }
+
   /**
    * uuidv7s get stored as their 16 raw bytes rather than the thirty-six character text form:
    * less than half the size
