@@ -43,7 +43,7 @@ describe(LogService.name, () => {
     /**
      * An `at` opens a window *around* itself rather than a page starting at it: half the limit from
      * before it, half from after, and a short side made up by the other. Where it actually landed is
-     * reported as `landedOn`, which is absent when nothing lay at or after it -- the one case where
+     * reported as `landedAt`, which is absent when nothing lay at or after it -- the one case where
      * the window served is the tail of history rather than a window around anything.
      */
     async function twoLines() {
@@ -65,7 +65,7 @@ describe(LogService.name, () => {
       const page = await service.list(container.id, { at: "2020-01-01T00:00:00Z" });
 
       // then (it opened on the first line at or after the instant, and says which that was)
-      expect(page.landedOn).toBe(page.data[0]!.id);
+      expect(page.landedAt).toBe(page.data[0]!.id);
       expect(page.data.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["older", "newer"]);
     });
 
@@ -75,8 +75,8 @@ describe(LogService.name, () => {
       // when (an instant in the future, so reading forwards from it finds nothing)
       const page = await service.list(container.id, { at: "2030-01-01T00:00:00Z" });
 
-      // then (`landedOn` is absent precisely because it did not land where it was asked)
-      expect(page.landedOn).toBeUndefined();
+      // then (`landedAt` is absent precisely because it did not land where it was asked)
+      expect(page.landedAt).toBeUndefined();
       expect(page.data.map((event) => event.id)).toEqual(all.map((event) => event.id));
       expect(page.hasNewer).toBe(false);
     });
@@ -120,7 +120,7 @@ describe(LogService.name, () => {
 
       // then (half the limit before it, and the line itself heading the other half)
       expect(shown(page)).toEqual(["line 15", "line 16", "line 17", "line 18", "line 19", "line 20", "line 21", "line 22", "line 23", "line 24"]);
-      expect(page.landedOn).toBe(all[20]!.id);
+      expect(page.landedAt).toBe(all[20]!.id);
       expect(page.hasOlder).toBe(true);
       expect(page.hasNewer).toBe(true);
     });
@@ -163,8 +163,8 @@ describe(LogService.name, () => {
 
       // then (it lands on the first line at or after it that the filter does allow, so the client
       // can tell that the pin itself is not in what it was given)
-      expect(page.landedOn).toBe(all[4]!.id);
-      expect(page.landedOn).not.toBe(all[3]!.id);
+      expect(page.landedAt).toBe(all[4]!.id);
+      expect(page.landedAt).not.toBe(all[3]!.id);
     });
   });
 

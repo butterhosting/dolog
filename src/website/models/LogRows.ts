@@ -1,3 +1,4 @@
+import { Uuid } from "@/helpers/Uuid";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Temporal } from "@js-temporal/polyfill";
 
@@ -38,17 +39,42 @@ export namespace LogRows {
     landedAtEnd: boolean;
   };
 
+  /**
+   * What the reader marked, as the url holds it: a line they pinned, or a moment they jumped to.
+   *
+   * One tagged value rather than two loose fields, because the two are alternatives and never
+   * co-exist -- and because everything that reads them has to ask which kind it is first. A
+   * timestamp keeps its instant rather than just its shape, since where its seam falls against a
+   * day heading is decided by comparing the two.
+   */
+  type Marker =
+    | { kind: "timestamp"; value: Temporal.Instant } //
+    | { kind: "id"; value: string };
+
   export type Options = {
     events: ContainerEvent[];
     /** Whether there is still data above this window (if not, show a marker on its first line) */
     hasOlder: boolean;
-    /** The instant the reader navigated to, or null when no marker is wanted at all. */
-    landedAt: Temporal.Instant | null;
-    /** The line the *server* settled on for that instant, rather than one re-derived here. */
+    /** What the reader marked, or null for no marker at all -- a dismissed one included. */
+    marker: Marker | null;
+    /** The line the *server* settled on for a moment, rather than one re-derived here. */
     landedOn: string | null;
-    /** The line the reader pinned outright, which is a different marker from a landed instant. */
-    pinnedLine?: string | null;
   };
+
+  /**
+   * The url's marker, told apart by shape -- the same rule the api applies to `at`, which is what
+   * lets the client hand its marker over untouched and still know how to draw it.
+   */
+  export function parseMarker(value: string | null): Marker | null {
+    if (!value) {
+      return null;
+    }
+    if (Uuid.check(value)) {
+      return { kind: "id", value };
+    }
+    const instant = parseInstant(value);
+    return instant ? { kind: "timestamp", value: instant } : null;
+  }
 
   /** Dates as displayed: the same UTC the timestamps beside each line are printed in. */
   function day(event: ContainerEvent): string {
@@ -75,7 +101,10 @@ export namespace LogRows {
     }
   }
 
-  export function build({ events, hasOlder, landedAt, landedOn, pinnedLine = null }: Options): Result {
+  export function build({ events, hasOlder, marker, landedOn }: Options): Result {
+    // the two markers are drawn differently, so each is pulled out as the thing it draws
+    const landedAt = marker?.kind === "timestamp" ? marker.value : null;
+    const pinnedLine = marker?.kind === "id" ? marker.value : null;
     // `landedAt` says whether a marker is wanted at all; `landedOn` says where the server put it
     const landedIndex = !landedAt || !landedOn ? -1 : events.findIndex((event) => event.id === landedOn);
     /**

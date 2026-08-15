@@ -31,10 +31,10 @@ export function useContainerLogs({
   const socketClient = useRegistry(SocketClient);
   const dialogClient = useRegistry(DialogClient);
 
-  const pinnedAt = parameters.get(useContainerLogs.AT_PARAM);
+  const at = parameters.get(useContainerLogs.AT_PARAM);
 
   const [events, setEvents] = useState<ContainerEvent[]>([]);
-  const [anchor, setAnchor] = useState<useContainerLogs.Anchor | null>(() => Internal.parseAnchor(pinnedAt));
+  const [anchor, setAnchor] = useState<useContainerLogs.Anchor | null>(() => Internal.parseAnchor(at));
 
   const [loading, setLoading] = useState(true);
   const loadingOlder = useRef(false);
@@ -51,20 +51,19 @@ export function useContainerLogs({
   const hasMissedDataWhilePaused = useRef(false);
 
   /**
+   * Read from the url rather than from `anchor`, and the two are not the same: dismissing the marker
+   * clears the url but deliberately leaves the anchor where it is, so the mark goes while the window
+   * the reader is standing in stays.
+   */
+  const marker = useMemo(() => LogRows.parseMarker(at), [at]);
+
+  /**
    * The lines plus their markers. Recomputed only when the list actually changes, since it walks
    * every rendered event and the live feed re-renders this component every second.
    */
   const { rows, landedAtEnd } = useMemo(
-    () =>
-      LogRows.build({
-        events,
-        hasOlder,
-        // a pinned line is `at` too, so only an instant may draw a seam -- see `Internal.toAnchor`
-        landedAt: LogRows.parseInstant(pinnedAt),
-        landedOn,
-        pinnedLine: pinnedAt && Uuid.check(pinnedAt) ? pinnedAt : null,
-      }),
-    [events, hasOlder, pinnedAt, landedOn],
+    () => LogRows.build({ events, hasOlder, marker, landedOn }),
+    [events, hasOlder, marker, landedOn],
   );
 
   /**
@@ -180,7 +179,7 @@ export function useContainerLogs({
       const missed = anchor ? [] : arrivedDuringFetch.filter((event) => !shown.has(event.id));
       const window = [...page.data, ...missed];
       setEvents(anchor ? window : window.slice(-LINES_PER_PAGE));
-      setLandedOn(page.landedOn ?? null);
+      setLandedOn(page.landedAt ?? null);
       setHasOlder(page.hasOlder);
       setHasNewer(page.hasNewer);
       setReachesLiveFeed(page.reachesLiveFeed);
@@ -368,11 +367,11 @@ export function useContainerLogs({
   );
 
   const openJumpDialog = useCallback(async () => {
-    const chosen = await dialogClient.jumpTo(LogRows.parseInstant(pinnedAt) ?? undefined);
+    const chosen = await dialogClient.jumpTo(LogRows.parseInstant(at) ?? undefined);
     if (chosen !== "cancel") {
       jumpTo(chosen);
     }
-  }, [dialogClient, jumpTo, pinnedAt]);
+  }, [dialogClient, jumpTo, at]);
 
   /**
    * Pins one message, by the reader clicking its timestamp.
@@ -384,7 +383,7 @@ export function useContainerLogs({
    */
   const togglePinnedLine = useCallback(
     (lineId: string) => {
-      if (pinnedAt === lineId) {
+      if (at === lineId) {
         setParameters(Internal.withoutPin, { replace: true });
         setAnchor(null);
         return;
@@ -392,7 +391,7 @@ export function useContainerLogs({
       setParameters((previous) => Internal.withPin(previous, lineId), { replace: true });
       setAnchor({ kind: "id", value: lineId });
     },
-    [pinnedAt, setParameters],
+    [at, setParameters],
   );
 
   /**
@@ -445,7 +444,7 @@ export function useContainerLogs({
     hasOlder,
     hasNewer,
     anchor,
-    pinnedAt,
+    at,
     atLiveEnd,
     handleScroll,
     jumpToLive,
@@ -458,18 +457,21 @@ export function useContainerLogs({
 }
 
 namespace Internal {
-  export function parseAnchor(pinnedAt: string | null): useContainerLogs.Anchor | null {
-    if (!pinnedAt) {
+  /**
+   * Where the window was fetched around, which is the same value the marker is read from and told
+   * apart by the same rule -- so it is asked for once, in {@link LogRows.parseMarker}, and only the
+   * instant is put back into the string the request will carry.
+   *
+   * An unparseable `at` anchors nothing: it used to become one anyway, and with no marker to show
+   * for it the window merely believed it was parked in history, paused the feed, and opened halfway
+   * up a log the reader had never asked to leave.
+   */
+  export function parseAnchor(at: string | null): useContainerLogs.Anchor | null {
+    const marker = LogRows.parseMarker(at);
+    if (!marker) {
       return null;
     }
-    if (Uuid.check(pinnedAt)) {
-      return { kind: "id", value: pinnedAt };
-    }
-    const instant = LogRows.parseInstant(pinnedAt);
-    if (instant) {
-      return { kind: "timestamp", value: instant.toString() };
-    }
-    return null;
+    return marker.kind === "id" ? marker : { kind: "timestamp", value: marker.value.toString() };
   }
 
   /**
@@ -532,7 +534,7 @@ export namespace useContainerLogs {
      * The marker as it stands, for the few decisions outside this hook that turn on whether the
      * reader deliberately marked a spot -- applying a filter being the one that does.
      */
-    pinnedAt: string | null;
+    at: string | null;
     /** Sitting at the bottom *of the live feed*, which is not the same as the bottom of the window. */
     atLiveEnd: boolean;
     handleScroll: () => void;

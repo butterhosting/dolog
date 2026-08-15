@@ -40,7 +40,7 @@ export function containerLogsPage() {
 
   const applyFilter = useCallback(() => {
     logFilter.formState.apply();
-    if (!containerLogs.pinnedAt) {
+    if (!containerLogs.at) {
       containerLogs.returnToLiveFeed();
     }
   }, [logFilter, containerLogs]);

@@ -85,6 +85,7 @@ export class LogService {
     const afterCount = Math.min(after.data.length, limit - Math.min(before.data.length, half));
     const beforeCount = Math.min(before.data.length, limit - afterCount);
 
+    const landedAt = after.data.at(0)?.id;
     const hasNewer = after.data.length > afterCount || after.hasNewer;
     const hasOlder = before.data.length > beforeCount || before.hasOlder;
     return {
@@ -95,13 +96,7 @@ export class LogService {
       hasOlder,
       hasNewer,
       reachesLiveFeed: this.eventRepository.reachesLiveFeed({ hasNewer, filter }),
-      /**
-       * Where the anchor actually landed, which is not always where it aimed: a filter can exclude
-       * the very line that was pinned, and a moment can fall past everything logged. Absent means
-       * "nothing at or after it" -- the window served is the tail of history, and the client draws
-       * the marker below the last line rather than between two of them.
-       */
-      landedOn: after.data.at(0)?.id,
+      landedAt,
     };
   }
 
@@ -251,7 +246,15 @@ export namespace LogService {
     .and(FilterSubQuery);
 
   export type ListResult = EventRepository.ListResult & {
-    landedOn?: string;
+    /**
+     * The line an `at` settled on, which is not always the one it named: a filter can exclude the
+     * very line that was pinned, and a moment can fall past everything logged.
+     *
+     * Optional because only one of the three ways to list has a landing at all -- a cursor page and
+     * the live end were never aimed at anything. Absent alongside an `at` means "nothing at or after
+     * it", and the window served is the tail of history.
+     */
+    landedAt?: string;
   };
   export namespace ListResult {
     export const parse = ZodParser.forType<ListResult>()
@@ -261,7 +264,7 @@ export namespace LogService {
           hasOlder: z.boolean(),
           hasNewer: z.boolean(),
           reachesLiveFeed: z.boolean(),
-          landedOn: z.string().optional(),
+          landedAt: z.string().optional(),
         }),
       )
       .ensureTypeMatchesSchema();
