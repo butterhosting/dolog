@@ -89,7 +89,7 @@ export function useContainerLogs({
      * it, which is not always on the first row -- asking for a time past the end of the log puts it
      * below the last one.
      */
-    const target = anchor.kind === "line" ? LogRow.element(element, anchor.value) : LogRow.landed(element);
+    const target = anchor.kind === "id" ? LogRow.element(element, anchor.value) : LogRow.landed(element);
     if (!target) {
       // nothing was drawn for it: what they were shown instead is the end of history
       if (element) {
@@ -390,7 +390,7 @@ export function useContainerLogs({
         return;
       }
       setParameters((previous) => Internal.withPin(previous, lineId), { replace: true });
-      setAnchor({ kind: "line", value: lineId });
+      setAnchor({ kind: "id", value: lineId });
     },
     [pinnedAt, setParameters],
   );
@@ -402,7 +402,7 @@ export function useContainerLogs({
   const anchorToLine = useCallback(
     (lineId: string) => {
       setParameters(Internal.withoutPin, { replace: true });
-      setAnchor({ kind: "line", value: lineId });
+      setAnchor({ kind: "id", value: lineId });
     },
     [setParameters],
   );
@@ -463,7 +463,7 @@ namespace Internal {
       return null;
     }
     if (Uuid.check(pinnedAt)) {
-      return { kind: "line", value: pinnedAt };
+      return { kind: "id", value: pinnedAt };
     }
     const instant = LogRows.parseInstant(pinnedAt);
     if (instant) {
@@ -508,7 +508,7 @@ export namespace useContainerLogs {
 
   export type Anchor =
     | { kind: "timestamp"; value: string } //
-    | { kind: "line"; value: string };
+    | { kind: "id"; value: string };
 
   export type Options = {
     containerId: string;

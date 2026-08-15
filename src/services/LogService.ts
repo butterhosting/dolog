@@ -68,20 +68,14 @@ export class LogService {
     limit: number,
     filter: EventRepository.Filter,
   ): Promise<LogService.ListResult> {
-    /**
-     * A pinned line is the boundary itself, so the window includes it. A moment names no line at
-     * all, so it becomes the smallest uuid that millisecond could have minted and is read
-     * exclusively from there -- which lands on the first line at or after the moment asked for.
-     */
-    const anchoredOnLine = anchor.kind === "line";
-    const boundary = anchoredOnLine ? anchor.value : Uuid.fromBytes(Uuid.lowerBoundAt(anchor.value));
+    const anchorBoundary = anchor.kind === "id" ? anchor.value : Uuid.fromBytes(Uuid.lowerBoundAt(anchor.value));
 
     const [before, after] = await Promise.all([
-      this.eventRepository.listEvents(containerId, limit, { before: boundary, beforeInclusivity: "exclusive" }, filter),
+      this.eventRepository.listEvents(containerId, limit, { before: anchorBoundary, beforeInclusivity: "exclusive" }, filter),
       this.eventRepository.listEvents(
         containerId,
         limit,
-        { after: boundary, afterInclusivity: anchoredOnLine ? "inclusive" : "exclusive" },
+        { after: anchorBoundary, afterInclusivity: anchor.kind === "id" ? "inclusive" : "exclusive" },
         filter,
       ),
     ]);
@@ -92,10 +86,13 @@ export class LogService {
     const beforeCount = Math.min(before.data.length, limit - afterCount);
 
     const hasNewer = after.data.length > afterCount || after.hasNewer;
+    const hasOlder = before.data.length > beforeCount || before.hasOlder;
     return {
-      // both sides read oldest-first, so the ones nearest the anchor are the tail of one and the head of the other
-      data: [...before.data.slice(before.data.length - beforeCount), ...after.data.slice(0, afterCount)],
-      hasOlder: before.data.length > beforeCount || before.hasOlder,
+      data: [
+        ...before.data.slice(before.data.length - beforeCount), //
+        ...after.data.slice(0, afterCount),
+      ],
+      hasOlder,
       hasNewer,
       reachesLiveFeed: this.eventRepository.reachesLiveFeed({ hasNewer, filter }),
       /**
@@ -221,7 +218,7 @@ export namespace LogService {
   };
 
   export type Anchor =
-    | { kind: "line"; value: string } //
+    | { kind: "id"; value: string } //
     | { kind: "timestamp"; value: Temporal.Instant };
 
   export type ListQuery = z.input<typeof ListQuery>;
@@ -240,7 +237,7 @@ export namespace LogService {
         .string()
         .transform((value, ctx): LogService.Anchor => {
           if (Uuid.check(value)) {
-            return { kind: "line", value };
+            return { kind: "id", value };
           }
           try {
             return { kind: "timestamp", value: Temporal.Instant.from(value) };
