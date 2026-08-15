@@ -9,10 +9,11 @@ import { DialogClient } from "../clients/DialogClient";
 import { LogClient } from "../clients/LogClient";
 import { SocketClient } from "../clients/SocketClient";
 import { LogRow } from "../comps/logviewer/LogRow";
-import { LogRows } from "../models/LogRows";
 import { useLogFilter } from "./useLogFilter";
 import { useRegistry } from "./useRegistry";
 import { useStickyScroll } from "./useStickyScroll";
+import { Line } from "../rendering/Line";
+import { Renderer } from "../rendering/Renderer";
 
 const LINES_PER_PAGE = 300;
 
@@ -31,6 +32,7 @@ export function useContainerLogs({
   const logClient = useRegistry(LogClient);
   const socketClient = useRegistry(SocketClient);
   const dialogClient = useRegistry(DialogClient);
+  const renderer = useRegistry(Renderer);
 
   const atParam = parameters.get(useContainerLogs.AT_PARAM);
   const at = useMemo(() => LogAnchor.parse(atParam), [atParam]);
@@ -56,9 +58,9 @@ export function useContainerLogs({
    * The lines plus their markers. Recomputed only when the list actually changes, since it walks
    * every rendered event and the live feed re-renders this component every second.
    */
-  const { rows, landedAtEnd } = useMemo(
-    () => LogRows.build({ events, hasOlder, marker: at, landedOn: landedAt }),
-    [events, hasOlder, at, landedAt],
+  const lines = useMemo(
+    () => renderer.render({ events, hasOlder, hasNewer, at, landedAt }), //
+    [events, hasOlder, hasNewer, at, landedAt],
   );
 
   /**
@@ -74,7 +76,7 @@ export function useContainerLogs({
    */
   const scrolledTo = useRef<string | null>(null);
   useEffect(() => {
-    if (!anchor || loading || rows.length === 0 || scrolledTo.current === LogAnchor.format(anchor)) {
+    if (!anchor || loading || lines.length === 0 || scrolledTo.current === LogAnchor.format(anchor)) {
       return;
     }
     const element = ref.current;
@@ -95,7 +97,7 @@ export function useContainerLogs({
     scrolledTo.current = LogAnchor.format(anchor);
     // put what they asked for in the middle of the view rather than at an edge
     target.scrollIntoView({ block: "center" });
-  }, [anchor, loading, rows, ref]);
+  }, [anchor, loading, lines, ref]);
 
   /** What is on screen, for callbacks that would otherwise be rebuilt on every arriving line. */
   const rendered = useRef<ContainerEvent[]>([]);
@@ -434,11 +436,8 @@ export function useContainerLogs({
     ref,
     events,
     rendered,
-    rows,
-    landedAtEnd,
+    lines,
     loading,
-    hasOlder,
-    hasNewer,
     anchor,
     at,
     atLiveEnd,
@@ -499,11 +498,8 @@ export namespace useContainerLogs {
     events: ContainerEvent[];
     /** What is on screen, for callers that must not be rebuilt on every arriving line. */
     rendered: RefObject<ContainerEvent[]>;
-    rows: LogRows.Row[];
-    landedAtEnd: boolean;
+    lines: Line[];
     loading: boolean;
-    hasOlder: boolean;
-    hasNewer: boolean;
     anchor: LogAnchor | null;
     /**
      * The marker as it stands, for the few decisions outside this hook that turn on whether the

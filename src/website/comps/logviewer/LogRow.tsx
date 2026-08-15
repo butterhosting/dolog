@@ -1,6 +1,9 @@
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { Direction } from "@/models/Direction";
 import { StreamVariant } from "@/models/StreamVariant";
 import clsx from "clsx";
+import { ReactNode } from "react";
+import { Line } from "../../rendering/Line";
 
 /**
  * A row of the log, and the markers that can sit above one.
@@ -11,18 +14,11 @@ import clsx from "clsx";
  */
 export namespace LogRow {
   /**
-   * The seam a navigation landed on. Drawn across the boundary between two rows rather than inside
-   * one, and absolutely so: it marks the seam without occupying it, adds no height, and never joins
-   * a copied selection. The insets bleed it into the container's padding so it spans the full width.
-   *
-   * Its host is whichever row edge the instant fell on, so it needs a positioned parent either way.
-   */
-  /**
    * The one thing in the column that takes a click, so it is the one thing that keeps its pointer
-   * events. Straddling the left edge puts it clear of the timestamps at any width. It wears the
-   * marker's own colour, because it belongs to the marker rather than to the log.
+   * events. Straddling the left edge puts it clear of the timestamps at any width, and it wears the
+   * mark's own colour because it belongs to the mark rather than to the log.
    */
-  function DismissPin({ onDismiss, className }: { onDismiss: () => void; className: string }) {
+  function DismissButton({ onDismiss, className }: { onDismiss: () => void; className: string }) {
     return (
       <button
         onClick={onDismiss}
@@ -38,60 +34,89 @@ export namespace LogRow {
     );
   }
 
-  function LandingRule({ onDismiss }: { onDismiss: () => void }) {
+  /**
+   * The mark a navigation landed on, as a line of its own.
+   *
+   * The rule is drawn on this element's own top edge and absolutely so: it marks the boundary
+   * without occupying it, adds no height, and never joins a copied selection. The insets bleed it
+   * into the container's padding so it spans the full width.
+   *
+   * `pastEveryLine` is the exception that has to carry height, since nothing follows it for the rule
+   * to sit against -- and it says why it is there, which is otherwise not obvious at the very bottom
+   * of a log.
+   */
+  export function TimestampPin({ row, onDismiss }: { row: Line.TimestampPin; onDismiss: () => void }) {
     return (
-      <>
+      <div data-landed="" className={clsx("relative", row.pastEveryLine && "pt-3 text-[11px] text-c-dark-half")}>
         <span aria-hidden className="pointer-events-none absolute -left-4 -right-4 -top-px h-px bg-c-action" />
-        <DismissPin onDismiss={onDismiss} className="-top-2" />
-      </>
+        <DismissButton onDismiss={onDismiss} className="-top-2" />
+        {row.pastEveryLine && <span className="block text-center">nothing was logged after this</span>}
+      </div>
+    );
+  }
+
+  /**
+   * The quiet notes around the list -- where it begins, and which way there is more of it. Dimmed to
+   * one register together, so the pin stays the only coloured thing in the column.
+   */
+  function Note({ type, children, className }: { type: Line.Type; children: ReactNode; className?: string }) {
+    // named in the dom, so a note can be found by what it is rather than by what it happens to say
+    return (
+      <div data-row={type} className={clsx("text-c-dark-half text-center", className)}>
+        {children}
+      </div>
+    );
+  }
+
+  export function BeginningMarker({ row }: { row: Line.BeginningMarker }) {
+    return (
+      <Note type={row.type} className="pb-2">
+        that is the beginning
+      </Note>
+    );
+  }
+
+  export function MoreMarker({ row }: { row: Line.MoreMarker }) {
+    // the model says which way; the wording is this file's business
+    return row.direction === Direction.backwards_in_time ? (
+      <Note type={row.type} className="pb-2">
+        scroll up for more
+      </Note>
+    ) : (
+      <Note type={row.type} className="pt-2">
+        scroll down for more
+      </Note>
     );
   }
 
   /**
    * Deliberately quiet: this only says which day the lines beneath it belong to, and a filled pill
    * gave that more weight than the log itself. Dimmed to the same register as the other notes around
-   * the list, which also leaves the landing rule as the one coloured thing in the column.
+   * the list, which also leaves the pin as the one coloured thing in the column.
    */
-  export function DayMarker({ date, landedOn, onDismiss }: { date: string; landedOn: boolean; onDismiss: () => void }) {
+  export function DayMarker({ row }: { row: Line.DayMarker }) {
     return (
-      <div data-landed={landedOn ? "" : undefined} className="relative flex justify-center py-3 text-[11px] tracking-wide text-c-dark-half">
-        {landedOn && <LandingRule onDismiss={onDismiss} />}
-        {date}
-      </div>
-    );
-  }
-
-  /**
-   * The marker when it sits past every line. Carries the height the rule cannot supply itself,
-   * since it is drawn on this element's top edge and would otherwise hang off the end of the list.
-   */
-  export function TrailingMarker({ onDismiss }: { onDismiss: () => void }) {
-    return (
-      <div data-landed="" className="relative pt-3 text-[11px] text-c-dark-half">
-        <LandingRule onDismiss={onDismiss} />
-        <span className="block text-center">nothing was logged after this</span>
+      <div className="relative flex justify-center py-3 text-[11px] tracking-wide text-c-dark-half">
+        {/* the date carries its own printing, so the row hands over the day rather than a rendering of it */}
+        {row.date.toString()}
       </div>
     );
   }
 
   export function Line({
-    event,
-    landedOn,
-    pinned,
+    row,
     onDismiss,
     onTogglePin,
     matched,
     current,
   }: {
-    event: ContainerEvent;
-    landedOn: boolean;
-    /** Whether this is the message the reader pinned, as opposed to a moment landing above it. */
-    pinned: boolean;
+    row: Line.Event;
     onDismiss: () => void;
     onTogglePin: () => void;
     matched: boolean;
     current: boolean;
   }) {
+    const { event, pinned } = row;
     const time = event.timestamp.toString({ smallestUnit: "second" }).replace("T", " ").replace("Z", "");
     return (
       /*
@@ -101,7 +126,7 @@ export namespace LogRow {
        */
       <div
         data-event={event.id}
-        data-landed={landedOn || pinned ? "" : undefined}
+        data-landed={pinned ? "" : undefined}
         className={clsx(
           "relative flex gap-3 whitespace-pre-wrap break-all",
           // every match is lit, faintly; the one being stepped through is lit enough to find at a glance
@@ -112,8 +137,7 @@ export namespace LogRow {
           pinned && "-mx-1 rounded-sm px-1 ring-2 ring-c-action",
         )}
       >
-        {landedOn && <LandingRule onDismiss={onDismiss} />}
-        {pinned && <DismissPin onDismiss={onDismiss} className="top-1/2 -translate-y-1/2" />}
+        {pinned && <DismissButton onDismiss={onDismiss} className="top-1/2 -translate-y-1/2" />}
         {/*
          * The timestamp is the handle for pinning, which is why it is the one part of a line that
          * takes a click: it is already the line's name in every other context -- what the day marker

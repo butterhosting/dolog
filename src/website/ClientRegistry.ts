@@ -7,6 +7,7 @@ import { ContainerClient } from "./clients/ContainerClient";
 import { DialogClient } from "./clients/DialogClient";
 import { LogClient } from "./clients/LogClient";
 import { SocketClient } from "./clients/SocketClient";
+import { Renderer } from "./rendering/Renderer";
 
 export class ClientRegistry {
   /**
@@ -45,6 +46,7 @@ export class ClientRegistry {
     this.registry[DialogClient.name] = new DialogClient();
     this.registry[ContainerClient.name] = new ContainerClient(yesttp);
     this.registry[LogClient.name] = new LogClient(yesttp);
+    this.registry[Renderer.name] = new Renderer();
   }
 
   public getEnv() {

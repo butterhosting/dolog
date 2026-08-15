@@ -1,15 +1,16 @@
 import clsx from "clsx";
-import { Fragment, useCallback } from "react";
+import { useCallback } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { FindBar } from "../comps/logviewer/FindBar";
 import { LogRow } from "../comps/logviewer/LogRow";
 import { LogToolbar } from "../comps/logviewer/LogToolbar";
 import { Spinner } from "../comps/Spinner";
+import { useContainerLogs } from "../hooks/useContainerLogs";
 import { useContainerName } from "../hooks/useContainerName";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useLogFilter } from "../hooks/useLogFilter";
 import { useLogSearch } from "../hooks/useLogSearch";
-import { useContainerLogs } from "../hooks/useContainerLogs";
+import { Line } from "../rendering/Line";
 import { Route } from "../Route";
 
 export function containerLogsPage() {
@@ -68,46 +69,48 @@ export function containerLogsPage() {
           onScroll={containerLogs.handleScroll}
           className="h-full overflow-y-auto [overflow-anchor:none] bg-c-dark-full text-gray-200 font-mono text-xs p-4 leading-relaxed"
         >
-          {containerLogs.loading ? (
+          {containerLogs.loading && (
             <div className="flex justify-center py-8">
               <Spinner />
             </div>
-          ) : (
-            <>
-              {/* an empty window means something different once a time was asked for: logs may well exist, just not there */}
-              {containerLogs.events.length === 0 && (
-                <div className="text-c-dark-half py-8 text-center">
-                  {logFilter.isActiveFilterNarrowing
-                    ? "Nothing in this container matches the filter"
-                    : containerLogs.anchor?.kind === "timestamp"
-                      ? "Nothing was logged at or after that time"
-                      : "No logs recorded yet"}
-                </div>
-              )}
-              {containerLogs.hasOlder && <div className="text-c-dark-half text-center pb-2">scroll up for more</div>}
-              {!containerLogs.hasOlder && containerLogs.events.length > 0 && (
-                <div className="text-c-dark-half text-center pb-2">that is the beginning</div>
-              )}
-            </>
           )}
-          {containerLogs.rows.map(({ event, opensDay, landedOn, pinned }) => (
-            <Fragment key={event.id}>
-              {opensDay && <LogRow.DayMarker date={opensDay} landedOn={landedOn === "day"} onDismiss={containerLogs.dismissPin} />}
-              <LogRow.Line
-                event={event}
-                landedOn={landedOn === "line"}
-                pinned={pinned}
-                onDismiss={containerLogs.dismissPin}
-                onTogglePin={() => containerLogs.togglePinnedLine(event.id)}
-                matched={logSearch.matched.has(event.id)}
-                current={event.id === logSearch.currentMatch}
-              />
-            </Fragment>
-          ))}
-          {containerLogs.landedAtEnd && <LogRow.TrailingMarker onDismiss={containerLogs.dismissPin} />}
-          {!containerLogs.loading && containerLogs.hasNewer && (
-            <div className="text-c-dark-half text-center pt-2">scroll down for more</div>
+          {/*
+           * The one thing about an empty window that `Renderer` cannot say: *why* it is empty. That
+           * answer needs the filter as well as the window, so it is the page that gives it.
+           */}
+          {!containerLogs.loading && containerLogs.lines.length === 0 && (
+            <div className="text-c-dark-half py-8 text-center">
+              {logFilter.isActiveFilterNarrowing
+                ? "Nothing in this container matches the filter"
+                : containerLogs.anchor?.kind === "timestamp"
+                  ? "Nothing was logged at or after that time"
+                  : "No logs recorded yet"}
+            </div>
           )}
+          {containerLogs.lines.map((line) => {
+            switch (line.type) {
+              case Line.Type.beginning_marker:
+                return <LogRow.BeginningMarker key="beginning" row={line} />;
+              case Line.Type.more_marker:
+                return <LogRow.MoreMarker key={`more-${line.direction}`} row={line} />;
+              case Line.Type.day_marker:
+                return <LogRow.DayMarker key={`day-${line.date.toString()}`} row={line} />;
+              case Line.Type.timestamp_pin:
+                // at most one of these exists, so it needs no key of its own
+                return <LogRow.TimestampPin key="pin" row={line} onDismiss={containerLogs.dismissPin} />;
+              case Line.Type.event:
+                return (
+                  <LogRow.Line
+                    key={line.event.id}
+                    row={line}
+                    onDismiss={containerLogs.dismissPin}
+                    onTogglePin={() => containerLogs.togglePinnedLine(line.event.id)}
+                    matched={logSearch.matched.has(line.event.id)}
+                    current={line.event.id === logSearch.currentMatch}
+                  />
+                );
+            }
+          })}
         </div>
 
         {logSearch.finding && <FindBar search={logSearch} />}
