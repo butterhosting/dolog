@@ -68,18 +68,6 @@ export namespace LogRows {
     return Temporal.Instant.from(`${date}T00:00:00Z`);
   }
 
-  /** The URL is whatever was typed into it, so an unparseable one simply marks nothing. */
-  export function parseInstant(value: string | null): Temporal.Instant | null {
-    if (!value) {
-      return null;
-    }
-    try {
-      return Temporal.Instant.from(value);
-    } catch {
-      return null;
-    }
-  }
-
   export function build({ events, hasOlder, marker, landedOn }: Options): Result {
     // the two markers are drawn differently, so each is pulled out as the thing it draws
     const landedAt = marker?.kind === "timestamp" ? marker.value : null;

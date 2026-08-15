@@ -184,14 +184,4 @@ describe("LogRows", () => {
     });
   });
 
-  describe("parseInstant", () => {
-    it("reads an instant back out of the url", () => {
-      expect(LogRows.parseInstant("2026-03-01T09:00:00Z")?.toString()).toEqual("2026-03-01T09:00:00Z");
-    });
-
-    it.each([null, "", "not-a-time", "2026-13-45T99:00:00Z"])("marks nothing for %p", (value) => {
-      // then -- the url is whatever was typed into it, which is not an error worth showing
-      expect(LogRows.parseInstant(value)).toEqual(null);
-    });
-  });
 });

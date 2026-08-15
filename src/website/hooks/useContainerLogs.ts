@@ -32,10 +32,11 @@ export function useContainerLogs({
   const socketClient = useRegistry(SocketClient);
   const dialogClient = useRegistry(DialogClient);
 
-  const at = parameters.get(useContainerLogs.AT_PARAM);
+  const atParam = parameters.get(useContainerLogs.AT_PARAM);
+  const at = useMemo(() => LogAnchor.parse(atParam), [atParam]);
 
   const [events, setEvents] = useState<ContainerEvent[]>([]);
-  const [anchor, setAnchor] = useState<LogAnchor | null>(() => LogAnchor.parse(at));
+  const [anchor, setAnchor] = useState<LogAnchor | null>(at);
 
   const [loading, setLoading] = useState(true);
   const loadingOlder = useRef(false);
@@ -51,15 +52,13 @@ export function useContainerLogs({
   const isFollowingStream = useRef(true);
   const hasMissedDataWhilePaused = useRef(false);
 
-  const marker = useMemo(() => LogAnchor.parse(at), [at]);
-
   /**
    * The lines plus their markers. Recomputed only when the list actually changes, since it walks
    * every rendered event and the live feed re-renders this component every second.
    */
   const { rows, landedAtEnd } = useMemo(
-    () => LogRows.build({ events, hasOlder, marker, landedOn: landedAt }),
-    [events, hasOlder, marker, landedAt],
+    () => LogRows.build({ events, hasOlder, marker: at, landedOn: landedAt }),
+    [events, hasOlder, at, landedAt],
   );
 
   /**
@@ -351,9 +350,9 @@ export function useContainerLogs({
    */
   const jumpTo = useCallback(
     (instant: Temporal.Instant) => {
-      const at = instant.toString();
-      setParameters((previous) => Internal.withPin(previous, at));
-      if (anchor?.kind !== "timestamp" || LogAnchor.format(anchor) !== at) {
+      const jumped = instant.toString();
+      setParameters((previous) => Internal.withPin(previous, jumped));
+      if (anchor?.kind !== "timestamp" || LogAnchor.format(anchor) !== jumped) {
         setAnchor({ kind: "timestamp", value: instant });
         return;
       }
@@ -363,7 +362,8 @@ export function useContainerLogs({
   );
 
   const openJumpDialog = useCallback(async () => {
-    const chosen = await dialogClient.jumpTo(LogRows.parseInstant(at) ?? undefined);
+    // the dialog opens on the moment already marked, if the mark is a moment at all
+    const chosen = await dialogClient.jumpTo(at?.kind === "timestamp" ? at.value : undefined);
     if (chosen !== "cancel") {
       jumpTo(chosen);
     }
@@ -379,7 +379,7 @@ export function useContainerLogs({
    */
   const togglePinnedLine = useCallback(
     (lineId: string) => {
-      if (at === lineId) {
+      if (at?.kind === "id" && at.value === lineId) {
         setParameters(Internal.withoutPin, { replace: true });
         setAnchor(null);
         return;
@@ -509,7 +509,7 @@ export namespace useContainerLogs {
      * The marker as it stands, for the few decisions outside this hook that turn on whether the
      * reader deliberately marked a spot -- applying a filter being the one that does.
      */
-    at: string | null;
+    at: LogAnchor | null;
     /** Sitting at the bottom *of the live feed*, which is not the same as the bottom of the window. */
     atLiveEnd: boolean;
     handleScroll: () => void;
