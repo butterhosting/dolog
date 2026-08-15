@@ -7,6 +7,7 @@ import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";
+import { LogAnchor } from "@/models/LogAnchor";
 import { LogPattern } from "@/models/LogPattern";
 import { EventRepository } from "@/repositories/EventRepository";
 import { SocketService } from "@/services/SocketService";
@@ -64,7 +65,7 @@ export class LogService {
 
   private async listAround(
     containerId: string,
-    anchor: LogService.Anchor,
+    anchor: LogAnchor,
     limit: number,
     filter: EventRepository.Filter,
   ): Promise<LogService.ListResult> {
@@ -212,10 +213,6 @@ export namespace LogService {
     id: string | undefined;
   };
 
-  export type Anchor =
-    | { kind: "id"; value: string } //
-    | { kind: "timestamp"; value: Temporal.Instant };
-
   export type ListQuery = z.input<typeof ListQuery>;
   export const ListQuery = z
     .object({
@@ -230,30 +227,19 @@ export namespace LogService {
         .transform((requested) => Math.min(requested, 500)), // = maximum number of events per page
       at: z
         .string()
-        .transform((value, ctx): LogService.Anchor => {
-          if (Uuid.check(value)) {
-            return { kind: "id", value };
-          }
-          try {
-            return { kind: "timestamp", value: Temporal.Instant.from(value) };
-          } catch {
+        .transform((value, ctx): LogAnchor => {
+          const anchor = LogAnchor.parse(value);
+          if (!anchor) {
             ctx.addIssue({ code: "custom", message: "must be a line id (uuid) or an instant" });
             return z.NEVER;
           }
+          return anchor;
         })
         .optional(),
     })
     .and(FilterSubQuery);
 
   export type ListResult = EventRepository.ListResult & {
-    /**
-     * The line an `at` settled on, which is not always the one it named: a filter can exclude the
-     * very line that was pinned, and a moment can fall past everything logged.
-     *
-     * Optional because only one of the three ways to list has a landing at all -- a cursor page and
-     * the live end were never aimed at anything. Absent alongside an `at` means "nothing at or after
-     * it", and the window served is the tail of history.
-     */
     landedAt?: string;
   };
   export namespace ListResult {

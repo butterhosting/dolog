@@ -1,5 +1,5 @@
-import { Uuid } from "@/helpers/Uuid";
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { LogAnchor } from "@/models/LogAnchor";
 import { Temporal } from "@js-temporal/polyfill";
 
 /**
@@ -39,42 +39,21 @@ export namespace LogRows {
     landedAtEnd: boolean;
   };
 
-  /**
-   * What the reader marked, as the url holds it: a line they pinned, or a moment they jumped to.
-   *
-   * One tagged value rather than two loose fields, because the two are alternatives and never
-   * co-exist -- and because everything that reads them has to ask which kind it is first. A
-   * timestamp keeps its instant rather than just its shape, since where its seam falls against a
-   * day heading is decided by comparing the two.
-   */
-  type Marker =
-    | { kind: "timestamp"; value: Temporal.Instant } //
-    | { kind: "id"; value: string };
-
   export type Options = {
     events: ContainerEvent[];
     /** Whether there is still data above this window (if not, show a marker on its first line) */
     hasOlder: boolean;
-    /** What the reader marked, or null for no marker at all -- a dismissed one included. */
-    marker: Marker | null;
+    /**
+     * What the reader marked, or null for no marker at all -- a dismissed one included.
+     *
+     * One tagged value rather than two loose fields, because the two are alternatives and never
+     * co-exist. A timestamp keeps its instant rather than just its shape, since where its seam falls
+     * against a day heading is decided by comparing the two.
+     */
+    marker: LogAnchor | null;
     /** The line the *server* settled on for a moment, rather than one re-derived here. */
     landedOn: string | null;
   };
-
-  /**
-   * The url's marker, told apart by shape -- the same rule the api applies to `at`, which is what
-   * lets the client hand its marker over untouched and still know how to draw it.
-   */
-  export function parseMarker(value: string | null): Marker | null {
-    if (!value) {
-      return null;
-    }
-    if (Uuid.check(value)) {
-      return { kind: "id", value };
-    }
-    const instant = parseInstant(value);
-    return instant ? { kind: "timestamp", value: instant } : null;
-  }
 
   /** Dates as displayed: the same UTC the timestamps beside each line are printed in. */
   function day(event: ContainerEvent): string {

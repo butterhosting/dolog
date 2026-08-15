@@ -1,5 +1,6 @@
 import { Uuid } from "@/helpers/Uuid";
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { LogAnchor } from "@/models/LogAnchor";
 import { ServerMessage } from "@/models/socket/ServerMessage";
 import { Temporal } from "@js-temporal/polyfill";
 import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -34,7 +35,7 @@ export function useContainerLogs({
   const at = parameters.get(useContainerLogs.AT_PARAM);
 
   const [events, setEvents] = useState<ContainerEvent[]>([]);
-  const [anchor, setAnchor] = useState<useContainerLogs.Anchor | null>(() => Internal.parseAnchor(at));
+  const [anchor, setAnchor] = useState<LogAnchor | null>(() => LogAnchor.parse(at));
 
   const [loading, setLoading] = useState(true);
   const loadingOlder = useRef(false);
@@ -44,26 +45,21 @@ export function useContainerLogs({
   const [hasNewer, setHasNewer] = useState(false);
   const [reachesLiveFeed, setReachesLiveFeed] = useState(false);
 
-  const [landedOn, setLandedOn] = useState<string | null>(null);
+  const [landedAt, setLandedAt] = useState<string | null>(null);
 
   const { ref, stuck, atBottom, onScroll, scrollToBottom } = useStickyScroll<HTMLDivElement>(events, !anchor);
   const isFollowingStream = useRef(true);
   const hasMissedDataWhilePaused = useRef(false);
 
-  /**
-   * Read from the url rather than from `anchor`, and the two are not the same: dismissing the marker
-   * clears the url but deliberately leaves the anchor where it is, so the mark goes while the window
-   * the reader is standing in stays.
-   */
-  const marker = useMemo(() => LogRows.parseMarker(at), [at]);
+  const marker = useMemo(() => LogAnchor.parse(at), [at]);
 
   /**
    * The lines plus their markers. Recomputed only when the list actually changes, since it walks
    * every rendered event and the live feed re-renders this component every second.
    */
   const { rows, landedAtEnd } = useMemo(
-    () => LogRows.build({ events, hasOlder, marker, landedOn }),
-    [events, hasOlder, marker, landedOn],
+    () => LogRows.build({ events, hasOlder, marker, landedOn: landedAt }),
+    [events, hasOlder, marker, landedAt],
   );
 
   /**
@@ -79,7 +75,7 @@ export function useContainerLogs({
    */
   const scrolledTo = useRef<string | null>(null);
   useEffect(() => {
-    if (!anchor || loading || rows.length === 0 || scrolledTo.current === anchor.value) {
+    if (!anchor || loading || rows.length === 0 || scrolledTo.current === LogAnchor.format(anchor)) {
       return;
     }
     const element = ref.current;
@@ -93,11 +89,11 @@ export function useContainerLogs({
       // nothing was drawn for it: what they were shown instead is the end of history
       if (element) {
         element.scrollTop = element.scrollHeight;
-        scrolledTo.current = anchor.value;
+        scrolledTo.current = LogAnchor.format(anchor);
       }
       return;
     }
-    scrolledTo.current = anchor.value;
+    scrolledTo.current = LogAnchor.format(anchor);
     // put what they asked for in the middle of the view rather than at an edge
     target.scrollIntoView({ block: "center" });
   }, [anchor, loading, rows, ref]);
@@ -164,7 +160,7 @@ export function useContainerLogs({
        */
       const page = await logClient.list(containerId, {
         limit: LINES_PER_PAGE,
-        at: anchor?.value,
+        at: anchor ? LogAnchor.format(anchor) : undefined,
         ...useLogFilter.serialize(activeFilter),
       });
       if (cancelled) {
@@ -179,7 +175,7 @@ export function useContainerLogs({
       const missed = anchor ? [] : arrivedDuringFetch.filter((event) => !shown.has(event.id));
       const window = [...page.data, ...missed];
       setEvents(anchor ? window : window.slice(-LINES_PER_PAGE));
-      setLandedOn(page.landedAt ?? null);
+      setLandedAt(page.landedAt ?? null);
       setHasOlder(page.hasOlder);
       setHasNewer(page.hasNewer);
       setReachesLiveFeed(page.reachesLiveFeed);
@@ -357,8 +353,8 @@ export function useContainerLogs({
     (instant: Temporal.Instant) => {
       const at = instant.toString();
       setParameters((previous) => Internal.withPin(previous, at));
-      if (anchor?.kind !== "timestamp" || anchor.value !== at) {
-        setAnchor({ kind: "timestamp", value: at });
+      if (anchor?.kind !== "timestamp" || LogAnchor.format(anchor) !== at) {
+        setAnchor({ kind: "timestamp", value: instant });
         return;
       }
       requestAnimationFrame(() => LogRow.landed(ref.current)?.scrollIntoView({ block: "center" }));
@@ -458,23 +454,6 @@ export function useContainerLogs({
 
 namespace Internal {
   /**
-   * Where the window was fetched around, which is the same value the marker is read from and told
-   * apart by the same rule -- so it is asked for once, in {@link LogRows.parseMarker}, and only the
-   * instant is put back into the string the request will carry.
-   *
-   * An unparseable `at` anchors nothing: it used to become one anyway, and with no marker to show
-   * for it the window merely believed it was parked in history, paused the feed, and opened halfway
-   * up a log the reader had never asked to leave.
-   */
-  export function parseAnchor(at: string | null): useContainerLogs.Anchor | null {
-    const marker = LogRows.parseMarker(at);
-    if (!marker) {
-      return null;
-    }
-    return marker.kind === "id" ? marker : { kind: "timestamp", value: marker.value.toString() };
-  }
-
-  /**
    * Two overlapping stretches of one log, as one. Keyed by id so a line held twice is held once,
    * and sorted by it because a uuidv7 sorts the way the log reads.
    */
@@ -508,10 +487,6 @@ namespace Internal {
 export namespace useContainerLogs {
   export const AT_PARAM = "at";
 
-  export type Anchor =
-    | { kind: "timestamp"; value: string } //
-    | { kind: "id"; value: string };
-
   export type Options = {
     containerId: string;
     activeFilter: useLogFilter.Filter;
@@ -529,7 +504,7 @@ export namespace useContainerLogs {
     loading: boolean;
     hasOlder: boolean;
     hasNewer: boolean;
-    anchor: Anchor | null;
+    anchor: LogAnchor | null;
     /**
      * The marker as it stands, for the few decisions outside this hook that turn on whether the
      * reader deliberately marked a spot -- applying a filter being the one that does.
