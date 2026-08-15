@@ -45,7 +45,7 @@ export class LogService {
 
     if (listQuery.at && listQuery.cursor) {
       throw LogError.conflicting_position({
-        at: listQuery.at.toString(),
+        at: listQuery.at.value.toString(),
         cursor: listQuery.cursor,
       });
     }
@@ -54,36 +54,58 @@ export class LogService {
     if (listQuery.cursor) {
       return await this.eventRepository.listEvents(containerId, listQuery.limit, listQuery.cursor, listQuery.filter);
     }
-    // boundary-based listing (around a specific `at`-anchor in a specific directions)
+    // anchor-based listing (a window around the anchor)
     if (listQuery.at) {
-      const boundary = Uuid.fromBytes(Uuid.lowerBoundAt(listQuery.at));
-      const forwards = await this.eventRepository.listEvents(
-        containerId,
-        listQuery.limit,
-        { after: boundary, afterInclusivity: "exclusive" },
-        listQuery.filter,
-      );
-      if (forwards.data.length > 0) {
-        return {
-          ...forwards,
-          landedOn: forwards.data[0].id,
-        };
-      }
-      const backwards = await this.eventRepository.listEvents(
-        containerId,
-        listQuery.limit,
-        { before: boundary, beforeInclusivity: "exclusive" },
-        listQuery.filter,
-      );
-      return {
-        ...backwards,
-        hasNewer: false,
-        reachesLiveFeed: this.eventRepository.reachesLiveFeed({ hasNewer: false, filter: listQuery.filter }),
-        landedOn: undefined, // indicates that we couldn't find any logs past the provided `at`-boundary
-      };
+      return await this.listAround(containerId, listQuery.at, listQuery.limit, listQuery.filter);
     }
-    // most recent listing (get the latest logs, without anything to anchor)
+    // most recent listing (just get the latest logs)
     return await this.eventRepository.listEvents(containerId, listQuery.limit, {}, listQuery.filter);
+  }
+
+  private async listAround(
+    containerId: string,
+    anchor: LogService.Anchor,
+    limit: number,
+    filter: EventRepository.Filter,
+  ): Promise<LogService.ListResult> {
+    /**
+     * A pinned line is the boundary itself, so the window includes it. A moment names no line at
+     * all, so it becomes the smallest uuid that millisecond could have minted and is read
+     * exclusively from there -- which lands on the first line at or after the moment asked for.
+     */
+    const anchoredOnLine = anchor.kind === "line";
+    const boundary = anchoredOnLine ? anchor.value : Uuid.fromBytes(Uuid.lowerBoundAt(anchor.value));
+
+    const [before, after] = await Promise.all([
+      this.eventRepository.listEvents(containerId, limit, { before: boundary, beforeInclusivity: "exclusive" }, filter),
+      this.eventRepository.listEvents(
+        containerId,
+        limit,
+        { after: boundary, afterInclusivity: anchoredOnLine ? "inclusive" : "exclusive" },
+        filter,
+      ),
+    ]);
+
+    // half each, and whatever half the other side could not fill
+    const half = Math.floor(limit / 2);
+    const afterCount = Math.min(after.data.length, limit - Math.min(before.data.length, half));
+    const beforeCount = Math.min(before.data.length, limit - afterCount);
+
+    const hasNewer = after.data.length > afterCount || after.hasNewer;
+    return {
+      // both sides read oldest-first, so the ones nearest the anchor are the tail of one and the head of the other
+      data: [...before.data.slice(before.data.length - beforeCount), ...after.data.slice(0, afterCount)],
+      hasOlder: before.data.length > beforeCount || before.hasOlder,
+      hasNewer,
+      reachesLiveFeed: this.eventRepository.reachesLiveFeed({ hasNewer, filter }),
+      /**
+       * Where the anchor actually landed, which is not always where it aimed: a filter can exclude
+       * the very line that was pinned, and a moment can fall past everything logged. Absent means
+       * "nothing at or after it" -- the window served is the tail of history, and the client draws
+       * the marker below the last line rather than between two of them.
+       */
+      landedOn: after.data.at(0)?.id,
+    };
   }
 
   private parseAndValidateFindQuery(unknown: unknown) {
@@ -174,7 +196,8 @@ export namespace LogService {
     filterSince = "filterSince",
     filterUntil = "filterUntil",
   }
-  export type FilterSubQuery = z.infer<typeof FilterSubQuery>;
+
+  export type FilterSubQuery = z.input<typeof FilterSubQuery>;
   const FilterSubQuery = z.object({
     [FilterKey.filterPattern]: z.string().optional(),
     [FilterKey.filterPatternVariant]: z.enum(LogPattern.Variant).optional(),
@@ -182,7 +205,7 @@ export namespace LogService {
     [FilterKey.filterUntil]: z.string().transform(ZodParser.instant).optional(),
   });
 
-  export type FindQuery = z.infer<typeof FindQuery>;
+  export type FindQuery = z.input<typeof FindQuery>;
   export const FindQuery = z
     .object({
       searchPattern: z.string(),
@@ -197,7 +220,11 @@ export namespace LogService {
     id: string | undefined;
   };
 
-  export type ListQuery = z.infer<typeof ListQuery>;
+  export type Anchor =
+    | { kind: "line"; value: string } //
+    | { kind: "timestamp"; value: Temporal.Instant };
+
+  export type ListQuery = z.input<typeof ListQuery>;
   export const ListQuery = z
     .object({
       beforeExclusive: z.string().optional(),
@@ -209,7 +236,20 @@ export namespace LogService {
         .positive()
         .default(100) // = default number of events per page
         .transform((requested) => Math.min(requested, 500)), // = maximum number of events per page
-      at: z.string().transform(ZodParser.instant).optional(),
+      at: z
+        .string()
+        .transform((value, ctx): LogService.Anchor => {
+          if (Uuid.check(value)) {
+            return { kind: "line", value };
+          }
+          try {
+            return { kind: "timestamp", value: Temporal.Instant.from(value) };
+          } catch {
+            ctx.addIssue({ code: "custom", message: "must be a line id (uuid) or an instant" });
+            return z.NEVER;
+          }
+        })
+        .optional(),
     })
     .and(FilterSubQuery);
 

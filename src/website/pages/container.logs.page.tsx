@@ -9,7 +9,7 @@ import { useContainerName } from "../hooks/useContainerName";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useLogFilter } from "../hooks/useLogFilter";
 import { useLogSearch } from "../hooks/useLogSearch";
-import { useVisibleLogWindow } from "../hooks/useVisibleLogWindow";
+import { useContainerLogs } from "../hooks/useContainerLogs";
 import { Route } from "../Route";
 
 export function containerLogsPage() {
@@ -20,31 +20,30 @@ export function containerLogsPage() {
     parameters,
     setParameters,
   });
-  const visibleLogWindow = useVisibleLogWindow({
+  const containerLogs = useContainerLogs({
     containerId,
     activeFilter: logFilter.activeFilter,
-    activeFilterKey: logFilter.activeFilterKey,
     parameters,
     setParameters,
   });
   const logSearch = useLogSearch({
     id: containerId,
     applied: logFilter.activeFilter,
-    element: visibleLogWindow.ref,
-    rendered: visibleLogWindow.rendered,
-    events: visibleLogWindow.events,
-    onFoundOutsideWindow: visibleLogWindow.anchorToLine,
+    element: containerLogs.ref,
+    rendered: containerLogs.rendered,
+    events: containerLogs.events,
+    onFoundOutsideWindow: containerLogs.anchorToLine,
   });
 
-  const name = useContainerName(containerId, visibleLogWindow.events);
+  const name = useContainerName(containerId, containerLogs.events);
   useDocumentTitle(`${name} | Dolog`);
 
   const applyFilter = useCallback(() => {
     logFilter.formState.apply();
-    if (!visibleLogWindow.pinnedAt) {
-      visibleLogWindow.returnToLiveFeed();
+    if (!containerLogs.pinnedAt) {
+      containerLogs.returnToLiveFeed();
     }
-  }, [logFilter, visibleLogWindow]);
+  }, [logFilter, containerLogs]);
   return (
     <div className="full-bleed flex h-screen flex-col">
       <header className="relative flex items-center justify-center px-4 pb-3 pt-4">
@@ -54,7 +53,7 @@ export function containerLogsPage() {
         <span className="font-bold">{name}</span>
       </header>
 
-      <LogToolbar filter={logFilter} onApply={applyFilter} onJump={() => void visibleLogWindow.openJumpDialog()} />
+      <LogToolbar filter={logFilter} onApply={applyFilter} onJump={() => void containerLogs.openJumpDialog()} />
 
       <div className="relative flex-1 min-h-0">
         {/*
@@ -65,48 +64,48 @@ export function containerLogsPage() {
          * were still arriving. Both ends are compensated for deliberately here instead.
          */}
         <div
-          ref={visibleLogWindow.ref}
-          onScroll={visibleLogWindow.handleScroll}
+          ref={containerLogs.ref}
+          onScroll={containerLogs.handleScroll}
           className="h-full overflow-y-auto [overflow-anchor:none] bg-c-dark-full text-gray-200 font-mono text-xs p-4 leading-relaxed"
         >
-          {visibleLogWindow.loading ? (
+          {containerLogs.loading ? (
             <div className="flex justify-center py-8">
               <Spinner />
             </div>
           ) : (
             <>
               {/* an empty window means something different once a time was asked for: logs may well exist, just not there */}
-              {visibleLogWindow.events.length === 0 && (
+              {containerLogs.events.length === 0 && (
                 <div className="text-c-dark-half py-8 text-center">
                   {logFilter.isActiveFilterNarrowing
                     ? "Nothing in this container matches the filter"
-                    : visibleLogWindow.anchor?.kind === "instant"
+                    : containerLogs.anchor?.kind === "timestamp"
                       ? "Nothing was logged at or after that time"
                       : "No logs recorded yet"}
                 </div>
               )}
-              {visibleLogWindow.hasOlder && <div className="text-c-dark-half text-center pb-2">scroll up for more</div>}
-              {!visibleLogWindow.hasOlder && visibleLogWindow.events.length > 0 && (
+              {containerLogs.hasOlder && <div className="text-c-dark-half text-center pb-2">scroll up for more</div>}
+              {!containerLogs.hasOlder && containerLogs.events.length > 0 && (
                 <div className="text-c-dark-half text-center pb-2">that is the beginning</div>
               )}
             </>
           )}
-          {visibleLogWindow.rows.map(({ event, opensDay, landedOn, pinned }) => (
+          {containerLogs.rows.map(({ event, opensDay, landedOn, pinned }) => (
             <Fragment key={event.id}>
-              {opensDay && <LogRow.DayMarker date={opensDay} landedOn={landedOn === "day"} onDismiss={visibleLogWindow.dismissPin} />}
+              {opensDay && <LogRow.DayMarker date={opensDay} landedOn={landedOn === "day"} onDismiss={containerLogs.dismissPin} />}
               <LogRow.Line
                 event={event}
                 landedOn={landedOn === "line"}
                 pinned={pinned}
-                onDismiss={visibleLogWindow.dismissPin}
-                onTogglePin={() => visibleLogWindow.togglePinnedLine(event.id)}
+                onDismiss={containerLogs.dismissPin}
+                onTogglePin={() => containerLogs.togglePinnedLine(event.id)}
                 matched={logSearch.matched.has(event.id)}
                 current={event.id === logSearch.currentMatch}
               />
             </Fragment>
           ))}
-          {visibleLogWindow.landedAtEnd && <LogRow.TrailingMarker onDismiss={visibleLogWindow.dismissPin} />}
-          {!visibleLogWindow.loading && visibleLogWindow.hasNewer && (
+          {containerLogs.landedAtEnd && <LogRow.TrailingMarker onDismiss={containerLogs.dismissPin} />}
+          {!containerLogs.loading && containerLogs.hasNewer && (
             <div className="text-c-dark-half text-center pt-2">scroll down for more</div>
           )}
         </div>
@@ -114,9 +113,9 @@ export function containerLogsPage() {
         {logSearch.finding && <FindBar search={logSearch} />}
 
         {/* offered whenever the feed is not being followed -- scrolled up, or parked in history */}
-        {!visibleLogWindow.atLiveEnd && (
+        {!containerLogs.atLiveEnd && (
           <button
-            onClick={() => void visibleLogWindow.jumpToLive()}
+            onClick={() => void containerLogs.jumpToLive()}
             title="new lines are not being added while you read back"
             className={clsx(
               "absolute right-4 flex items-center gap-2 rounded-full bg-c-accent text-white text-xs pl-3 pr-4 py-2 shadow-lg cursor-pointer hover:opacity-90",

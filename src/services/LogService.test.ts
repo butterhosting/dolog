@@ -41,9 +41,10 @@ describe(LogService.name, () => {
 
   describe("arriving by time", () => {
     /**
-     * An `at` is resolved rather than passed on: the service reads forwards from the instant, and
-     * falls back to the end of history when nothing lies beyond it. Which of the two happened is
-     * reported as `landedOn`, so the client is never left to work it out from the page itself.
+     * An `at` opens a window *around* itself rather than a page starting at it: half the limit from
+     * before it, half from after, and a short side made up by the other. Where it actually landed is
+     * reported as `landedOn`, which is absent when nothing lay at or after it -- the one case where
+     * the window served is the tail of history rather than a window around anything.
      */
     async function twoLines() {
       const container = TestFixture.container();
@@ -94,6 +95,76 @@ describe(LogService.name, () => {
       // and a window closed in the past reaches its own end without reaching the feed
       const closed = await service.list(container.id, { at: "2030-01-01T00:00:00Z", filterUntil: "2026-06-01T00:00:00Z" });
       expect(closed.reachesLiveFeed).toBe(false);
+    });
+  });
+
+  describe("arriving at a line", () => {
+    /** Ids are uuidv7s minted in order, so they sort the way the log reads. */
+    async function lines(count: number) {
+      const container = TestFixture.container();
+      const all = Array.from({ length: count }, (_, index) => TestFixture.logEvent({ container, line: `line ${index}` }));
+      all.forEach((event) => context.eventRepository.saveEvent(event));
+      context.flushTrigger.next();
+      await Bun.sleep(0);
+      return { container, all };
+    }
+
+    const shown = (page: LogService.ListResult) =>
+      page.data.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""));
+
+    it("should open a window centred on the line, not a page starting at it", async () => {
+      const { container, all } = await lines(40);
+
+      // when (a line in the middle, with plenty either side of it)
+      const page = await service.list(container.id, { at: all[20]!.id, limit: "10" });
+
+      // then (half the limit before it, and the line itself heading the other half)
+      expect(shown(page)).toEqual(["line 15", "line 16", "line 17", "line 18", "line 19", "line 20", "line 21", "line 22", "line 23", "line 24"]);
+      expect(page.landedOn).toBe(all[20]!.id);
+      expect(page.hasOlder).toBe(true);
+      expect(page.hasNewer).toBe(true);
+    });
+
+    it("should make up a short side from the other one, near the beginning", async () => {
+      const { container, all } = await lines(40);
+
+      // when (only two lines exist above it, so it cannot have its half)
+      const page = await service.list(container.id, { at: all[2]!.id, limit: "10" });
+
+      // then (a full screen all the same, taken further forwards instead)
+      expect(shown(page)).toEqual(["line 0", "line 1", "line 2", "line 3", "line 4", "line 5", "line 6", "line 7", "line 8", "line 9"]);
+      expect(page.hasOlder).toBe(false);
+      expect(page.hasNewer).toBe(true);
+    });
+
+    it("should make up a short side from the other one, near the end", async () => {
+      const { container, all } = await lines(40);
+
+      // when (only two lines from here to the end)
+      const page = await service.list(container.id, { at: all[38]!.id, limit: "10" });
+
+      // then (the shortfall taken backwards, and the far edge reported honestly)
+      expect(shown(page)).toEqual(["line 30", "line 31", "line 32", "line 33", "line 34", "line 35", "line 36", "line 37", "line 38", "line 39"]);
+      expect(page.hasOlder).toBe(true);
+      expect(page.hasNewer).toBe(false);
+    });
+
+    it("should land past a pinned line the filter excludes", async () => {
+      const container = TestFixture.container();
+      const all = Array.from({ length: 6 }, (_, index) =>
+        TestFixture.logEvent({ container, line: index % 2 === 0 ? `keep ${index}` : `skip ${index}` }),
+      );
+      all.forEach((event) => context.eventRepository.saveEvent(event));
+      context.flushTrigger.next();
+      await Bun.sleep(0);
+
+      // when (the pinned line is one the filter hides)
+      const page = await service.list(container.id, { at: all[3]!.id, limit: "10", filterPattern: "keep", filterPatternVariant: "substr" });
+
+      // then (it lands on the first line at or after it that the filter does allow, so the client
+      // can tell that the pin itself is not in what it was given)
+      expect(page.landedOn).toBe(all[4]!.id);
+      expect(page.landedOn).not.toBe(all[3]!.id);
     });
   });
 

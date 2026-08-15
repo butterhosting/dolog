@@ -46,7 +46,7 @@ describe("useLogFilter", () => {
       // when
       const request = useLogFilter.serialize(applied({ range: { kind: "preset", id: "last1h" } }));
       // then -- an open end, because "the last hour" has no future edge
-      expect(request.filterSince).toBeInstanceOf(Temporal.Instant);
+      expect(Temporal.Instant.from(request.filterSince!)).toBeInstanceOf(Temporal.Instant);
       expect(request.filterUntil).toBeUndefined();
     });
 
@@ -63,9 +63,9 @@ describe("useLogFilter", () => {
     it("closes both ends for the one preset that has a past", () => {
       // when
       const request = useLogFilter.serialize(applied({ range: { kind: "preset", id: "yesterday" } }));
-      // then
-      expect(request.filterSince).toBeInstanceOf(Temporal.Instant);
-      expect(request.filterUntil).toBeInstanceOf(Temporal.Instant);
+      // then -- both ends present, and sent as the strings a query string can actually carry
+      expect(Temporal.Instant.from(request.filterSince!)).toBeInstanceOf(Temporal.Instant);
+      expect(Temporal.Instant.from(request.filterUntil!)).toBeInstanceOf(Temporal.Instant);
     });
 
     it("passes a custom span through as chosen", () => {

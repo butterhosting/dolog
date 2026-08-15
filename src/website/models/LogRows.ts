@@ -40,8 +40,8 @@ export namespace LogRows {
 
   export type Options = {
     events: ContainerEvent[];
-    /** Whether there is nothing above this window, which is what licences a marker on its first line. */
-    reachedBeginning: boolean;
+    /** Whether there is still data above this window (if not, show a marker on its first line) */
+    hasOlder: boolean;
     /** The instant the reader navigated to, or null when no marker is wanted at all. */
     landedAt: Temporal.Instant | null;
     /** The line the *server* settled on for that instant, rather than one re-derived here. */
@@ -75,7 +75,7 @@ export namespace LogRows {
     }
   }
 
-  export function build({ events, reachedBeginning, landedAt, landedOn, pinnedLine = null }: Options): Result {
+  export function build({ events, hasOlder, landedAt, landedOn, pinnedLine = null }: Options): Result {
     // `landedAt` says whether a marker is wanted at all; `landedOn` says where the server put it
     const landedIndex = !landedAt || !landedOn ? -1 : events.findIndex((event) => event.id === landedOn);
     /**
@@ -92,7 +92,7 @@ export namespace LogRows {
        * The topmost line gets a marker only once there is nothing above it. Otherwise the window
        * merely starts mid-day, and a marker there would claim a day began where it did not.
        */
-      const opensDay = previous ? (day(previous) === day(event) ? null : day(event)) : reachedBeginning ? day(event) : null;
+      const opensDay = previous ? (day(previous) === day(event) ? null : day(event)) : !hasOlder ? day(event) : null;
       return {
         event,
         opensDay,

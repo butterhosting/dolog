@@ -10,8 +10,8 @@ import { useRegistry } from "./useRegistry";
 export function useLogFilter({ parameters, setParameters }: useLogFilter.Options): useLogFilter.Result {
   const dialogClient = useRegistry(DialogClient);
 
-  const activeFilterKey = Internal.PARAMS.map((param) => parameters.get(param) || "").join(" ");
-  const activeFilter = useMemo(() => Internal.parse(parameters), [activeFilterKey]);
+  const key = Internal.PARAMS.map((param) => parameters.get(param) || "").join(" ");
+  const activeFilter = useMemo(() => Internal.parseFilter(parameters), [key]);
 
   // form
   const [pattern, setPattern] = useState(activeFilter.pattern);
@@ -36,18 +36,14 @@ export function useLogFilter({ parameters, setParameters }: useLogFilter.Options
     }
   }, [dialogClient, range]);
 
-  /**
-   * Edits the filter into whatever the url already says, rather than restating the whole of it.
-   * A filter re-defines what the window *is* but not where the reader is standing in it, so the
-   * marker they put there survives without this hook ever having to know it exists.
-   */
+  // only updates the URL, causing a chain of cascading changes
+  // url updates --> this hook's `parameters` arg updates --> this hooks return objects update
   const apply = useCallback(() => {
     setParameters((previous) => Internal.merge(previous, { pattern: pattern.trim(), variant, range }));
   }, [pattern, variant, range, setParameters]);
 
   return {
     activeFilter,
-    activeFilterKey,
     isActiveFilterNarrowing: Internal.isNarrowing(activeFilter),
     form: { pattern, setPattern, variant, toggleVariant, range, promptRangeDialog },
     formState: { dirty, apply },
@@ -57,7 +53,7 @@ export function useLogFilter({ parameters, setParameters }: useLogFilter.Options
 namespace Internal {
   export const PARAMS: string[] = [...Object.values(LogService.FilterKey), LogRange.PARAM];
 
-  export function parse(parameters: URLSearchParams): useLogFilter.Filter {
+  export function parseFilter(parameters: URLSearchParams): useLogFilter.Filter {
     return {
       pattern: parameters.get(LogService.FilterKey.filterPattern) ?? "",
       variant: parameters.get(LogService.FilterKey.filterPatternVariant) === "regex" ? LogPattern.Variant.regex : LogPattern.Variant.substr,
@@ -99,7 +95,9 @@ export namespace useLogFilter {
   };
 
   export type Result = {
-    activeFilterKey: string; // hash of the applied filter (for triggering reloads, etc)
+    /**
+     * This value is memoized
+     */
     activeFilter: Filter;
     isActiveFilterNarrowing: boolean;
     form: {
@@ -127,8 +125,9 @@ export namespace useLogFilter {
       filterPattern: filter.pattern || undefined,
       // meaningless without something to read, and sending it alone would look like a filter
       filterPatternVariant: filter.pattern ? filter.variant : undefined,
-      filterSince: since,
-      filterUntil: until,
+      // stringified here rather than left to whatever the request builder does with an instant
+      filterSince: since?.toString(),
+      filterUntil: until?.toString(),
     };
   }
 }

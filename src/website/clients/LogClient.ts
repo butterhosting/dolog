@@ -1,6 +1,10 @@
 import { LogService } from "@/services/LogService";
 import { Yesttp } from "yesttp";
 
+/**
+ * Typed on the *input* side of the service's schemas, because that is what a client deals in: a
+ * query string carries strings, and the parsing into instants and anchors happens on arrival.
+ */
 export class LogClient {
   public constructor(private readonly yesttp: Yesttp) {}
 

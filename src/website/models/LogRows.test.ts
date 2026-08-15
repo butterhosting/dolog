@@ -14,7 +14,7 @@ describe("LogRows", () => {
   }
 
   function build(options: Partial<LogRows.Options> & { events: ContainerEvent[] }): LogRows.Result {
-    return LogRows.build({ reachedBeginning: false, landedAt: null, landedOn: null, ...options });
+    return LogRows.build({ hasOlder: true, landedAt: null, landedOn: null, ...options });
   }
 
   describe("opensDay", () => {
@@ -40,8 +40,8 @@ describe("LogRows", () => {
       // given
       const events = [at("2026-03-01T09:00:00Z")];
       // when
-      const partial = build({ events, reachedBeginning: false });
-      const whole = build({ events, reachedBeginning: true });
+      const partial = build({ events, hasOlder: true });
+      const whole = build({ events, hasOlder: false });
       // then -- a window starting mid-day must not claim the day began there
       expect(partial.rows[0]!.opensDay).toEqual(null);
       expect(whole.rows[0]!.opensDay).toEqual("2026-03-01");
