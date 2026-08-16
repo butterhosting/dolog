@@ -14,7 +14,14 @@ import { useRegistry } from "./useRegistry";
  * re-defining what the log is. It therefore holds almost no state -- what it knows is what is on
  * screen at the moment a chevron is pressed, and it asks the server for the rest.
  */
-export function useLogSearch({ id, applied, element, rendered, events, onFoundOutsideWindow }: useLogSearch.Options): useLogSearch.Result {
+export function useLogSearch({
+  id,
+  applied,
+  scrollWindowRef,
+  rendered,
+  events,
+  onFoundOutsideWindow,
+}: useLogSearch.Options): useLogSearch.Result {
   const logClient = useRegistry(LogClient);
 
   const [needle, setNeedle] = useState("");
@@ -92,7 +99,7 @@ export function useLogSearch({ id, applied, element, rendered, events, onFoundOu
    */
   const step = useCallback(
     async (direction: Direction) => {
-      const container = element.current;
+      const container = scrollWindowRef.current;
       const term = needle.trim();
       if (!container || !term || searching !== null) {
         return;
@@ -135,7 +142,7 @@ export function useLogSearch({ id, applied, element, rendered, events, onFoundOu
         setSearching(null);
       }
     },
-    [applied, logClient, currentMatch, id, needle, element, rendered, variant, searching, onFoundOutsideWindow],
+    [applied, logClient, currentMatch, id, needle, scrollWindowRef, rendered, variant, searching, onFoundOutsideWindow],
   );
 
   return {
@@ -161,7 +168,7 @@ export namespace useLogSearch {
     /** The corpus the search happens inside, so it never lands on a line the view hides. */
     applied: useLogFilter.Filter;
     /** The scrolling log, which is what "on screen" is measured against. */
-    element: RefObject<HTMLElement | null>;
+    scrollWindowRef: RefObject<HTMLElement | null>;
     /** The lines currently held, read at press time rather than closed over. */
     rendered: RefObject<ContainerEvent[]>;
     /** The same lines as state, since the highlights have to be recomputed when they change. */

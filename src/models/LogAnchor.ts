@@ -20,7 +20,7 @@ export namespace LogAnchor {
     }
   }
 
-  export function format(anchor: LogAnchor): string {
+  export function value(anchor: LogAnchor): string {
     return anchor.value.toString();
   }
 }

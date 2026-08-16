@@ -30,7 +30,7 @@ export function containerLogsPage() {
   const logSearch = useLogSearch({
     id: containerId,
     applied: logFilter.activeFilter,
-    element: containerLogs.ref,
+    scrollWindowRef: containerLogs.scrollWindowRef,
     rendered: containerLogs.rendered,
     events: containerLogs.events,
     onFoundOutsideWindow: containerLogs.anchorToLine,
@@ -65,7 +65,7 @@ export function containerLogsPage() {
          * were still arriving. Both ends are compensated for deliberately here instead.
          */}
         <div
-          ref={containerLogs.ref}
+          ref={containerLogs.scrollWindowRef}
           onScroll={containerLogs.handleScroll}
           className="h-full overflow-y-auto [overflow-anchor:none] bg-c-dark-full text-gray-200 font-mono text-xs p-4 leading-relaxed"
         >

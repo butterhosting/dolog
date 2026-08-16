@@ -11,7 +11,7 @@ import { SocketClient } from "../clients/SocketClient";
 import { LogRow } from "../comps/logviewer/LogRow";
 import { useLogFilter } from "./useLogFilter";
 import { useRegistry } from "./useRegistry";
-import { useStickyScroll } from "./useStickyScroll";
+import { useStickyScrollWindow } from "./useStickyScrollWindow";
 import { Line } from "../rendering/Line";
 import { Renderer } from "../rendering/Renderer";
 
@@ -50,69 +50,48 @@ export function useContainerLogs({
 
   const [landedAt, setLandedAt] = useState<string | null>(null);
 
-  const { ref, stuck, atBottom, onScroll, scrollToBottom } = useStickyScroll<HTMLDivElement>(events, !anchor);
+  const { scrollWindowRef, stuck, atBottom, onScroll, scrollToBottom } = useStickyScrollWindow<HTMLDivElement>(events, !anchor);
   const isFollowingStream = useRef(true);
   const hasMissedDataWhilePaused = useRef(false);
 
-  /**
-   * The lines plus their markers. Recomputed only when the list actually changes, since it walks
-   * every rendered event and the live feed re-renders this component every second.
-   */
   const lines = useMemo(
     () => renderer.render({ events, hasOlder, hasNewer, at, landedAt }), //
     [events, hasOlder, hasNewer, at, landedAt],
   );
 
-  /**
-   * Puts the reader on what they navigated to, once it has actually been drawn.
-   *
-   * This waits for a render rather than living in the load itself, because the load only *asks* for
-   * the rows -- React draws them when it draws them, and for a few hundred of them that is not the
-   * next frame. Scrolling from inside the fetch aimed at a row that did not exist yet, found
-   * nothing, and left the window sitting at the top of the page above the one that was asked for.
-   *
-   * `scrolledTo` is what keeps it to once per anchor: `rows` changes with every arriving line, and
-   * without it the view would be dragged back to the marker for as long as the marker existed.
-   */
-  const scrolledTo = useRef<string | null>(null);
+  //
+  // Effect to automatically scroll `at` into view
+  //
+  const lastScrolledTo = useRef<string | null>(null);
   useEffect(() => {
-    if (!anchor || loading || lines.length === 0 || scrolledTo.current === LogAnchor.format(anchor)) {
+    if (!anchor || loading || lines.length === 0) {
       return;
     }
-    const element = ref.current;
-    /**
-     * A line anchor is aimed at the line itself; a moment anchor at whatever marker was drawn for
-     * it, which is not always on the first row -- asking for a time past the end of the log puts it
-     * below the last one.
-     */
-    const target = anchor.kind === "id" ? LogRow.element(element, anchor.value) : LogRow.landed(element);
-    if (!target) {
-      // nothing was drawn for it: what they were shown instead is the end of history
-      if (element) {
-        element.scrollTop = element.scrollHeight;
-        scrolledTo.current = LogAnchor.format(anchor);
-      }
+
+    const anchorValue = LogAnchor.value(anchor);
+    if (lastScrolledTo.current === anchorValue) {
       return;
     }
-    scrolledTo.current = LogAnchor.format(anchor);
-    // put what they asked for in the middle of the view rather than at an edge
-    target.scrollIntoView({ block: "center" });
-  }, [anchor, loading, lines, ref]);
 
-  /** What is on screen, for callbacks that would otherwise be rebuilt on every arriving line. */
-  const rendered = useRef<ContainerEvent[]>([]);
-  useEffect(() => {
-    rendered.current = events;
-  }, [events]);
+    const scrollWindow = scrollWindowRef.current;
+    const targetScrollElement = anchor.kind === "id" ? LogRow.element(scrollWindow, anchor.value) : LogRow.landed(scrollWindow);
 
-  /**
-   * Interest is declared *before* the history is fetched, and whatever arrives meanwhile is held
-   * back until it lands.
-   *
-   * Fetching first would lose a second of output: retention writes in batches, so the database
-   * trails the live stream, and lines written in that window are in neither the page we asked for
-   * nor the feed we had not yet subscribed to.
-   */
+    if (targetScrollElement) {
+      lastScrolledTo.current = anchorValue;
+      targetScrollElement.scrollIntoView({ block: "center" });
+      return;
+    }
+
+    if (scrollWindow) {
+      lastScrolledTo.current = anchorValue;
+      scrollWindow.scrollTop = scrollWindow.scrollHeight;
+    }
+  }, [anchor, loading, lines, scrollWindowRef]);
+
+  //
+  // Main effect to declare interest in the event stream, and manage incoming data
+  // Note that stream interest is declared _before_ historic records are fetched
+  //
   useEffect(() => {
     let cancelled = false;
     let historyLoaded = false;
@@ -131,16 +110,9 @@ export function useContainerLogs({
           arrivedDuringFetch.push(data);
           return;
         }
-        /**
-         * Live lines are not appended while the reader has scrolled away: that would grow the list
-         * from below at the same time paging grows it from above, and the cap would then eat the
-         * very history being read. They are not lost either -- the server still has them, and
-         * returning to the bottom fetches whatever was missed.
-         *
-         * `following` also stays false while the window sits back in history, where appending would
-         * be worse than untidy: a line from today would print directly beneath one from March, as
-         * though it came next.
-         */
+
+        // Live lines are _only_ appended while the reader is tailing the end of the logs ...
+        // ... otherwise they're discarded (to not grow the list from below)
         if (isFollowingStream.current) {
           setEvents((current) => [...current, data].slice(-LINES_PER_PAGE));
         } else {
@@ -150,7 +122,12 @@ export function useContainerLogs({
     });
     socketClient.declareStreamInterest(
       containerId,
-      activeFilter.pattern ? { pattern: activeFilter.pattern, patternVariant: activeFilter.variant } : null,
+      activeFilter.pattern
+        ? {
+            pattern: activeFilter.pattern,
+            patternVariant: activeFilter.variant,
+          }
+        : null,
     );
 
     void (async () => {
@@ -161,7 +138,7 @@ export function useContainerLogs({
        */
       const page = await logClient.list(containerId, {
         limit: LINES_PER_PAGE,
-        at: anchor ? LogAnchor.format(anchor) : undefined,
+        at: anchor ? LogAnchor.value(anchor) : undefined,
         ...useLogFilter.serialize(activeFilter),
       });
       if (cancelled) {
@@ -201,20 +178,23 @@ export function useContainerLogs({
     // `activeFilter` is depended on by identity, which `useLogFilter` holds steady for as long as the
     // filter is unchanged -- a re-fetch clears the list and takes the reader's place in it with it,
     // so it must happen when the filter changes and on no other occasion.
-  }, [containerId, anchor, activeFilter, logClient, socketClient, ref, scrollToBottom]);
+  }, [containerId, anchor, activeFilter, logClient, socketClient, scrollWindowRef, scrollToBottom]);
+
+  const visibleEvents = useRef<ContainerEvent[]>([]);
+  useEffect(() => void (visibleEvents.current = events), [events]);
 
   /**
    * Scrolling to the very top pulls in the page above. The scroll position is restored afterwards by
    * measuring how much taller the content became, otherwise prepending would jump the reader.
    */
   const loadOlder = useCallback(async () => {
-    const element = ref.current;
+    const scrollWindow = scrollWindowRef.current;
     const oldest = events.at(0);
-    if (!element || !hasOlder || !oldest || loadingOlder.current) {
+    if (!scrollWindow || !hasOlder || !oldest || loadingOlder.current) {
       return;
     }
     loadingOlder.current = true;
-    const before = element.scrollHeight;
+    const before = scrollWindow.scrollHeight;
     /**
      * The cursor is the topmost line on screen, not something held aside from an earlier fetch.
      * A stored one used to drift: trimming the list while tailing moved the top of the screen
@@ -238,10 +218,10 @@ export function useContainerLogs({
      */
     setEvents((current) => [...page.data, ...current]);
     requestAnimationFrame(() => {
-      element.scrollTop += element.scrollHeight - before;
+      scrollWindow.scrollTop += scrollWindow.scrollHeight - before;
       loadingOlder.current = false;
     });
-  }, [activeFilter, logClient, events, containerId, hasOlder, ref]);
+  }, [activeFilter, logClient, events, containerId, hasOlder, scrollWindowRef]);
 
   /**
    * The downward twin of {@link loadOlder}, and a simpler one: content appended below the viewport
@@ -281,7 +261,7 @@ export function useContainerLogs({
     }
     hasMissedDataWhilePaused.current = false;
     const page = await logClient.list(containerId, { limit: LINES_PER_PAGE, ...useLogFilter.serialize(activeFilter) });
-    const known = new Set(rendered.current.map((event) => event.id));
+    const known = new Set(visibleEvents.current.map((event) => event.id));
 
     /**
      * Sharing a line with what is already on screen means the two meet, so they are merged and the
@@ -293,7 +273,7 @@ export function useContainerLogs({
       setHasOlder(page.hasOlder);
       return;
     }
-    setEvents(Internal.mergeById(rendered.current, page.data));
+    setEvents(Internal.mergeById(visibleEvents.current, page.data));
   }, [activeFilter, logClient, containerId]);
 
   /**
@@ -354,13 +334,13 @@ export function useContainerLogs({
     (instant: Temporal.Instant) => {
       const jumped = instant.toString();
       setParameters((previous) => Internal.withPin(previous, jumped));
-      if (anchor?.kind !== "timestamp" || LogAnchor.format(anchor) !== jumped) {
+      if (anchor?.kind !== "timestamp" || LogAnchor.value(anchor) !== jumped) {
         setAnchor({ kind: "timestamp", value: instant });
         return;
       }
-      requestAnimationFrame(() => LogRow.landed(ref.current)?.scrollIntoView({ block: "center" }));
+      requestAnimationFrame(() => LogRow.landed(scrollWindowRef.current)?.scrollIntoView({ block: "center" }));
     },
-    [anchor, ref, setParameters],
+    [anchor, scrollWindowRef, setParameters],
   );
 
   const openJumpDialog = useCallback(async () => {
@@ -419,7 +399,7 @@ export function useContainerLogs({
    */
   const handleScroll = useCallback(() => {
     onScroll();
-    const element = ref.current;
+    const element = scrollWindowRef.current;
     if (!element) {
       return;
     }
@@ -430,12 +410,12 @@ export function useContainerLogs({
     if (hasNewer && atBottom()) {
       void loadNewer();
     }
-  }, [hasNewer, loadNewer, loadOlder, onScroll, ref, atBottom]);
+  }, [hasNewer, loadNewer, loadOlder, onScroll, scrollWindowRef, atBottom]);
 
   return {
-    ref,
+    scrollWindowRef,
     events,
-    rendered,
+    rendered: visibleEvents,
     lines,
     loading,
     anchor,
@@ -494,7 +474,7 @@ export namespace useContainerLogs {
   };
 
   export type Result = {
-    ref: RefObject<HTMLDivElement | null>;
+    scrollWindowRef: RefObject<HTMLDivElement | null>;
     events: ContainerEvent[];
     /** What is on screen, for callers that must not be rebuilt on every arriving line. */
     rendered: RefObject<ContainerEvent[]>;
