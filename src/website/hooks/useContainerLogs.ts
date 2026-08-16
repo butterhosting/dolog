@@ -60,37 +60,13 @@ export function useContainerLogs({
   );
 
   //
-  // Effect to automatically scroll `at` into view
-  //
-  const lastScrolledTo = useRef<string | null>(null);
-  useEffect(() => {
-    if (!anchor || loading || lines.length === 0) {
-      return;
-    }
-
-    const anchorValue = LogAnchor.value(anchor);
-    if (lastScrolledTo.current === anchorValue) {
-      return;
-    }
-
-    const scrollWindow = scrollWindowRef.current;
-    const targetScrollElement = anchor.kind === "id" ? LogRow.element(scrollWindow, anchor.value) : LogRow.landed(scrollWindow);
-
-    if (targetScrollElement) {
-      lastScrolledTo.current = anchorValue;
-      targetScrollElement.scrollIntoView({ block: "center" });
-      return;
-    }
-
-    if (scrollWindow) {
-      lastScrolledTo.current = anchorValue;
-      scrollWindow.scrollTop = scrollWindow.scrollHeight;
-    }
-  }, [anchor, loading, lines, scrollWindowRef]);
-
-  //
   // Main effect to declare interest in the event stream, and manage incoming data
   // Note that stream interest is declared _before_ historic records are fetched
+  //
+  // This effect fires:
+  //  - on page load
+  //  - whenever the active filter changes
+  //  - whenever somebody jumps around to a different anchor
   //
   useEffect(() => {
     let cancelled = false;
@@ -167,11 +143,36 @@ export function useContainerLogs({
       socketClient.declareStreamInterest(null);
       socketClient.unsubscribe(subscription);
     };
-    // re-runs on a jump, which is exactly right: a new position means a new window and a fresh fetch.
-    // `activeFilter` is depended on by identity, which `useLogFilter` holds steady for as long as the
-    // filter is unchanged -- a re-fetch clears the list and takes the reader's place in it with it,
-    // so it must happen when the filter changes and on no other occasion.
   }, [containerId, anchor, activeFilter, logClient, socketClient, scrollWindowRef, scrollToBottom]);
+
+  //
+  // Effect to automatically scroll the anchor into view
+  //
+  const lastScrolledTo = useRef<string | null>(null);
+  useEffect(() => {
+    if (!anchor || loading || lines.length === 0) {
+      return;
+    }
+
+    const anchorValue = LogAnchor.value(anchor);
+    if (lastScrolledTo.current === anchorValue) {
+      return;
+    }
+
+    const scrollWindow = scrollWindowRef.current;
+    const targetScrollElement = anchor.kind === "id" ? LogRow.element(scrollWindow, anchor.value) : LogRow.landed(scrollWindow);
+
+    if (targetScrollElement) {
+      lastScrolledTo.current = anchorValue;
+      targetScrollElement.scrollIntoView({ block: "center" });
+      return;
+    }
+
+    if (scrollWindow) {
+      lastScrolledTo.current = anchorValue;
+      scrollWindow.scrollTop = scrollWindow.scrollHeight;
+    }
+  }, [anchor, loading, lines, scrollWindowRef]);
 
   const visibleEvents = useRef<ContainerEvent[]>([]);
   useEffect(() => void (visibleEvents.current = events), [events]);
