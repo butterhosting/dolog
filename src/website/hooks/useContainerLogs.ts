@@ -1,4 +1,3 @@
-import { Uuid } from "@/helpers/Uuid";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { LogAnchor } from "@/models/LogAnchor";
 import { ServerMessage } from "@/models/socket/ServerMessage";
@@ -9,11 +8,11 @@ import { DialogClient } from "../clients/DialogClient";
 import { LogClient } from "../clients/LogClient";
 import { SocketClient } from "../clients/SocketClient";
 import { LogRow } from "../comps/logviewer/LogRow";
+import { Line } from "../rendering/Line";
+import { Renderer } from "../rendering/Renderer";
 import { useLogFilter } from "./useLogFilter";
 import { useRegistry } from "./useRegistry";
 import { useStickyScrollWindow } from "./useStickyScrollWindow";
-import { Line } from "../rendering/Line";
-import { Renderer } from "../rendering/Renderer";
 
 const LINES_PER_PAGE = 300;
 
@@ -41,8 +40,6 @@ export function useContainerLogs({
   const [anchor, setAnchor] = useState<LogAnchor | undefined>(at);
 
   const [loading, setLoading] = useState(true);
-  const loadingOlder = useRef(false);
-  const loadingNewer = useRef(false);
 
   const [hasOlder, setHasOlder] = useState(false);
   const [hasNewer, setHasNewer] = useState(false);
@@ -112,24 +109,24 @@ export function useContainerLogs({
         at: anchor ? LogAnchor.value(anchor) : undefined, // fetches either the latest logs, or logs _around_ the given anchor
         ...useLogFilter.serialize(activeFilter),
       })
-      .then((listResult) => {
+      .then((page) => {
         if (cancelled) {
           return;
         }
 
-        const combinedEvents = [...listResult.data];
+        const combinedEvents = [...page.data];
         if (!anchor) {
-          const fetchedIds = new Set(listResult.data.map((event) => event.id));
+          const fetchedIds = new Set(page.data.map((event) => event.id));
           const missedEvents = arrivedDuringFetch.filter((event) => !fetchedIds.has(event.id));
           combinedEvents.push(...missedEvents);
         }
         combinedEvents.splice(0, combinedEvents.length - LINES_PER_PAGE); // only keep the N latest events
 
         setEvents(combinedEvents);
-        setLandedAt(listResult.landedAt);
-        setHasOlder(listResult.hasOlder);
-        setHasNewer(listResult.hasNewer);
-        setReachesLiveFeed(listResult.reachesLiveFeed);
+        setLandedAt(page.landedAt);
+        setHasOlder(page.hasOlder);
+        setHasNewer(page.hasNewer);
+        setReachesLiveFeed(page.reachesLiveFeed);
         setLoading(false);
         historyLoaded = true;
 
@@ -174,62 +171,48 @@ export function useContainerLogs({
     }
   }, [anchor, loading, lines, scrollWindowRef]);
 
-  const visibleEvents = useRef<ContainerEvent[]>([]);
-  useEffect(() => void (visibleEvents.current = events), [events]);
-
-  /**
-   * Scrolling to the very top pulls in the page above. The scroll position is restored afterwards by
-   * measuring how much taller the content became, otherwise prepending would jump the reader.
-   */
-  const loadOlder = useCallback(async () => {
+  //
+  // Loading function for `older` events
+  // Prepending N new events will push the currently visible window down by N lines: hence the scroll correction
+  //
+  const isLoadingOlder = useRef(false);
+  async function loadOlder() {
     const scrollWindow = scrollWindowRef.current;
     const oldest = events.at(0);
-    if (!scrollWindow || !hasOlder || !oldest || loadingOlder.current) {
+    if (!scrollWindow || !hasOlder || !oldest || isLoadingOlder.current) {
       return;
     }
-    loadingOlder.current = true;
-    const before = scrollWindow.scrollHeight;
-    /**
-     * The cursor is the topmost line on screen, not something held aside from an earlier fetch.
-     * A stored one used to drift: trimming the list while tailing moved the top of the screen
-     * forward while the cursor stayed put, and resuming from it skipped everything in between.
-     */
+
+    isLoadingOlder.current = true;
+    const scrollHeightBefore = scrollWindow.scrollHeight;
+
     const page = await logClient.list(containerId, {
       limit: LINES_PER_PAGE,
       beforeExclusive: oldest.id,
       ...useLogFilter.serialize(activeFilter),
     });
     setHasOlder(page.hasOlder);
-
-    /**
-     * Nothing is dropped from the bottom here. Trimming there is what used to break the way back:
-     * the newest lines were discarded, so scrolling down ran out of content and the reader could
-     * only escape with the button. Keeping them means the list still ends at the live feed, so
-     * coming back down needs no request at all and rejoins it seamlessly.
-     *
-     * The height change therefore sits entirely above the viewport, which is what makes this one
-     * correction sufficient.
-     */
     setEvents((current) => [...page.data, ...current]);
-    requestAnimationFrame(() => {
-      scrollWindow.scrollTop += scrollWindow.scrollHeight - before;
-      loadingOlder.current = false;
-    });
-  }, [activeFilter, logClient, events, containerId, hasOlder, scrollWindowRef]);
 
-  /**
-   * The downward twin of {@link loadOlder}, and a simpler one: content appended below the viewport
-   * moves nothing above it, so there is no scroll position to put back.
-   *
-   * Only reachable once the window has been moved off the live feed, since that is the only time
-   * there is anything ahead of it to fetch.
-   */
-  const loadNewer = useCallback(async () => {
+    requestAnimationFrame(() => {
+      scrollWindow.scrollTop += scrollWindow.scrollHeight - scrollHeightBefore;
+      isLoadingOlder.current = false;
+    });
+  }
+
+  //
+  // Loading function for `newer` events
+  // Slightly different, because appending new events at the bottom doesn't move the scroll position
+  //
+  const loadingNewer = useRef(false);
+  async function loadNewer() {
     const newest = events.at(-1);
     if (!hasNewer || !newest || loadingNewer.current) {
       return;
     }
+
     loadingNewer.current = true;
+
     const page = await logClient.list(containerId, {
       limit: LINES_PER_PAGE,
       afterExclusive: newest.id,
@@ -238,8 +221,9 @@ export function useContainerLogs({
     setHasNewer(page.hasNewer);
     setReachesLiveFeed(page.reachesLiveFeed);
     setEvents((current) => [...current, ...page.data]);
+
     loadingNewer.current = false;
-  }, [activeFilter, logClient, events, hasNewer, containerId]);
+  }
 
   /**
    * Catches up on whatever arrived while the reader was away. Reaching the bottom by scrolling and
@@ -249,6 +233,8 @@ export function useContainerLogs({
    *
    * Nothing arrived, nothing to do: a short glance upwards costs no request and causes no flicker.
    */
+  const visibleEvents = useRef<ContainerEvent[]>([]);
+  useEffect(() => void (visibleEvents.current = events), [events]);
   const rejoinLive = useCallback(async () => {
     if (!hasMissedDataWhilePaused.current) {
       return;
@@ -391,7 +377,7 @@ export function useContainerLogs({
    * leaves the reader at the bottom, so an effect would fire again on its own output and race to
    * the live feed without them scrolling once.
    */
-  const handleScroll = useCallback(() => {
+  function handleScroll() {
     onScroll();
     const element = scrollWindowRef.current;
     if (!element) {
@@ -404,7 +390,7 @@ export function useContainerLogs({
     if (hasNewer && atBottom()) {
       void loadNewer();
     }
-  }, [hasNewer, loadNewer, loadOlder, onScroll, scrollWindowRef, atBottom]);
+  }
 
   return {
     scrollWindowRef,
