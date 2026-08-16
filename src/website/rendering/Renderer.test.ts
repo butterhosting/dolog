@@ -21,7 +21,7 @@ describe(Renderer.name, () => {
   }
 
   function build(options: Partial<Renderer.Options> & { events: ContainerEvent[] }): Line[] {
-    return renderer.render({ hasOlder: true, hasNewer: false, at: null, landedAt: null, ...options });
+    return renderer.render({ hasOlder: true, hasNewer: false, ...options });
   }
 
   /** Each row as one readable token, so a test can state the whole shape of the list at once. */
@@ -81,11 +81,7 @@ describe(Renderer.name, () => {
       const events = [at("2026-03-01T09:00:00Z")];
       // then -- the top says one or the other, never both, and the bottom only speaks when there is
       // something below to fetch
-      expect(shape(build({ events, hasOlder: true, hasNewer: true }))).toEqual([
-        "more:older",
-        "line:2026-03-01T09:00:00Z",
-        "more:newer",
-      ]);
+      expect(shape(build({ events, hasOlder: true, hasNewer: true }))).toEqual(["more:older", "line:2026-03-01T09:00:00Z", "more:newer"]);
       expect(shape(build({ events, hasOlder: false, hasNewer: false }))).toEqual([
         "beginning",
         "day:2026-03-01",
@@ -101,7 +97,6 @@ describe(Renderer.name, () => {
         events,
         hasNewer: true,
         at: { kind: "timestamp", value: Temporal.Instant.from("2027-01-01T00:00:00Z") },
-        landedAt: null,
       });
       // then -- the mark belongs to the log, the note belongs to the window around it
       expect(body(rows)).toEqual(["line:2026-03-01T09:00:00Z", "pin:past-every-line", "more:newer"]);
@@ -184,7 +179,6 @@ describe(Renderer.name, () => {
       const rows = build({
         events,
         at: { kind: "timestamp", value: Temporal.Instant.from("2027-01-01T00:00:00Z") },
-        landedAt: null,
       });
       // then
       expect(body(rows)).toEqual(["line:2026-03-01T09:00:00Z", "pin:past-every-line"]);
@@ -195,7 +189,6 @@ describe(Renderer.name, () => {
       const rows = build({
         events: [],
         at: { kind: "timestamp", value: Temporal.Instant.from("2027-01-01T00:00:00Z") },
-        landedAt: null,
       });
       // then -- an empty window says "nothing was logged", which a mark would only muddle
       expect(shape(rows)).toEqual([]);

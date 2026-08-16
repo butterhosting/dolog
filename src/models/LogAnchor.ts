@@ -6,9 +6,9 @@ export type LogAnchor =
   | { kind: "timestamp"; value: Temporal.Instant };
 
 export namespace LogAnchor {
-  export function parse(raw: string | null | undefined): LogAnchor | null {
+  export function parse(raw: string | undefined): LogAnchor | undefined {
     if (!raw) {
-      return null;
+      return undefined;
     }
     if (Uuid.check(raw)) {
       return { kind: "id", value: raw };
@@ -16,7 +16,7 @@ export namespace LogAnchor {
     try {
       return { kind: "timestamp", value: Temporal.Instant.from(raw) };
     } catch {
-      return null;
+      return undefined;
     }
   }
 

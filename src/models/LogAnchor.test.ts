@@ -23,9 +23,9 @@ describe("LogAnchor", () => {
       expect(LogAnchor.value(anchor!)).toEqual("2026-03-01T09:00:00Z");
     });
 
-    it.each([null, undefined, "", "not-a-time", "2026-13-45T99:00:00Z", "019fe578-e38b-7000-971e"])("anchors nothing for %p", (raw) => {
+    it.each([undefined, "", "not-a-time", "2026-13-45T99:00:00Z", "019fe578-e38b-7000-971e"])("anchors nothing for %p", (raw) => {
       // then -- a url holds whatever was typed into it, which is not an error worth showing
-      expect(LogAnchor.parse(raw)).toEqual(null);
+      expect(LogAnchor.parse(raw)).toEqual(undefined);
     });
   });
 

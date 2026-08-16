@@ -86,7 +86,7 @@ export namespace Renderer {
     events: ContainerEvent[];
     hasOlder: boolean;
     hasNewer: boolean;
-    at: LogAnchor | null;
-    landedAt: string | null;
+    at?: LogAnchor;
+    landedAt?: string;
   };
 }

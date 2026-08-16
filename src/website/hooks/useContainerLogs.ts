@@ -34,11 +34,11 @@ export function useContainerLogs({
   const dialogClient = useRegistry(DialogClient);
   const renderer = useRegistry(Renderer);
 
-  const atParam = parameters.get(useContainerLogs.AT_PARAM);
+  const atParam = parameters.get(useContainerLogs.AT_PARAM) || undefined;
   const at = useMemo(() => LogAnchor.parse(atParam), [atParam]);
 
   const [events, setEvents] = useState<ContainerEvent[]>([]);
-  const [anchor, setAnchor] = useState<LogAnchor | null>(at);
+  const [anchor, setAnchor] = useState<LogAnchor | undefined>(at);
 
   const [loading, setLoading] = useState(true);
   const loadingOlder = useRef(false);
@@ -48,7 +48,7 @@ export function useContainerLogs({
   const [hasNewer, setHasNewer] = useState(false);
   const [reachesLiveFeed, setReachesLiveFeed] = useState(false);
 
-  const [landedAt, setLandedAt] = useState<string | null>(null);
+  const [landedAt, setLandedAt] = useState<string>();
 
   const { scrollWindowRef, stuck, atBottom, onScroll, scrollToBottom } = useStickyScrollWindow<HTMLDivElement>(events, !anchor);
   const isFollowingStream = useRef(true);
@@ -130,44 +130,37 @@ export function useContainerLogs({
         : null,
     );
 
-    void (async () => {
-      /**
-       * `at` is the marker exactly as the url holds it -- a pinned line or a moment, whichever it
-       * is. Telling the two apart is the server's business now, and so is opening the window
-       * *around* it: the page above used to be a second request stitched on here.
-       */
-      const page = await logClient.list(containerId, {
+    logClient
+      .list(containerId, {
         limit: LINES_PER_PAGE,
-        at: anchor ? LogAnchor.value(anchor) : undefined,
+        at: anchor ? LogAnchor.value(anchor) : undefined, // fetches either the latest logs, or logs _around_ the given anchor
         ...useLogFilter.serialize(activeFilter),
+      })
+      .then((listResult) => {
+        if (cancelled) {
+          return;
+        }
+
+        const combinedEvents = [...listResult.data];
+        if (!anchor) {
+          const fetchedIds = new Set(listResult.data.map((event) => event.id));
+          const missedEvents = arrivedDuringFetch.filter((event) => !fetchedIds.has(event.id));
+          combinedEvents.push(...missedEvents);
+        }
+        combinedEvents.splice(0, combinedEvents.length - LINES_PER_PAGE); // only keep the N latest events
+
+        setEvents(combinedEvents);
+        setLandedAt(listResult.landedAt);
+        setHasOlder(listResult.hasOlder);
+        setHasNewer(listResult.hasNewer);
+        setReachesLiveFeed(listResult.reachesLiveFeed);
+        setLoading(false);
+        historyLoaded = true;
+
+        if (!anchor) {
+          requestAnimationFrame(() => scrollToBottom());
+        }
       });
-      if (cancelled) {
-        return;
-      }
-      /**
-       * Landing in history means lines from the live end do not belong here, so they are dropped
-       * rather than merged. Arriving at the live end is the opposite: the tail of the page and the
-       * head of the buffer overlap, and whatever the page missed is appended.
-       */
-      const shown = new Set(page.data.map((event) => event.id));
-      const missed = anchor ? [] : arrivedDuringFetch.filter((event) => !shown.has(event.id));
-      const window = [...page.data, ...missed];
-      setEvents(anchor ? window : window.slice(-LINES_PER_PAGE));
-      setLandedAt(page.landedAt ?? null);
-      setHasOlder(page.hasOlder);
-      setHasNewer(page.hasNewer);
-      setReachesLiveFeed(page.reachesLiveFeed);
-      setLoading(false);
-      historyLoaded = true;
-      if (!anchor) {
-        /**
-         * A window with no anchor *is* the live end, so it opens at the bottom -- said outright
-         * rather than left to whether the reader happened to be stuck to the bottom of whatever
-         * window came before this one.
-         */
-        requestAnimationFrame(() => scrollToBottom());
-      }
-    })();
 
     return () => {
       cancelled = true;
@@ -301,7 +294,7 @@ export function useContainerLogs({
     setHasNewer(false);
     // the new window has not answered yet, so nothing may be appended to the old one meanwhile
     setReachesLiveFeed(false);
-    setAnchor(null);
+    setAnchor(undefined);
   }, []);
 
   /** Leaves history behind entirely: the live end is elsewhere, so it is fetched afresh. */
@@ -363,7 +356,7 @@ export function useContainerLogs({
     (lineId: string) => {
       if (at?.kind === "id" && at.value === lineId) {
         setParameters(Internal.withoutPin, { replace: true });
-        setAnchor(null);
+        setAnchor(undefined);
         return;
       }
       setParameters((previous) => Internal.withPin(previous, lineId), { replace: true });
@@ -480,12 +473,12 @@ export namespace useContainerLogs {
     rendered: RefObject<ContainerEvent[]>;
     lines: Line[];
     loading: boolean;
-    anchor: LogAnchor | null;
+    anchor?: LogAnchor;
     /**
      * The marker as it stands, for the few decisions outside this hook that turn on whether the
      * reader deliberately marked a spot -- applying a filter being the one that does.
      */
-    at: LogAnchor | null;
+    at?: LogAnchor;
     /** Sitting at the bottom *of the live feed*, which is not the same as the bottom of the window. */
     atLiveEnd: boolean;
     handleScroll: () => void;
