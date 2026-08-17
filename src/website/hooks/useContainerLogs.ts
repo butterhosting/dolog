@@ -1,4 +1,5 @@
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { Direction } from "@/models/Direction";
 import { LogAnchor } from "@/models/LogAnchor";
 import { ServerMessage } from "@/models/socket/ServerMessage";
 import { Temporal } from "@js-temporal/polyfill";
@@ -34,27 +35,17 @@ export function useContainerLogs({
   const renderer = useRegistry(Renderer);
 
   const atParam = parameters.get(useContainerLogs.AT_PARAM) || undefined;
-  const at = useMemo(() => LogAnchor.parse(atParam), [atParam]);
 
-  const [events, setEvents] = useState<ContainerEvent[]>([]);
+  const at = useMemo(() => LogAnchor.parse(atParam), [atParam]);
   const [anchor, setAnchor] = useState<LogAnchor | undefined>(at);
+  const [loadedAnchor, setLoadedAnchor] = useState<LogAnchor>();
 
   const [loading, setLoading] = useState(true);
-
+  const [events, setEvents] = useState<ContainerEvent[]>([]);
   const [hasOlder, setHasOlder] = useState(false);
   const [hasNewer, setHasNewer] = useState(false);
-  const [reachesLiveFeed, setReachesLiveFeed] = useState(false);
-
   const [landedAt, setLandedAt] = useState<string>();
-
-  /**
-   * Which anchor the lines currently held were actually fetched for.
-   *
-   * Changing the anchor and receiving the window for it are two different moments, and between them
-   * the previous window is still on screen. Anything that has to act on "the window for this
-   * anchor" therefore has to wait for the two to agree, rather than for the render that merely asked.
-   */
-  const [loadedAnchor, setLoadedAnchor] = useState<LogAnchor>();
+  const [reachesLiveFeed, setReachesLiveFeed] = useState(false);
 
   const { scrollWindowRef, stuck, atBottom, onScroll, scrollToBottom } = useStickyScrollWindow<HTMLDivElement>(events, !anchor);
   const isFollowingStream = useRef(true);
@@ -235,14 +226,12 @@ export function useContainerLogs({
     loadingNewer.current = false;
   }
 
-  /**
-   * Catches up on whatever arrived while the reader was away. Reaching the bottom by scrolling and
-   * reaching it by pressing the button are the same act, so both end here -- otherwise "at the
-   * bottom" would mean *showing everything* one way and merely *appending from now on* the other,
-   * and the difference is a silent hole in the log.
-   *
-   * Nothing arrived, nothing to do: a short glance upwards costs no request and causes no flicker.
-   */
+  //
+  // Fetch the latest page and connect it with whatever events are currently loaded (if possible; they might be disjoint)
+  // Runs when:
+  //  - scrolling to the bottom
+  //  - clicking the "jump to bottom" button
+  //
   const eventsRef = useRef<ContainerEvent[]>([]);
   useEffect(() => void (eventsRef.current = events), [events]);
   async function rejoinLive() {
@@ -256,19 +245,24 @@ export function useContainerLogs({
       ...useLogFilter.serialize(activeFilter),
     });
 
-    const known = new Set(eventsRef.current.map((event) => event.id));
+    // based on the `eventsRef` because the `events` state object will have changed
+    // by the time the network call above has returned (websocket), so `events` is unusable
+    const currentlyLoadedEventIds = new Set(eventsRef.current.map((event) => event.id));
+    const canThisLatestPageJoinTheCurrentlyLoadedEventsWithoutFabricatingContinuity = latestPage.data.some((event) => {
+      return currentlyLoadedEventIds.has(event.id);
+    });
 
-    /**
-     * Sharing a line with what is already on screen means the two meet, so they are merged and the
-     * history read so far survives. Sharing none means more than a page went by while the reader was
-     * away, and the gap cannot be bridged from one request -- then the page is all we honestly have.
-     */
-    if (!latestPage.data.some((event) => known.has(event.id))) {
+    if (canThisLatestPageJoinTheCurrentlyLoadedEventsWithoutFabricatingContinuity) {
+      // merge both windows, because there's continuity
+      const merged = ContainerEvent.deduplicate([...eventsRef.current, ...latestPage.data]).sort(
+        ContainerEvent.sort(Direction.forwards_in_time),
+      );
+      setEvents(merged);
+    } else {
+      // replace the window with the latest data, because it's disjoint
       setEvents(latestPage.data);
       setHasOlder(latestPage.hasOlder);
-      return;
     }
-    setEvents(Internal.mergeById(eventsRef.current, latestPage.data));
   }
 
   /**
@@ -429,16 +423,6 @@ export function useContainerLogs({
 }
 
 namespace Internal {
-  /**
-   * Two overlapping stretches of one log, as one. Keyed by id so a line held twice is held once,
-   * and sorted by it because a uuidv7 sorts the way the log reads.
-   */
-  export function mergeById(held: ContainerEvent[], arriving: ContainerEvent[]): ContainerEvent[] {
-    const merged = new Map(held.map((event) => [event.id, event]));
-    arriving.forEach((event) => merged.set(event.id, event));
-    return [...merged.values()].sort((one, other) => one.id.localeCompare(other.id));
-  }
-
   /**
    * The marker written into a url that holds more than the marker, and taken back out of one.
    *

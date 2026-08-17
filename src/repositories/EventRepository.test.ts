@@ -363,6 +363,30 @@ describe(EventRepository.name, () => {
       expect(found.id).toBe(unwritten.id);
     });
 
+    it("should tell newest from oldest among matches that have not been written yet", async () => {
+      /**
+       * The buffer is searched separately from the database, and being a plain list it has to be
+       * put in the order the search runs before its nearest match can be read off the front. With
+       * more than one match buffered, picking the wrong end answers with the furthest rather than
+       * the nearest -- which the single-match case above cannot tell apart.
+       */
+      // given (one line on disk, two matches still buffered)
+      const container = TestFixture.container();
+      await write([TestFixture.logEvent({ container, line: "line 0" })]);
+      const older = TestFixture.logEvent({ container, line: "needle older" });
+      const newer = TestFixture.logEvent({ container, line: "needle newer" });
+      repository.saveEvent(older);
+      repository.saveEvent(newer);
+
+      // when (stepping back from the end)
+      const found = await repository.findEvent(container.id, {
+        logPattern: { pattern: "needle", patternVariant: LogPattern.Variant.substr },
+        direction: Direction.backwards_in_time,
+      });
+      // then -- the nearest match behind, which is the newer of the two
+      expect(found.id).toBe(newer.id);
+    });
+
     it("should finish a walk that crosses chunks from an inclusive anchor and matches nothing", async () => {
       /**
        * The tail of the walk is the part worth guarding. Resuming a chunk means resuming *from* the

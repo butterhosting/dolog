@@ -81,10 +81,8 @@ export class EventRepository {
       .filter((event): event is ContainerEvent.Log => event.container.id === dockerId && event.type === ContainerEvent.Type.log)
       .filter((event) => searchPredicate.fullInMemoryTest(event)) // only logs matching the specific search constraints...
       .filter((event) => filterPredicate.fullInMemoryTest(event)) // ...but only if they match the general filter window as well
-      .map((event) => event.id)
-      .sort(); // UUIDv7s
-    const bufferMatch =
-      search.direction === Direction.forwards_in_time ? bufferMatchesBeyondSearchAnchor.at(0) : bufferMatchesBeyondSearchAnchor.at(-1);
+      .sort(ContainerEvent.sort(search.direction)); // sorted the way the search runs, so the nearest match is simply the first
+    const bufferMatch = bufferMatchesBeyondSearchAnchor.at(0)?.id;
 
     //
     // Part B: search the database for a candidate
@@ -191,7 +189,7 @@ export class EventRepository {
     // Part C: combine both lists, deduplicate events by ID, and (always) sort from old to new
     //
     const events = [...new Map([...dbEvents, ...bufferEvents].map((event) => [event.id, event])).values()] //
-      .sort((a, b) => a.id.localeCompare(b.id)); // UUIDv7
+      .sort(ContainerEvent.sort(Direction.forwards_in_time));
 
     switch (direction) {
       case Direction.forwards_in_time: {

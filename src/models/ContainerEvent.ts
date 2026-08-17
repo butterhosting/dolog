@@ -3,6 +3,7 @@ import { Temporal } from "@js-temporal/polyfill";
 import z from "zod/v4";
 import { Container } from "./Container";
 import { StreamVariant } from "./StreamVariant";
+import { Direction } from "./Direction";
 
 export type ContainerEvent = ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log | ContainerEvent.LogThrottle;
 
@@ -46,6 +47,19 @@ export namespace ContainerEvent {
     timestamp: z.string().transform(ZodParser.instant),
     container: Container.parse.SCHEMA,
   };
+
+  export function deduplicate(events: ContainerEvent[]): ContainerEvent[] {
+    return [...new Map(events.map((event) => [event.id, event])).values()];
+  }
+
+  export function sort(direction: Direction): (a: ContainerEvent, b: ContainerEvent) => number {
+    switch (direction) {
+      case Direction.forwards_in_time:
+        return (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+      case Direction.backwards_in_time:
+        return (a, b) => (a.id > b.id ? -1 : a.id < b.id ? 1 : 0);
+    }
+  }
 
   export const parse = ZodParser.forType<ContainerEvent>()
     .ensureSchemaMatchesType(() =>
