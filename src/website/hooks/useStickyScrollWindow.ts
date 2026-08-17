@@ -10,33 +10,36 @@ import { RefObject, useCallback, useEffect, useRef, useState } from "react";
  * not we are not. Scrolling back down by hand re-sticks it, which is what people expect.
  */
 export function useStickyScrollWindow<T extends HTMLElement>(dependency: unknown, pinToBottom = true): useStickyScrollWindow.Result<T> {
-  const ref = useRef<T>(null);
-  const [stuck, setStuck] = useState(true);
+  const scrollWindowRef = useRef<T>(null);
+  const [atBottom, setAtBottom] = useState(true);
 
+  // one of the two callbacks in the app that has to keep its identity: an effect depends on it, and
+  // a fresh one every render would re-run that effect every render
   const scrollToBottom = useCallback(() => {
-    const element = ref.current;
+    const element = scrollWindowRef.current;
     if (element) {
       element.scrollTop = element.scrollHeight;
-      setStuck(true);
-    }
-  }, []);
-
-  const onScroll = useCallback(() => {
-    const element = ref.current;
-    if (element) {
-      setStuck(Internal.isAtBottom(element));
+      setAtBottom(true);
     }
   }, []);
 
   /**
-   * Measured now rather than read off `stuck`, which is last render's answer. A scroll handler runs
-   * before React has re-rendered, so `stuck` is one scroll event stale at exactly the moment it
-   * would be asked -- which is why the caller gets a function to call and not the boolean.
+   * Hands back what it just measured, as well as storing it.
+   *
+   * A scroll handler runs before React has re-rendered, so the state below is one scroll event stale
+   * at exactly the moment a handler would ask it -- and a handler that has to decide something *now*
+   * would otherwise have to measure the container a second time to find out what this call already
+   * knows.
    */
-  const atBottom = useCallback(() => {
-    const element = ref.current;
-    return !!element && Internal.isAtBottom(element);
-  }, []);
+  function onScroll() {
+    const element = scrollWindowRef.current;
+    if (!element) {
+      return false;
+    }
+    const nowAtBottom = Internal.isAtBottom(element);
+    setAtBottom(nowAtBottom);
+    return nowAtBottom;
+  }
 
   /**
    * Runs after the browser has painted the new content, so `scrollHeight` already accounts for it.
@@ -46,13 +49,13 @@ export function useStickyScrollWindow<T extends HTMLElement>(dependency: unknown
    * that was navigated to.
    */
   useEffect(() => {
-    const element = ref.current;
-    if (element && stuck && pinToBottom) {
+    const element = scrollWindowRef.current;
+    if (element && atBottom && pinToBottom) {
       element.scrollTop = element.scrollHeight;
     }
-  }, [dependency, stuck, pinToBottom]);
+  }, [dependency, atBottom, pinToBottom]);
 
-  return { scrollWindowRef: ref, stuck, atBottom, onScroll, scrollToBottom };
+  return { scrollWindowRef, atBottom, onScroll, scrollToBottom };
 }
 
 namespace Internal {
@@ -65,15 +68,16 @@ namespace Internal {
 export namespace useStickyScrollWindow {
   export type Result<T extends HTMLElement> = {
     scrollWindowRef: RefObject<T | null>;
-    /** False once the reader has scrolled away, which is when to offer them a way back. */
-    stuck: boolean;
     /**
-     * Whether the container is at its bottom *right now*. Asked by the log viewer to decide whether
-     * to page forward, and answered from the same slack this hook sticks by -- two measurements of
-     * "at the bottom" left a gap where the list would neither follow nor fetch.
+     * Whether the container was at its bottom as of the last render -- false once the reader has
+     * scrolled away, which is when to offer them a way back.
+     *
+     * Read this while rendering. Inside a scroll handler, take the answer {@link onScroll} returns
+     * instead: that one is measured rather than remembered.
      */
-    atBottom: () => boolean;
-    onScroll: () => void;
+    atBottom: boolean;
+    /** Measures whether the container is at its bottom, stores the answer, and returns it. */
+    onScroll: () => boolean;
     scrollToBottom: () => void;
   };
 }

@@ -41,15 +41,17 @@ export function useLogSearch({
   const [finding, setFinding] = useState(false);
   const field = useRef<HTMLInputElement>(null);
 
-  const toggleVariant = useCallback(() => {
+  function toggleVariant() {
     setVariant((current) => (current === LogPattern.Variant.regex ? LogPattern.Variant.substr : LogPattern.Variant.regex));
-  }, []);
+  }
 
   /**
    * Closing takes the needle with it. The highlights are the search made visible, so leaving them
    * behind would mean a closed control still marking up the log -- with nothing on screen left to
    * explain why, or to clear them with.
    */
+  // memoized because the keydown effect below depends on it, and a fresh one every render would
+  // tear down and re-register the window listener every render
   const close = useCallback(() => {
     setFinding(false);
     setNeedle("");
@@ -96,59 +98,56 @@ export function useLogSearch({
    * The edge line is included in the search because it has every right to match; a match being
    * stepped off is not, or it would answer with itself forever.
    */
-  const step = useCallback(
-    async (direction: Direction) => {
-      const container = scrollWindowRef.current;
-      const term = needle.trim();
-      if (!container || !term || searching !== null) {
+  async function step(direction: Direction) {
+    const container = scrollWindowRef.current;
+    const term = needle.trim();
+    if (!container || !term || searching !== null) {
+      return;
+    }
+    const onMatch = currentMatch !== null && LogRow.onScreen(container, currentMatch);
+    const edges = onMatch ? {} : LogRow.visibleEdges(container);
+    const from = onMatch ? currentMatch : direction === Direction.backwards_in_time ? edges.last : edges.first;
+
+    setSearching(direction);
+    try {
+      const found = await logClient.find(id, {
+        searchPattern: term,
+        searchPatternVariant: variant,
+        ...(onMatch ? { anchorExclusive: from } : { anchorInclusive: from }),
+        direction,
+        // the corpus the search happens inside, so it never lands on a line the view hides
+        ...useLogFilter.serialize(applied),
+      });
+      if (!found) {
+        // deliberately no wrapping: in a log of unknown length, silently reappearing at the other
+        // end reads as having lost your place rather than as having run out
+        LogControls.nudge(chevrons[direction].current);
         return;
       }
-      const onMatch = currentMatch !== null && LogRow.onScreen(container, currentMatch);
-      const edges = onMatch ? {} : LogRow.visibleEdges(container);
-      const from = onMatch ? currentMatch : direction === Direction.backwards_in_time ? edges.last : edges.first;
-
-      setSearching(direction);
-      try {
-        const found = await logClient.find(id, {
-          searchPattern: term,
-          searchPatternVariant: variant,
-          ...(onMatch ? { anchorExclusive: from } : { anchorInclusive: from }),
-          direction,
-          // the corpus the search happens inside, so it never lands on a line the view hides
-          ...useLogFilter.serialize(applied),
-        });
-        if (!found) {
-          // deliberately no wrapping: in a log of unknown length, silently reappearing at the other
-          // end reads as having lost your place rather than as having run out
-          LogControls.nudge(chevrons[direction].current);
-          return;
-        }
-        setCurrentMatch(found);
+      setCurrentMatch(found);
+      /**
+       * Asked of the dom rather than of a copy of the window, because the very next thing done
+       * with the answer is to scroll to that element: a line the list holds but has not painted
+       * yet is not one that can be scrolled to.
+       */
+      const line = LogRow.element(container, found);
+      if (line) {
         /**
-         * Asked of the dom rather than of a copy of the window, because the very next thing done
-         * with the answer is to scroll to that element: a line the list holds but has not painted
-         * yet is not one that can be scrolled to.
+         * Only move the view for an answer the reader cannot already see. Recentring on a match
+         * that was on screen the whole time shifts everything around it for no gain -- they were
+         * reading that page, and the highlight moving is the whole of the news.
          */
-        const line = LogRow.element(container, found);
-        if (line) {
-          /**
-           * Only move the view for an answer the reader cannot already see. Recentring on a match
-           * that was on screen the whole time shifts everything around it for no gain -- they were
-           * reading that page, and the highlight moving is the whole of the news.
-           */
-          if (!LogRow.onScreen(container, found)) {
-            line.scrollIntoView({ block: "center" });
-          }
-          return;
+        if (!LogRow.onScreen(container, found)) {
+          line.scrollIntoView({ block: "center" });
         }
-        // the match is outside the window, so the window has to move to it
-        onFoundOutsideWindow(found);
-      } finally {
-        setSearching(null);
+        return;
       }
-    },
-    [applied, logClient, currentMatch, id, needle, scrollWindowRef, variant, searching, onFoundOutsideWindow],
-  );
+      // the match is outside the window, so the window has to move to it
+      onFoundOutsideWindow(found);
+    } finally {
+      setSearching(null);
+    }
+  }
 
   return {
     finding,

@@ -1,7 +1,7 @@
 import { LogPattern } from "@/models/LogPattern";
 import { LogService } from "@/services/LogService";
 import { Temporal } from "@js-temporal/polyfill";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { SetURLSearchParams } from "react-router";
 import { DialogClient } from "../clients/DialogClient";
 import { LogRange } from "../models/LogRange";
@@ -23,24 +23,24 @@ export function useLogFilter({ parameters, setParameters }: useLogFilter.Options
     range,
   });
 
-  const toggleVariant = useCallback(() => {
+  function toggleVariant() {
     setVariant((current) => {
       return current === LogPattern.Variant.regex ? LogPattern.Variant.substr : LogPattern.Variant.regex;
     });
-  }, []);
+  }
 
-  const promptRangeDialog = useCallback(async () => {
+  async function promptRangeDialog() {
     const chosen = await dialogClient.pickRange(range);
     if (chosen !== "cancel") {
       setRange(chosen);
     }
-  }, [dialogClient, range]);
+  }
 
   // only updates the URL, causing a chain of cascading changes
   // url updates --> this hook's `parameters` arg updates --> this hooks return objects update
-  const apply = useCallback(() => {
+  function apply() {
     setParameters((previous) => Internal.merge(previous, { pattern: pattern.trim(), variant, range }));
-  }, [pattern, variant, range, setParameters]);
+  }
 
   return {
     activeFilter,

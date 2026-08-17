@@ -1,5 +1,4 @@
 import clsx from "clsx";
-import { useCallback } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { FindBar } from "../comps/logviewer/FindBar";
 import { LogRow } from "../comps/logviewer/LogRow";
@@ -38,12 +37,10 @@ export function containerLogsPage() {
   const name = useContainerName(containerId, containerLogs.events);
   useDocumentTitle(`${name} | Dolog`);
 
-  const applyFilter = useCallback(() => {
+  function applyFilter() {
     logFilter.formState.apply();
-    if (!containerLogs.at) {
-      containerLogs.returnToLiveFeed();
-    }
-  }, [logFilter, containerLogs]);
+    containerLogs.handleFilterApplied();
+  }
   return (
     <div className="full-bleed flex h-screen flex-col">
       <header className="relative flex items-center justify-center px-4 pb-3 pt-4">
@@ -115,7 +112,7 @@ export function containerLogsPage() {
         {logSearch.finding && <FindBar search={logSearch} />}
 
         {/* offered whenever the feed is not being followed -- scrolled up, or parked in history */}
-        {!containerLogs.atLiveEnd && (
+        {!containerLogs.isFollowingStream && (
           <button
             onClick={() => void containerLogs.jumpToLive()}
             title="new lines are not being added while you read back"

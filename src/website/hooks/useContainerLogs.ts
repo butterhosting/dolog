@@ -3,7 +3,7 @@ import { Direction } from "@/models/Direction";
 import { LogAnchor } from "@/models/LogAnchor";
 import { ServerMessage } from "@/models/socket/ServerMessage";
 import { Temporal } from "@js-temporal/polyfill";
-import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RefObject, useEffect, useMemo, useRef, useState } from "react";
 import type { SetURLSearchParams } from "react-router";
 import { DialogClient } from "../clients/DialogClient";
 import { LogClient } from "../clients/LogClient";
@@ -47,8 +47,8 @@ export function useContainerLogs({
   const [landedAt, setLandedAt] = useState<string>();
   const [reachesLiveFeed, setReachesLiveFeed] = useState(false);
 
-  const { scrollWindowRef, stuck, atBottom, onScroll, scrollToBottom } = useStickyScrollWindow<HTMLDivElement>(events, !anchor);
-  const isFollowingStream = useRef(true);
+  const { scrollWindowRef, atBottom, onScroll, scrollToBottom } = useStickyScrollWindow<HTMLDivElement>(events, !anchor);
+  const isFollowingStreamRef = useRef(true);
   const hasMissedDataWhilePaused = useRef(false);
 
   const lines = useMemo(
@@ -86,7 +86,7 @@ export function useContainerLogs({
 
         // Live lines are _only_ appended while the reader is tailing the end of the logs ...
         // ... otherwise they're discarded (to not grow the list from below)
-        if (isFollowingStream.current) {
+        if (isFollowingStreamRef.current) {
           setEvents((current) => [...current, data].slice(-LINES_PER_PAGE));
         } else {
           hasMissedDataWhilePaused.current = true;
@@ -234,7 +234,7 @@ export function useContainerLogs({
   //
   const eventsRef = useRef<ContainerEvent[]>([]);
   useEffect(() => void (eventsRef.current = events), [events]);
-  async function rejoinLive() {
+  async function catchupWithLatestEvents() {
     if (!hasMissedDataWhilePaused.current) {
       return;
     }
@@ -265,39 +265,42 @@ export function useContainerLogs({
     }
   }
 
-  /**
-   * Following means sitting at the bottom *of the live feed*. Being at the bottom of a window parked
-   * in history is not the same thing, and must not start appending live lines to it.
-   *
-   * An anchor rules it out on its own, whatever the window happens to contain. Asking for a time
-   * with nothing after it leaves `hasNewer` false -- true, but not because we are at the live end --
-   * and following on that alone quietly turned a history view back into a live one.
-   */
-  const atLiveEnd = stuck && reachesLiveFeed && !anchor;
+  //
+  // Effect which checks if we should begin appending new logs as they come in (follow the stream)
+  //
+  const isFollowingStream = atBottom && reachesLiveFeed && !anchor;
   useEffect(() => {
-    isFollowingStream.current = atLiveEnd;
-    if (atLiveEnd) {
-      void rejoinLive();
+    isFollowingStreamRef.current = isFollowingStream; // this will "follow the stream"
+    if (isFollowingStream) {
+      void catchupWithLatestEvents();
     }
-    // `rejoinLive` is deliberately not a dependency: the effect only has to fire when `atLiveEnd`
-    // moves, and React runs the callback from the render that changed the deps -- so the call it
-    // makes closes over the current filter and container regardless.
-  }, [atLiveEnd]);
+  }, [isFollowingStream]);
+
+  function abandonCurrentWindow() {
+    setAnchor(undefined); // remove the anchor (most important update)
+    setHasNewer(false);
+    setReachesLiveFeed(false); // the new window has not answered yet, so nothing may be appended to the old one meanwhile
+  }
 
   /**
-   * Puts the window back at the live end without moving the view: the anchor goes, and with it every
-   * claim the old window made about where it sat. Shared with applying a filter, which lands in the
-   * same place for the same reason.
+   * A filter has just been applied, which re-fetches on its own -- the load effect watches the
+   * filter. What it cannot decide is *where* to land, and that is this rule: a reader holding a
+   * marker keeps their place, because the marker is the whole reason they are parked there. Anyone
+   * else goes back to the live end, the window they were reading having described the old filter.
+   *
+   * Deliberately not an effect on the filter. Applying one is a single act, so the caller changing
+   * the filter and this dropping the anchor land in the same render -- where an effect would fetch
+   * once against the anchor it is about to clear, and again once it had.
    */
-  const returnToLiveFeed = useCallback(() => {
-    setHasNewer(false);
-    // the new window has not answered yet, so nothing may be appended to the old one meanwhile
-    setReachesLiveFeed(false);
-    setAnchor(undefined);
-  }, []);
+  function handleFilterApplied() {
+    if (at) {
+      return;
+    }
+    abandonCurrentWindow();
+  }
 
   /** Leaves history behind entirely: the live end is elsewhere, so it is fetched afresh. */
-  const jumpToLive = useCallback(async () => {
+  async function jumpToLivestream() {
     if (anchor) {
       /**
        * Dropping the anchor re-runs the load effect, which fetches the live end and opens at the
@@ -308,12 +311,12 @@ export function useContainerLogs({
        * back meant hundreds of round trips to travel a distance one request already covered.
        */
       setParameters(Internal.withoutPin, { replace: true });
-      returnToLiveFeed();
+      abandonCurrentWindow();
       return;
     }
-    await rejoinLive();
+    await catchupWithLatestEvents();
     scrollToBottom();
-  }, [anchor, rejoinLive, returnToLiveFeed, scrollToBottom, setParameters]);
+  }
 
   /**
    * Jumping is a URL change plus an anchor move; the load effect does the rest.
@@ -322,26 +325,23 @@ export function useContainerLogs({
    * or re-pinning one that was dismissed. There is nothing to fetch in either case, so the marker is
    * simply put back and scrolled to, on the frame after it exists.
    */
-  const jumpTo = useCallback(
-    (instant: Temporal.Instant) => {
-      const jumped = instant.toString();
-      setParameters((previous) => Internal.withPin(previous, jumped));
-      if (anchor?.kind !== "timestamp" || LogAnchor.value(anchor) !== jumped) {
-        setAnchor({ kind: "timestamp", value: instant });
-        return;
-      }
-      requestAnimationFrame(() => LogRow.landed(scrollWindowRef.current)?.scrollIntoView({ block: "center" }));
-    },
-    [anchor, scrollWindowRef, setParameters],
-  );
+  function jumpTo(instant: Temporal.Instant) {
+    const jumped = instant.toString();
+    setParameters((previous) => Internal.withPin(previous, jumped));
+    if (anchor?.kind !== "timestamp" || LogAnchor.value(anchor) !== jumped) {
+      setAnchor({ kind: "timestamp", value: instant });
+      return;
+    }
+    requestAnimationFrame(() => LogRow.landed(scrollWindowRef.current)?.scrollIntoView({ block: "center" }));
+  }
 
-  const openJumpDialog = useCallback(async () => {
+  async function openJumpDialog() {
     // the dialog opens on the moment already marked, if the mark is a moment at all
     const chosen = await dialogClient.jumpTo(at?.kind === "timestamp" ? at.value : undefined);
     if (chosen !== "cancel") {
       jumpTo(chosen);
     }
-  }, [dialogClient, jumpTo, at]);
+  }
 
   /**
    * Pins one message, by the reader clicking its timestamp.
@@ -351,46 +351,41 @@ export function useContainerLogs({
    * door -- the little `x` is the other way out, and reaching for the line itself is the obvious
    * one. The anchor moves with it so a reload opens here rather than at the live feed.
    */
-  const togglePinnedLine = useCallback(
-    (lineId: string) => {
-      if (at?.kind === "id" && at.value === lineId) {
-        setParameters(Internal.withoutPin, { replace: true });
-        setAnchor(undefined);
-        return;
-      }
-      setParameters((previous) => Internal.withPin(previous, lineId), { replace: true });
-      setAnchor({ kind: "id", value: lineId });
-    },
-    [at, setParameters],
-  );
+  function togglePinnedLine(lineId: string) {
+    if (at?.kind === "id" && at.value === lineId) {
+      setParameters(Internal.withoutPin, { replace: true });
+      setAnchor(undefined);
+      return;
+    }
+    setParameters((previous) => Internal.withPin(previous, lineId), { replace: true });
+    setAnchor({ kind: "id", value: lineId });
+  }
 
   /**
    * Moves the window onto a line found outside it -- and the jump marker, which described the window
    * being left behind, goes with it rather than being redrawn somewhere it never pointed at.
    */
-  const anchorToLine = useCallback(
-    (lineId: string) => {
-      setParameters(Internal.withoutPin, { replace: true });
-      setAnchor({ kind: "id", value: lineId });
-    },
-    [setParameters],
-  );
+  function anchorToLine(lineId: string) {
+    setParameters(Internal.withoutPin, { replace: true });
+    setAnchor({ kind: "id", value: lineId });
+  }
 
   /**
    * Only the marker goes. The anchor deliberately stays put, so the window the reader is in survives
    * -- see where it is declared.
    */
-  const dismissPin = useCallback(() => {
+  function dismissPin() {
     setParameters(Internal.withoutPin, { replace: true });
-  }, [setParameters]);
+  }
 
   /**
-   * Paging forward is driven from here rather than from the `stuck` effect on purpose: appending
-   * leaves the reader at the bottom, so an effect would fire again on its own output and race to
-   * the live feed without them scrolling once.
+   * Paging forward is driven from here rather than from the pin-to-bottom effect on purpose:
+   * appending leaves the reader at the bottom, so an effect would fire again on its own output and
+   * race to the live feed without them scrolling once.
    */
   function handleScroll() {
-    onScroll();
+    // measured by this very scroll, where the `atBottom` state is still the answer from before it
+    const nowAtBottom = onScroll();
     const element = scrollWindowRef.current;
     if (!element) {
       return;
@@ -399,7 +394,7 @@ export function useContainerLogs({
       void loadOlder();
       return;
     }
-    if (hasNewer && atBottom()) {
+    if (hasNewer && nowAtBottom) {
       void loadNewer();
     }
   }
@@ -410,15 +405,14 @@ export function useContainerLogs({
     lines,
     loading,
     anchor,
-    at,
-    atLiveEnd,
+    isFollowingStream,
     handleScroll,
-    jumpToLive,
+    jumpToLive: jumpToLivestream,
     openJumpDialog,
     dismissPin,
     togglePinnedLine,
     anchorToLine,
-    returnToLiveFeed,
+    handleFilterApplied,
   };
 }
 
@@ -460,13 +454,7 @@ export namespace useContainerLogs {
     lines: Line[];
     loading: boolean;
     anchor?: LogAnchor;
-    /**
-     * The marker as it stands, for the few decisions outside this hook that turn on whether the
-     * reader deliberately marked a spot -- applying a filter being the one that does.
-     */
-    at?: LogAnchor;
-    /** Sitting at the bottom *of the live feed*, which is not the same as the bottom of the window. */
-    atLiveEnd: boolean;
+    isFollowingStream: boolean;
     handleScroll: () => void;
     jumpToLive: () => Promise<void>;
     openJumpDialog: () => Promise<void>;
@@ -475,6 +463,7 @@ export namespace useContainerLogs {
     togglePinnedLine: (lineId: string) => void;
     /** Moves the window onto a line outside it, which is how a search result is arrived at. */
     anchorToLine: (lineId: string) => void;
-    returnToLiveFeed: () => void;
+    /** Told that a filter has been applied, so the window can decide where that leaves the reader. */
+    handleFilterApplied: () => void;
   };
 }
