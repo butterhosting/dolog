@@ -47,6 +47,15 @@ export function useContainerLogs({
 
   const [landedAt, setLandedAt] = useState<string>();
 
+  /**
+   * Which anchor the lines currently held were actually fetched for.
+   *
+   * Changing the anchor and receiving the window for it are two different moments, and between them
+   * the previous window is still on screen. Anything that has to act on "the window for this
+   * anchor" therefore has to wait for the two to agree, rather than for the render that merely asked.
+   */
+  const [loadedAnchor, setLoadedAnchor] = useState<LogAnchor>();
+
   const { scrollWindowRef, stuck, atBottom, onScroll, scrollToBottom } = useStickyScrollWindow<HTMLDivElement>(events, !anchor);
   const isFollowingStream = useRef(true);
   const hasMissedDataWhilePaused = useRef(false);
@@ -123,6 +132,7 @@ export function useContainerLogs({
         combinedEvents.splice(0, combinedEvents.length - LINES_PER_PAGE); // only keep the N latest events
 
         setEvents(combinedEvents);
+        setLoadedAnchor(anchor);
         setLandedAt(page.landedAt);
         setHasOlder(page.hasOlder);
         setHasNewer(page.hasNewer);
@@ -147,7 +157,7 @@ export function useContainerLogs({
   //
   const lastScrolledTo = useRef<string | null>(null);
   useEffect(() => {
-    if (!anchor || loading || lines.length === 0) {
+    if (!anchor || loading || loadedAnchor !== anchor || lines.length === 0) {
       return;
     }
 
@@ -169,7 +179,7 @@ export function useContainerLogs({
       lastScrolledTo.current = anchorValue;
       scrollWindow.scrollTop = scrollWindow.scrollHeight;
     }
-  }, [anchor, loading, lines, scrollWindowRef]);
+  }, [anchor, loadedAnchor, loading, lines, scrollWindowRef]);
 
   //
   // Loading function for `older` events
@@ -233,28 +243,33 @@ export function useContainerLogs({
    *
    * Nothing arrived, nothing to do: a short glance upwards costs no request and causes no flicker.
    */
-  const visibleEvents = useRef<ContainerEvent[]>([]);
-  useEffect(() => void (visibleEvents.current = events), [events]);
-  const rejoinLive = useCallback(async () => {
+  const eventsRef = useRef<ContainerEvent[]>([]);
+  useEffect(() => void (eventsRef.current = events), [events]);
+  async function rejoinLive() {
     if (!hasMissedDataWhilePaused.current) {
       return;
     }
+
     hasMissedDataWhilePaused.current = false;
-    const page = await logClient.list(containerId, { limit: LINES_PER_PAGE, ...useLogFilter.serialize(activeFilter) });
-    const known = new Set(visibleEvents.current.map((event) => event.id));
+    const latestPage = await logClient.list(containerId, {
+      limit: LINES_PER_PAGE,
+      ...useLogFilter.serialize(activeFilter),
+    });
+
+    const known = new Set(eventsRef.current.map((event) => event.id));
 
     /**
      * Sharing a line with what is already on screen means the two meet, so they are merged and the
      * history read so far survives. Sharing none means more than a page went by while the reader was
      * away, and the gap cannot be bridged from one request -- then the page is all we honestly have.
      */
-    if (!page.data.some((event) => known.has(event.id))) {
-      setEvents(page.data);
-      setHasOlder(page.hasOlder);
+    if (!latestPage.data.some((event) => known.has(event.id))) {
+      setEvents(latestPage.data);
+      setHasOlder(latestPage.hasOlder);
       return;
     }
-    setEvents(Internal.mergeById(visibleEvents.current, page.data));
-  }, [activeFilter, logClient, containerId]);
+    setEvents(Internal.mergeById(eventsRef.current, latestPage.data));
+  }
 
   /**
    * Following means sitting at the bottom *of the live feed*. Being at the bottom of a window parked
@@ -270,7 +285,10 @@ export function useContainerLogs({
     if (atLiveEnd) {
       void rejoinLive();
     }
-  }, [atLiveEnd, rejoinLive]);
+    // `rejoinLive` is deliberately not a dependency: the effect only has to fire when `atLiveEnd`
+    // moves, and React runs the callback from the render that changed the deps -- so the call it
+    // makes closes over the current filter and container regardless.
+  }, [atLiveEnd]);
 
   /**
    * Puts the window back at the live end without moving the view: the anchor goes, and with it every
@@ -395,7 +413,6 @@ export function useContainerLogs({
   return {
     scrollWindowRef,
     events,
-    rendered: visibleEvents,
     lines,
     loading,
     anchor,
@@ -456,8 +473,6 @@ export namespace useContainerLogs {
   export type Result = {
     scrollWindowRef: RefObject<HTMLDivElement | null>;
     events: ContainerEvent[];
-    /** What is on screen, for callers that must not be rebuilt on every arriving line. */
-    rendered: RefObject<ContainerEvent[]>;
     lines: Line[];
     loading: boolean;
     anchor?: LogAnchor;

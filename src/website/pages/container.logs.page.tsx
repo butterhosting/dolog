@@ -31,7 +31,6 @@ export function containerLogsPage() {
     id: containerId,
     applied: logFilter.activeFilter,
     scrollWindowRef: containerLogs.scrollWindowRef,
-    rendered: containerLogs.rendered,
     events: containerLogs.events,
     onFoundOutsideWindow: containerLogs.anchorToLine,
   });

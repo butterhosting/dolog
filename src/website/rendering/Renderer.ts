@@ -57,7 +57,7 @@ export class Renderer {
       });
     });
 
-    if (atTimestamp !== null && landedAt === null) {
+    if (atTimestamp !== null && landedAt === undefined) {
       result.push({
         type: Line.Type.timestamp_pin,
         pastEveryLine: true,

@@ -18,7 +18,6 @@ export function useLogSearch({
   id,
   applied,
   scrollWindowRef,
-  rendered,
   events,
   onFoundOutsideWindow,
 }: useLogSearch.Options): useLogSearch.Result {
@@ -125,14 +124,20 @@ export function useLogSearch({
           return;
         }
         setCurrentMatch(found);
-        if (rendered.current.some((event) => event.id === found)) {
+        /**
+         * Asked of the dom rather than of a copy of the window, because the very next thing done
+         * with the answer is to scroll to that element: a line the list holds but has not painted
+         * yet is not one that can be scrolled to.
+         */
+        const line = LogRow.element(container, found);
+        if (line) {
           /**
            * Only move the view for an answer the reader cannot already see. Recentring on a match
            * that was on screen the whole time shifts everything around it for no gain -- they were
            * reading that page, and the highlight moving is the whole of the news.
            */
           if (!LogRow.onScreen(container, found)) {
-            LogRow.element(container, found)?.scrollIntoView({ block: "center" });
+            line.scrollIntoView({ block: "center" });
           }
           return;
         }
@@ -142,7 +147,7 @@ export function useLogSearch({
         setSearching(null);
       }
     },
-    [applied, logClient, currentMatch, id, needle, scrollWindowRef, rendered, variant, searching, onFoundOutsideWindow],
+    [applied, logClient, currentMatch, id, needle, scrollWindowRef, variant, searching, onFoundOutsideWindow],
   );
 
   return {
@@ -169,9 +174,7 @@ export namespace useLogSearch {
     applied: useLogFilter.Filter;
     /** The scrolling log, which is what "on screen" is measured against. */
     scrollWindowRef: RefObject<HTMLElement | null>;
-    /** The lines currently held, read at press time rather than closed over. */
-    rendered: RefObject<ContainerEvent[]>;
-    /** The same lines as state, since the highlights have to be recomputed when they change. */
+    /** The lines held, since the highlights have to be recomputed when they change. */
     events: ContainerEvent[];
     /** Asked to move the window when the answer is a line that is not in it. */
     onFoundOutsideWindow: (lineId: string) => void;
