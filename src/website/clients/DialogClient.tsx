@@ -16,8 +16,8 @@ export class DialogClient {
     this._manager = manager;
   }
 
-  public jumpTo(current?: Temporal.Instant): Promise<"cancel" | Temporal.Instant> {
-    type Result = Awaited<ReturnType<typeof this.jumpTo>>;
+  public promptTimestampNavigationDialog(current?: Temporal.Instant): Promise<"cancel" | Temporal.Instant> {
+    type Result = Awaited<ReturnType<typeof this.promptTimestampNavigationDialog>>;
     const { promise, resolve: internalResolve } = Promise.withResolvers<Result>();
     const resolve = (result: Result) => {
       internalResolve(result);

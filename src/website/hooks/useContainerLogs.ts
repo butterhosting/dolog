@@ -21,7 +21,6 @@ const LINES_PER_PAGE = 300;
 export function useContainerLogs({ containerId, activeFilter, logAnchor }: useContainerLogs.Options): useContainerLogs.Result {
   const logClient = useRegistry(LogClient);
   const socketClient = useRegistry(SocketClient);
-  const dialogClient = useRegistry(DialogClient);
   const renderer = useRegistry(Renderer);
 
   const [loading, setLoading] = useState(true);
@@ -310,26 +309,6 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
   }
 
   /**
-   * Moving the anchor is enough on its own: the load effect fetches, and the scroll effect lands on
-   * it. The exception is a jump to where the window already is, which fetches nothing -- so there is
-   * no new render to land on, and the view is put back on the marker by hand.
-   */
-  function jumpTo(instant: Temporal.Instant) {
-    if (logAnchor.activateTimestampAnchor(instant) === "did_not_have_to_navigate") {
-      return;
-    }
-    requestAnimationFrame(() => LogRow.landed(scrollWindowRef.current)?.scrollIntoView({ block: "center" }));
-  }
-
-  async function openJumpDialog() {
-    // the dialog opens on the moment already marked, if the mark is a moment at all
-    const chosen = await dialogClient.jumpTo(logAnchor.anchor?.type === "timestamp" ? logAnchor.anchor.value : undefined);
-    if (chosen !== "cancel") {
-      jumpTo(chosen);
-    }
-  }
-
-  /**
    * Moves the window onto a line outside it, which is how a search result off the current page is
    * arrived at. Nothing is marked: a search moves the view, it does not plant a flag.
    */
@@ -366,7 +345,6 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
     isFollowingStream,
     handleScroll,
     jumpToLivestream,
-    openJumpDialog,
     moveWindowTo,
   };
 }
@@ -387,7 +365,6 @@ export namespace useContainerLogs {
     isFollowingStream: boolean;
     handleScroll: () => void;
     jumpToLivestream: () => Promise<void>;
-    openJumpDialog: () => Promise<void>;
     /** Moves the window onto a line outside it, leaving no marker. Used by search. */
     moveWindowTo: (eventId: string) => void;
   };

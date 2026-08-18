@@ -52,7 +52,7 @@ export function containerLogsPage() {
         <span className="font-bold">{name}</span>
       </header>
 
-      <LogToolbar filter={logFilter} onApply={applyFilter} onJump={() => void containerLogs.openJumpDialog()} />
+      <LogToolbar filter={logFilter} onApply={applyFilter} onJump={() => void logAnchor.navigateToTimestampAnchor()} />
 
       <div className="relative flex-1 min-h-0">
         {/*
