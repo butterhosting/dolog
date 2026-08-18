@@ -2,25 +2,51 @@ import { Uuid } from "@/helpers/Uuid";
 import { Temporal } from "@js-temporal/polyfill";
 
 export type LogAnchor =
-  | { kind: "id"; value: string } //
-  | { kind: "timestamp"; value: Temporal.Instant };
+  | {
+      type: "id";
+      value: string;
+      serialize: () => string;
+    }
+  | {
+      type: "timestamp";
+      value: Temporal.Instant;
+      serialize: () => string;
+    };
 
 export namespace LogAnchor {
+  export function forId(id: string): LogAnchor {
+    return {
+      type: "id",
+      value: id,
+      serialize: () => id,
+    };
+  }
+  export function forTimestamp(t: Temporal.Instant): LogAnchor {
+    return {
+      type: "timestamp",
+      value: t,
+      serialize: () => t.toString(),
+    };
+  }
   export function parse(raw: string | undefined): LogAnchor | undefined {
     if (!raw) {
       return undefined;
     }
     if (Uuid.check(raw)) {
-      return { kind: "id", value: raw };
+      return {
+        type: "id",
+        value: raw,
+        serialize: () => raw,
+      };
     }
     try {
-      return { kind: "timestamp", value: Temporal.Instant.from(raw) };
+      return {
+        type: "timestamp",
+        value: Temporal.Instant.from(raw),
+        serialize: () => raw,
+      };
     } catch {
       return undefined;
     }
-  }
-
-  export function value(anchor: LogAnchor): string {
-    return anchor.value.toString();
   }
 }

@@ -5,6 +5,7 @@ import { Temporal } from "@js-temporal/polyfill";
 import { describe, expect, it } from "bun:test";
 import { Line } from "./Line";
 import { Renderer } from "./Renderer";
+import { LogAnchor } from "@/models/LogAnchor";
 
 /**
  * The placement rules, which are the whole reason this is a service rather than a loop in the view.
@@ -96,7 +97,7 @@ describe(Renderer.name, () => {
       const rows = build({
         events,
         hasNewer: true,
-        at: { kind: "timestamp", value: Temporal.Instant.from("2027-01-01T00:00:00Z") },
+        anchor: LogAnchor.parse("2027-01-01T00:00:00Z"),
       });
       // then -- the mark belongs to the log, the note belongs to the window around it
       expect(body(rows)).toEqual(["line:2026-03-01T09:00:00Z", "pin:past-every-line", "more:newer"]);
@@ -125,7 +126,7 @@ describe(Renderer.name, () => {
       // when
       const rows = build({
         events,
-        at: { kind: "timestamp", value: Temporal.Instant.from("2026-03-01T09:30:00Z") },
+        anchor: LogAnchor.parse("2026-03-01T09:30:00Z"),
         landedAt: "2026-03-01T10:00:00Z",
       });
       // then
@@ -139,7 +140,7 @@ describe(Renderer.name, () => {
       // when
       const rows = build({
         events,
-        at: { kind: "timestamp", value: Temporal.Instant.from("2026-03-01T23:30:00Z") },
+        anchor: LogAnchor.parse("2026-03-01T23:30:00Z"),
         landedAt: "2026-03-02T00:05:00Z",
       });
       // then -- above the date, since the instant asked for came before that date began
@@ -152,7 +153,7 @@ describe(Renderer.name, () => {
       // when
       const rows = build({
         events,
-        at: { kind: "timestamp", value: Temporal.Instant.from("2026-03-02T08:00:00Z") },
+        anchor: LogAnchor.parse("2026-03-02T08:00:00Z"),
         landedAt: "2026-03-02T09:00:00Z",
       });
       // then
@@ -165,7 +166,7 @@ describe(Renderer.name, () => {
       // when
       const rows = build({
         events,
-        at: { kind: "timestamp", value: Temporal.Instant.from("2026-03-02T00:00:00Z") },
+        anchor: LogAnchor.parse("2026-03-02T00:00:00Z"),
         landedAt: "2026-03-02T09:00:00Z",
       });
       // then
@@ -178,7 +179,7 @@ describe(Renderer.name, () => {
       // when
       const rows = build({
         events,
-        at: { kind: "timestamp", value: Temporal.Instant.from("2027-01-01T00:00:00Z") },
+        anchor: LogAnchor.parse("2027-01-01T00:00:00Z"),
       });
       // then
       expect(body(rows)).toEqual(["line:2026-03-01T09:00:00Z", "pin:past-every-line"]);
@@ -188,7 +189,7 @@ describe(Renderer.name, () => {
       // when
       const rows = build({
         events: [],
-        at: { kind: "timestamp", value: Temporal.Instant.from("2027-01-01T00:00:00Z") },
+        anchor: LogAnchor.parse("2027-01-01T00:00:00Z"),
       });
       // then -- an empty window says "nothing was logged", which a mark would only muddle
       expect(shape(rows)).toEqual([]);
@@ -212,7 +213,7 @@ describe(Renderer.name, () => {
       // when
       const rows = build({
         events,
-        at: { kind: "id", value: "2026-03-01T10:00:00Z" },
+        anchor: LogAnchor.parse("2026-03-01T10:00:00Z"),
         landedAt: "2026-03-01T10:00:00Z",
       });
       // then -- the mark is about the message, not about a moment falling between two of them
@@ -223,7 +224,7 @@ describe(Renderer.name, () => {
       // given (paged away from it, or a url naming a line from another container)
       const events = [at("2026-03-01T09:00:00Z")];
       // when
-      const rows = build({ events, at: { kind: "id", value: "019fe578-e38b-7000-971e-04858335d7ff" } });
+      const rows = build({ events, anchor: LogAnchor.parse("019fe578-e38b-7000-971e-04858335d7ff") });
       // then
       expect(body(rows)).toEqual(["line:2026-03-01T09:00:00Z"]);
     });

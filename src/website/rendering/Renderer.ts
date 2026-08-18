@@ -5,15 +5,15 @@ import { Temporal } from "@js-temporal/polyfill";
 import { Direction } from "@/models/Direction";
 
 export class Renderer {
-  public render({ events, hasOlder, hasNewer, at, landedAt }: Renderer.Options): Line[] {
+  public render({ events, hasOlder, hasNewer, anchor, landedAt }: Renderer.Options): Line[] {
     if (events.length === 0) {
       return [];
     }
 
     // `at` is whatever the url says right now and can be dismissed; `landedAt` trails behind it,
     // because dismissing a pin does not re-fetch the data
-    const atId = at?.kind === "id" ? at.value : null;
-    const atTimestamp = at?.kind === "timestamp" ? at.value : null;
+    const anchorId = anchor?.type === "id" ? anchor.serialize() : undefined;
+    const anchorTimestamp = anchor?.type === "timestamp" ? anchor.serialize() : undefined;
 
     const timestampPin: Line.TimestampPin = {
       type: Line.Type.timestamp_pin,
@@ -35,11 +35,11 @@ export class Renderer {
         firstOfDay = hasOlder ? undefined : this.day(event);
       }
 
-      const landedAtThisEvent = Boolean(atTimestamp !== null) && Boolean(landedAt === event.id);
+      const landedAtThisEvent = Boolean(anchorTimestamp !== undefined) && Boolean(landedAt === event.id);
       const landedAtThisEventBeforeTheDayBegan =
-        atTimestamp !== null && //
+        anchorTimestamp !== undefined && //
         firstOfDay !== undefined &&
-        Temporal.Instant.compare(atTimestamp, this.midnight(firstOfDay)) <= 0;
+        Temporal.Instant.compare(anchorTimestamp, this.midnight(firstOfDay)) <= 0;
 
       if (landedAtThisEvent && landedAtThisEventBeforeTheDayBegan) {
         result.push(timestampPin);
@@ -53,11 +53,11 @@ export class Renderer {
       result.push({
         type: Line.Type.event,
         event,
-        pinned: event.id === atId,
+        pinned: event.id === anchorId,
       });
     });
 
-    if (atTimestamp !== null && landedAt === undefined) {
+    if (anchorTimestamp !== undefined && landedAt === undefined) {
       result.push({
         type: Line.Type.timestamp_pin,
         pastEveryLine: true,
@@ -86,7 +86,7 @@ export namespace Renderer {
     events: ContainerEvent[];
     hasOlder: boolean;
     hasNewer: boolean;
-    at?: LogAnchor;
+    anchor?: LogAnchor;
     landedAt?: string;
   };
 }

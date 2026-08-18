@@ -69,14 +69,14 @@ export class LogService {
     limit: number,
     filter: EventRepository.Filter,
   ): Promise<LogService.ListResult> {
-    const anchorBoundary = anchor.kind === "id" ? anchor.value : Uuid.fromBytes(Uuid.lowerBoundAt(anchor.value));
+    const anchorBoundary = anchor.type === "id" ? anchor.value : Uuid.fromBytes(Uuid.lowerBoundAt(anchor.value));
 
     const [before, after] = await Promise.all([
       this.eventRepository.listEvents(containerId, limit, { before: anchorBoundary, beforeInclusivity: "exclusive" }, filter),
       this.eventRepository.listEvents(
         containerId,
         limit,
-        { after: anchorBoundary, afterInclusivity: anchor.kind === "id" ? "inclusive" : "exclusive" },
+        { after: anchorBoundary, afterInclusivity: anchor.type === "id" ? "inclusive" : "exclusive" },
         filter,
       ),
     ]);
