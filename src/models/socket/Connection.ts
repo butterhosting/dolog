@@ -4,6 +4,6 @@ import { Socket } from "./Socket";
 export type Connection = {
   socket: Socket;
   lastHeardBack: Temporal.Instant;
-  watchedContainerId: string | null;
-  logPredicate: ((line: string) => boolean) | null;
+  watchedContainerId?: string;
+  logPredicate?: (line: string) => boolean;
 };

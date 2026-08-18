@@ -17,8 +17,6 @@ export class SocketService {
     this.log.debug(`Socket connected: ${socket.data.clientId}`);
     this.connections.set(socket.data.clientId, {
       socket,
-      watchedContainerId: null,
-      logPredicate: null,
       lastHeardBack: Temporal.Now.instant(),
     });
   };
@@ -77,7 +75,7 @@ export class SocketService {
       switch (message.type) {
         case ClientMessage.Type.declare_stream_interest:
           connection.watchedContainerId = message.containerId;
-          connection.logPredicate = message.logPattern ? LogPattern.predicate(message.logPattern) : null;
+          connection.logPredicate = message.logPattern ? LogPattern.predicate(message.logPattern) : undefined;
       }
     } catch (error) {
       this.log.warn(`Ignoring unreadable message from ${socket.data.clientId}`, error);

@@ -1,6 +1,5 @@
 import clsx from "clsx";
-import { Link, useParams, useSearchParams } from "react-router";
-import { FindBar } from "../comps/logviewer/FindBar";
+import { Link, useParams } from "react-router";
 import { LogRow } from "../comps/logviewer/LogRow";
 import { LogToolbar } from "../comps/logviewer/LogToolbar";
 import { Spinner } from "../comps/Spinner";
@@ -9,34 +8,29 @@ import { useContainerName } from "../hooks/useContainerName";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useLogAnchor } from "../hooks/useLogAnchor";
 import { useLogFilter } from "../hooks/useLogFilter";
-import { useLogSearch } from "../hooks/useLogSearch";
+import { useScrollManager } from "../hooks/useScrollManager";
 import { Line } from "../rendering/Line";
 import { Route } from "../Route";
 
 export function containerLogsPage() {
   const { id: containerId = "" } = useParams();
-  const [parameters, setParameters] = useSearchParams();
 
-  const logFilter = useLogFilter({
-    parameters,
-    setParameters,
-  });
-  const logAnchor = useLogAnchor({
-    parameters,
-    setParameters,
-  });
+  const logFilter = useLogFilter();
+  const logAnchor = useLogAnchor();
+  const scrollManager = useScrollManager({});
   const containerLogs = useContainerLogs({
     containerId,
-    activeFilter: logFilter.filter,
-    logAnchor,
+    filter: logFilter.filter,
+    anchor: logAnchor.anchor,
+    scrollToBottom: scrollManager.toBottom,
   });
-  const logSearch = useLogSearch({
-    id: containerId,
-    applied: logFilter.filter,
-    scrollWindowRef: containerLogs.scrollWindowRef,
-    events: containerLogs.events,
-    onFoundOutsideWindow: containerLogs.moveWindowToEvent,
-  });
+  // const logSearch = useLogSearch({
+  //   id: containerId,
+  //   applied: logFilter.filter,
+  //   scrollWindowRef: containerLogs.scrollWindowRef,
+  //   events: containerLogs.events,
+  //   onFoundOutsideWindow: containerLogs.moveWindowToEvent,
+  // });
 
   const name = useContainerName(containerId, containerLogs.events);
   useDocumentTitle(`${name} | Dolog`);
@@ -50,7 +44,7 @@ export function containerLogsPage() {
         <span className="font-bold">{name}</span>
       </header>
 
-      <LogToolbar filter={logFilter} onApply={logFilter.formState.apply} onJump={() => void logAnchor.navigateToTimestampAnchor()} />
+      <LogToolbar filter={logFilter} onApply={logFilter.formState.apply} onJump={() => void logAnchor.promptNavigation()} />
 
       <div className="relative flex-1 min-h-0">
         {/*
@@ -61,8 +55,7 @@ export function containerLogsPage() {
          * were still arriving. Both ends are compensated for deliberately here instead.
          */}
         <div
-          ref={containerLogs.scrollWindowRef}
-          onScroll={containerLogs.handleScroll}
+          ref={(element) => void (element && scrollManager.registerContainer(element))}
           className="h-full overflow-y-auto [overflow-anchor:none] bg-c-dark-full text-gray-200 font-mono text-xs p-4 leading-relaxed"
         >
           {containerLogs.isLoading && (
@@ -93,33 +86,35 @@ export function containerLogsPage() {
                 return <LogRow.DayMarker key={`day-${line.date.toString()}`} row={line} />;
               case Line.Type.timestamp_pin:
                 // at most one of these exists, so it needs no key of its own
-                return <LogRow.TimestampPin key="pin" row={line} onDismiss={logAnchor.clearAnchor} />;
+                return <LogRow.TimestampPin key="pin" row={line} onDismiss={logAnchor.clear} />;
               case Line.Type.event:
                 return (
                   <LogRow.Line
                     key={line.event.id}
                     row={line}
-                    onDismiss={logAnchor.clearAnchor}
-                    onTogglePin={() => logAnchor.toggleEventAnchor(line.event.id)}
-                    matched={logSearch.matched.has(line.event.id)}
-                    current={line.event.id === logSearch.currentMatch}
+                    onDismiss={logAnchor.clear}
+                    onTogglePin={() => logAnchor.toggleEvent(line.event.id)}
+                    // matched={logSearch.matched.has(line.event.id)}
+                    // current={line.event.id === logSearch.currentMatch}
+                    matched={false}
+                    current={false}
                   />
                 );
             }
           })}
         </div>
 
-        {logSearch.finding && <FindBar search={logSearch} />}
+        {/*{logSearch.finding && <FindBar search={logSearch} />}*/}
 
         {/* offered whenever the feed is not being followed -- scrolled up, or parked in history */}
-        {!containerLogs.isFollowingStream && (
+        {!containerLogs.isFollowingLivestream && (
           <button
-            onClick={() => void containerLogs.moveWindowToLivestream()}
+            onClick={() => scrollManager.toBottom()}
             title="new lines are not being added while you read back"
             className={clsx(
               "absolute right-4 flex items-center gap-2 rounded-full bg-c-accent text-white text-xs pl-3 pr-4 py-2 shadow-lg cursor-pointer hover:opacity-90",
               // stacked above the find bar rather than under it, since both live in this corner
-              logSearch.finding ? "bottom-20" : "bottom-4",
+              // logSearch.finding ? "bottom-20" : "bottom-4",
             )}
           >
             <span className="rounded-full bg-yellow-400 text-c-dark-full font-bold px-2 py-0.5">paused</span>

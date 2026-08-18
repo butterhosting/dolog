@@ -11,8 +11,8 @@ export namespace ClientMessage {
 
   export type DeclareStreamInterest = {
     type: Type.declare_stream_interest;
-    containerId: string | null;
-    logPattern: LogPattern | null;
+    containerId?: string;
+    logPattern?: LogPattern;
   };
 
   export const parse = ZodParser.forType<ClientMessage>()
@@ -20,8 +20,8 @@ export namespace ClientMessage {
       z.union([
         z.object({
           type: z.literal(Type.declare_stream_interest),
-          containerId: z.string().nullable(),
-          logPattern: LogPattern.parse.SCHEMA.nullable(),
+          containerId: z.string().optional(),
+          logPattern: LogPattern.parse.SCHEMA.optional(),
         }),
       ]),
     )

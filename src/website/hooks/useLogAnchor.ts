@@ -1,16 +1,17 @@
 import { LogAnchor } from "@/models/LogAnchor";
 import { useState } from "react";
-import type { SetURLSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 import { DialogClient } from "../clients/DialogClient";
 import { useRegistry } from "./useRegistry";
 
-export function useLogAnchor({ parameters, setParameters }: useLogAnchor.Options): useLogAnchor.Result {
+export function useLogAnchor(): useLogAnchor.Result {
   const dialogClient = useRegistry(DialogClient);
+  const [parameters, setParameters] = useSearchParams();
 
   const at = LogAnchor.parse(Internal.getUrlParam(parameters));
   const [anchor, setAnchor] = useState<LogAnchor | undefined>(at);
 
-  async function navigateToTimestampAnchor() {
+  async function promptNavigation() {
     const instant = await dialogClient.promptTimestampNavigationDialog(anchor?.type === "timestamp" ? anchor.value : undefined);
     if (instant === "cancel") {
       return;
@@ -23,10 +24,9 @@ export function useLogAnchor({ parameters, setParameters }: useLogAnchor.Options
       return;
     }
     setAnchor(LogAnchor.forTimestamp(instant));
-    // requestAnimationFrame(() => LogRow.landed(scrollWindowRef.current)?.scrollIntoView({ block: "center" }));
   }
 
-  function toggleEventAnchor(eventId: string) {
+  function toggleEvent(eventId: string) {
     if (at?.type === "id" && at.value === eventId) {
       setParameters(Internal.clearUrlParam, { replace: true });
       setAnchor(undefined);
@@ -36,16 +36,16 @@ export function useLogAnchor({ parameters, setParameters }: useLogAnchor.Options
     }
   }
 
-  function clearAnchor() {
+  function clear() {
     setParameters(Internal.clearUrlParam, { replace: true });
     setAnchor(undefined);
   }
 
   return {
     anchor,
-    navigateToTimestampAnchor,
-    toggleEventAnchor,
-    clearAnchor,
+    promptNavigation: promptNavigation,
+    toggleEvent,
+    clear,
   };
 }
 
@@ -68,15 +68,10 @@ namespace Internal {
 }
 
 export namespace useLogAnchor {
-  export type Options = {
-    parameters: URLSearchParams;
-    setParameters: SetURLSearchParams;
-  };
-
   export type Result = {
     anchor?: LogAnchor;
-    navigateToTimestampAnchor: () => Promise<void>;
-    toggleEventAnchor: (eventId: string) => void;
-    clearAnchor: () => void;
+    promptNavigation: () => Promise<void>;
+    toggleEvent: (eventId: string) => void;
+    clear: () => void;
   };
 }

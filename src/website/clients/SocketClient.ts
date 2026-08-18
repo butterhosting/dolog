@@ -10,17 +10,26 @@ type Subscription = {
 export class SocketClient {
   private readonly subscriptions: Subscription[] = [];
   private readonly latestMessages: Partial<Record<ServerMessage.Type, ServerMessage>> = {};
-  private socket: WebSocket | null = null;
+  private socket?: WebSocket;
 
-  private containerInterest: ClientMessage.DeclareStreamInterest | null = null;
+  private interest?: ClientMessage.DeclareStreamInterest;
 
-  public declareStreamInterest(containerId: string | null, logPattern: ClientMessage.DeclareStreamInterest["logPattern"] = null) {
-    this.containerInterest = {
+  public declareStreamInterest(containerId: string, logPattern?: ClientMessage.DeclareStreamInterest["logPattern"]) {
+    this.interest = {
       type: ClientMessage.Type.declare_stream_interest,
       containerId,
       logPattern,
     };
-    this.send(this.containerInterest);
+    this.send(this.interest);
+  }
+
+  public undeclareStreamInterest() {
+    this.interest = {
+      type: ClientMessage.Type.declare_stream_interest,
+      containerId: undefined,
+      logPattern: undefined,
+    };
+    this.send(this.interest);
   }
 
   private send(message: ClientMessage) {
@@ -33,8 +42,8 @@ export class SocketClient {
     this.socket = new WebSocket("/socket");
     this.socket.addEventListener("open", () => {
       // re-assert our interest, since a reconnected server knows nothing about us
-      if (this.containerInterest) {
-        this.send(this.containerInterest);
+      if (this.interest) {
+        this.send(this.interest);
       }
     });
     this.socket.addEventListener("message", ({ data }) => {

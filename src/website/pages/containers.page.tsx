@@ -23,7 +23,7 @@ export function containersPage() {
     const POLL_INTERVAL = Temporal.Duration.from({ seconds: 30 });
     const reloadId = setInterval(() => void reload(), POLL_INTERVAL.total("milliseconds"));
 
-    socketClient.declareStreamInterest(null);
+    socketClient.undeclareStreamInterest();
     const subscription = socketClient.subscribe({
       type: ServerMessage.Type.containers,
       callback: ({ containers }) => setData(containers),

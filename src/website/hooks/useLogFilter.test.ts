@@ -12,7 +12,7 @@ describe("useLogFilter", () => {
   function applied(overrides: Partial<useLogFilter.Filter> = {}): useLogFilter.Filter {
     return {
       pattern: "",
-      variant: LogPattern.Variant.substr,
+      patternVariant: LogPattern.Variant.substr,
       range: { kind: "preset", id: "last30d" } satisfies LogRange.Value,
       ...overrides,
     };
@@ -28,7 +28,7 @@ describe("useLogFilter", () => {
 
     it("sends no variant without a pattern for it to read", () => {
       // when
-      const request = useLogFilter.serialize(applied({ variant: LogPattern.Variant.regex }));
+      const request = useLogFilter.serialize(applied({ patternVariant: LogPattern.Variant.regex }));
       // then -- a lone variant would look like a filter to the server
       expect(request.filterPattern).toBeUndefined();
       expect(request.filterPatternVariant).toBeUndefined();
@@ -36,7 +36,7 @@ describe("useLogFilter", () => {
 
     it("sends the variant once there is a pattern", () => {
       // when
-      const request = useLogFilter.serialize(applied({ pattern: "boom", variant: LogPattern.Variant.regex }));
+      const request = useLogFilter.serialize(applied({ pattern: "boom", patternVariant: LogPattern.Variant.regex }));
       // then
       expect(request.filterPattern).toEqual("boom");
       expect(request.filterPatternVariant).toEqual(LogPattern.Variant.regex);

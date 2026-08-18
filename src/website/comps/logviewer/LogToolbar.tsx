@@ -28,7 +28,7 @@ export function LogToolbar({ filter, onApply, onJump }: Props) {
 
       <LogControls.Group label="Filter">
         <LogControls.Field>
-          <LogControls.RegexToggle on={form.variant === LogPattern.Variant.regex} onClick={form.toggleVariant} />
+          <LogControls.RegexToggle on={form.patternVariant === LogPattern.Variant.regex} onClick={form.togglePatternVariant} />
           <input
             value={form.pattern}
             onChange={(event) => form.setPattern(event.target.value)}

@@ -2,29 +2,30 @@ import { LogPattern } from "@/models/LogPattern";
 import { LogService } from "@/services/LogService";
 import { Temporal } from "@js-temporal/polyfill";
 import { useMemo, useState } from "react";
-import type { SetURLSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 import { DialogClient } from "../clients/DialogClient";
 import { LogRange } from "../models/LogRange";
 import { useRegistry } from "./useRegistry";
 
-export function useLogFilter({ parameters, setParameters }: useLogFilter.Options): useLogFilter.Result {
+export function useLogFilter(): useLogFilter.Result {
   const dialogClient = useRegistry(DialogClient);
+  const [parameters, setParameters] = useSearchParams();
 
   const key = Internal.PARAMS.map((param) => parameters.get(param) || "").join(" ");
   const filter = useMemo(() => Internal.parseFilter(parameters), [key]);
 
   // form
   const [pattern, setPattern] = useState(filter.pattern);
-  const [variant, setVariant] = useState<LogPattern.Variant>(filter.variant);
+  const [patternVariant, setPatternVariant] = useState<LogPattern.Variant>(filter.patternVariant);
   const [range, setRange] = useState<LogRange.Value>(filter.range);
   const dirty = !Internal.equals(filter, {
     pattern: pattern.trim(),
-    variant,
+    patternVariant: patternVariant,
     range,
   });
 
-  function toggleVariant() {
-    setVariant((current) => {
+  function togglePatternVariant() {
+    setPatternVariant((current) => {
       return current === LogPattern.Variant.regex ? LogPattern.Variant.substr : LogPattern.Variant.regex;
     });
   }
@@ -36,16 +37,14 @@ export function useLogFilter({ parameters, setParameters }: useLogFilter.Options
     }
   }
 
-  // only updates the URL, causing a chain of cascading changes
-  // url updates --> this hook's `parameters` arg updates --> this hooks return objects update
   function apply() {
-    setParameters((previous) => Internal.merge(previous, { pattern: pattern.trim(), variant, range }));
+    setParameters((previous) => Internal.merge(previous, { pattern: pattern.trim(), patternVariant, range }));
   }
 
   return {
     filter,
     isFilterNarrowing: Internal.isNarrowing(filter),
-    form: { pattern, setPattern, variant, toggleVariant, range, promptRangeDialog },
+    form: { pattern, setPattern, patternVariant, togglePatternVariant, range, promptRangeDialog },
     formState: { dirty, apply },
   };
 }
@@ -56,7 +55,8 @@ namespace Internal {
   export function parseFilter(parameters: URLSearchParams): useLogFilter.Filter {
     return {
       pattern: parameters.get(LogService.FilterKey.filterPattern) ?? "",
-      variant: parameters.get(LogService.FilterKey.filterPatternVariant) === "regex" ? LogPattern.Variant.regex : LogPattern.Variant.substr,
+      patternVariant:
+        parameters.get(LogService.FilterKey.filterPatternVariant) === "regex" ? LogPattern.Variant.regex : LogPattern.Variant.substr,
       range: LogRange.fromParams(parameters),
     };
   }
@@ -70,7 +70,7 @@ namespace Internal {
       ...(filter.pattern
         ? {
             [LogService.FilterKey.filterPattern]: filter.pattern,
-            [LogService.FilterKey.filterPatternVariant]: filter.variant,
+            [LogService.FilterKey.filterPatternVariant]: filter.patternVariant,
           }
         : {}),
       ...LogRange.toParams(filter.range),
@@ -84,16 +84,11 @@ namespace Internal {
   }
 
   export function equals(one: useLogFilter.Filter, other: useLogFilter.Filter): boolean {
-    return one.pattern === other.pattern && one.variant === other.variant && LogRange.equals(one.range, other.range);
+    return one.pattern === other.pattern && one.patternVariant === other.patternVariant && LogRange.equals(one.range, other.range);
   }
 }
 
 export namespace useLogFilter {
-  export type Options = {
-    parameters: URLSearchParams;
-    setParameters: SetURLSearchParams;
-  };
-
   export type Result = {
     /**
      * This value is memoized
@@ -103,8 +98,8 @@ export namespace useLogFilter {
     form: {
       pattern: string;
       setPattern: (value: string) => void;
-      variant: LogPattern.Variant;
-      toggleVariant: () => void;
+      patternVariant: LogPattern.Variant;
+      togglePatternVariant: () => void;
       range: LogRange.Value;
       promptRangeDialog: () => Promise<void>;
     };
@@ -116,7 +111,7 @@ export namespace useLogFilter {
 
   export type Filter = {
     pattern: string;
-    variant: LogPattern.Variant;
+    patternVariant: LogPattern.Variant;
     range: LogRange.Value;
   };
   export function serialize(filter: Filter): LogService.FilterSubQuery {
@@ -124,7 +119,7 @@ export namespace useLogFilter {
     return {
       filterPattern: filter.pattern || undefined,
       // meaningless without something to read, and sending it alone would look like a filter
-      filterPatternVariant: filter.pattern ? filter.variant : undefined,
+      filterPatternVariant: filter.pattern ? filter.patternVariant : undefined,
       // stringified here rather than left to whatever the request builder does with an instant
       filterSince: since?.toString(),
       filterUntil: until?.toString(),
