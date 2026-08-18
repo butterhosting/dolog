@@ -1,13 +1,9 @@
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";
-import { LogAnchor } from "@/models/LogAnchor";
 import { ServerMessage } from "@/models/socket/ServerMessage";
-import { Temporal } from "@js-temporal/polyfill";
 import { RefObject, useEffect, useMemo, useRef, useState } from "react";
-import { DialogClient } from "../clients/DialogClient";
 import { LogClient } from "../clients/LogClient";
 import { SocketClient } from "../clients/SocketClient";
-import { LogRow } from "../comps/logviewer/LogRow";
 import { Line } from "../rendering/Line";
 import { Renderer } from "../rendering/Renderer";
 import { useLogAnchor } from "./useLogAnchor";
@@ -114,17 +110,17 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
    * appended to a window that is on its way out.
    */
   const loadGeneration = useRef(0);
-  async function loadWindowAround(at?: string) {
+  async function loadWindowAround({ eventId }: { eventId?: string }) {
     const generation = ++loadGeneration.current;
     isLoadingWindow.current = true;
     arrivedWhileLoading.current = [];
-    setRequestedAnchor(at);
+    setRequestedAnchor(eventId);
     setLoading(true);
     setEvents([]);
 
     const page = await logClient.list(containerId, {
       limit: LINES_PER_PAGE,
-      at, // the latest logs when absent, otherwise the logs _around_ it
+      at: eventId, // the latest logs when absent, otherwise the logs _around_ it
       ...useLogFilter.serialize(activeFilter),
     });
     if (generation !== loadGeneration.current) {
@@ -132,7 +128,7 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
     }
 
     const combinedEvents = [...page.data];
-    if (at === undefined) {
+    if (eventId === undefined) {
       const fetchedIds = new Set(page.data.map((event) => event.id));
       combinedEvents.push(...arrivedWhileLoading.current.filter((event) => !fetchedIds.has(event.id)));
     } else if (arrivedWhileLoading.current.length > 0) {
@@ -142,7 +138,7 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
     combinedEvents.splice(0, combinedEvents.length - LINES_PER_PAGE); // only keep the N latest events
 
     setEvents(combinedEvents);
-    setLoadedFor({ at, filter: activeFilter });
+    setLoadedFor({ at: eventId, filter: activeFilter });
     setPageLandedAt(page.landedAt);
     setPageHasOlder(page.hasOlder);
     setPageHasNewer(page.hasNewer);
@@ -150,7 +146,7 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
     setLoading(false);
     isLoadingWindow.current = false;
 
-    if (at === undefined) {
+    if (eventId === undefined) {
       requestAnimationFrame(() => scrollToBottom());
     }
   }
@@ -160,7 +156,7 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
   // there is one -- whoever set it keeps their place -- and otherwise at the live end.
   //
   useEffect(() => {
-    void loadWindowAround(logAnchor.anchor?.serialize());
+    void loadWindowAround({ eventId: logAnchor.anchor?.serialize() });
     // `at` is read rather than depended on: a marker being dismissed is not a reason to re-fetch
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerId, activeFilter]);
@@ -171,11 +167,13 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
   //
   const honouredAnchor = useRef(logAnchor.anchor);
   useEffect(() => {
-    if (!logAnchor.anchor || logAnchor.anchor === honouredAnchor.current) {
+    if (logAnchor.anchor === honouredAnchor.current) {
       return;
     }
     honouredAnchor.current = logAnchor.anchor;
-    void loadWindowAround(logAnchor.anchor.serialize());
+    if (logAnchor.anchor) {
+      void loadWindowAround({ eventId: logAnchor.anchor.serialize() });
+    }
   }, [logAnchor.anchor]);
 
   useScrollToAnchor({
@@ -300,7 +298,7 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
        * of round trips to travel a distance one request already covered.
        */
       logAnchor.clearAnchor();
-      await loadWindowAround(undefined);
+      await loadWindowAround({ eventId: undefined });
       return;
     }
     // already there, just behind
@@ -313,7 +311,7 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
    * arrived at. Nothing is marked: a search moves the view, it does not plant a flag.
    */
   function moveWindowTo(eventId: string) {
-    void loadWindowAround(eventId);
+    void loadWindowAround({ eventId });
   }
 
   /**

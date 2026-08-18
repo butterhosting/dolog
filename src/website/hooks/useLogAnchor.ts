@@ -1,5 +1,4 @@
 import { LogAnchor } from "@/models/LogAnchor";
-import { Temporal } from "@js-temporal/polyfill";
 import { useState } from "react";
 import type { SetURLSearchParams } from "react-router";
 import { DialogClient } from "../clients/DialogClient";
