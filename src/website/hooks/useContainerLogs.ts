@@ -9,7 +9,7 @@ import { Renderer } from "../rendering/Renderer";
 import { useLogAnchor } from "./useLogAnchor";
 import { useLogFilter } from "./useLogFilter";
 import { useRegistry } from "./useRegistry";
-import { useScrollToAnchor } from "./useScrollToAnchor";
+import { useScrollToEvent } from "./useScrollToAnchor";
 import { useStickyScrollWindow } from "./useStickyScrollWindow";
 
 const LINES_PER_PAGE = 300;
@@ -19,7 +19,7 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
   const socketClient = useRegistry(SocketClient);
   const renderer = useRegistry(Renderer);
 
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setLoading] = useState(true);
   const [events, setEvents] = useState<ContainerEvent[]>([]);
 
   /**
@@ -30,7 +30,7 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
    * moment it has been honoured; letting it go afterwards moves nothing, because nothing about the
    * window is remembered in it.
    */
-  const [requestedAnchor, setRequestedAnchor] = useState<string | undefined>(logAnchor.anchor?.serialize());
+  const [requestedAnchor, setRequestedAnchor] = useState(logAnchor.anchor);
   const [loadedFor, setLoadedFor] = useState<{ at?: string; filter: useLogFilter.Filter }>();
   const [pageHasOlder, setPageHasOlder] = useState(false);
   const [pageHasNewer, setPageHasNewer] = useState(false);
@@ -55,7 +55,7 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
   const hasMissedDataWhilePaused = useRef(false);
 
   const lines = useMemo(
-    () => renderer.render({ events, hasOlder, hasNewer, anchor: logAnchor.anchor, landedAt }), //
+    () => renderer.render({ events, hasOlder, hasNewer, anchor: logAnchor.anchor, landedAt }),
     [events, hasOlder, hasNewer, logAnchor.anchor, landedAt],
   );
 
@@ -100,7 +100,7 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
       socketClient.declareStreamInterest(null);
       socketClient.unsubscribe(subscription);
     };
-  }, [containerId, activeFilter, socketClient]);
+  }, [containerId, activeFilter]);
 
   /**
    * Loads the stretch of log around `at`, or the live end when it is absent. The one way the window
@@ -111,6 +111,10 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
    */
   const loadGeneration = useRef(0);
   async function loadWindowAround({ eventId }: { eventId?: string }) {
+    if (loadedFor && eventId === loadedFor.at && activeFilter === loadedFor.filter) {
+      return;
+    }
+
     const generation = ++loadGeneration.current;
     isLoadingWindow.current = true;
     arrivedWhileLoading.current = [];
@@ -176,11 +180,11 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
     }
   }, [logAnchor.anchor]);
 
-  useScrollToAnchor({
+  useScrollToEvent({
     scrollWindowRef,
-    target: requestedAnchor,
+    anchor: requestedAnchor,
     showsWhatWasAskedFor,
-    loading,
+    loading: isLoading,
     lines,
   });
 
@@ -289,7 +293,7 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
   }, [isFollowingStream]);
 
   /** Leaves history behind entirely: the live end is elsewhere, so it is fetched afresh. */
-  async function jumpToLivestream() {
+  async function moveWindowToLivestream() {
     if (!showsLiveEnd) {
       /**
        * Reading the live end afresh, and opening at the bottom of it once it lands. Nothing is
@@ -310,8 +314,8 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
    * Moves the window onto a line outside it, which is how a search result off the current page is
    * arrived at. Nothing is marked: a search moves the view, it does not plant a flag.
    */
-  function moveWindowTo(eventId: string) {
-    void loadWindowAround({ eventId });
+  async function moveWindowToEvent(eventId: string) {
+    await loadWindowAround({ eventId });
   }
 
   /**
@@ -337,13 +341,13 @@ export function useContainerLogs({ containerId, activeFilter, logAnchor }: useCo
 
   return {
     scrollWindowRef,
+    handleScroll,
     events,
     lines,
-    loading,
+    isLoading,
     isFollowingStream,
-    handleScroll,
-    jumpToLivestream,
-    moveWindowTo,
+    moveWindowToEvent,
+    moveWindowToLivestream,
   };
 }
 
@@ -355,15 +359,16 @@ export namespace useContainerLogs {
   };
 
   export type Result = {
+    // dom elements and handlers
     scrollWindowRef: RefObject<HTMLDivElement | null>;
+    handleScroll: () => void;
+    // data and state
     events: ContainerEvent[];
     lines: Line[];
-    loading: boolean;
-    /** Whether the live end owns the bottom of the window, which is when to stop offering a way back. */
+    isLoading: boolean;
     isFollowingStream: boolean;
-    handleScroll: () => void;
-    jumpToLivestream: () => Promise<void>;
-    /** Moves the window onto a line outside it, leaving no marker. Used by search. */
-    moveWindowTo: (eventId: string) => void;
+    // imperatives
+    moveWindowToEvent: (eventId: string) => Promise<void>;
+    moveWindowToLivestream: () => Promise<void>;
   };
 }

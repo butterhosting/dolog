@@ -10,7 +10,7 @@ export function useContainerName(id: string, events: ContainerEvent[]): string {
   const containerClient = useRegistry(ContainerClient);
   const [name, setName] = useState(id.slice(0, 12));
 
-  // Approach 1
+  // approach 1
   useEffect(() => {
     void containerClient.list().then((containers) => {
       const mine = containers.find((container) => container.id === id);
@@ -20,7 +20,7 @@ export function useContainerName(id: string, events: ContainerEvent[]): string {
     });
   }, [containerClient, id]);
 
-  // Approach 2
+  // approach 2
   useEffect(() => {
     const found = events.at(-1)?.container.name ?? events.at(0)?.container.name;
     if (found) {

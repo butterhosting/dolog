@@ -11,14 +11,14 @@ import { Line } from "../rendering/Line";
  * drawn -- so the line looks absent, this scrolls to the end of the log instead, and marks the
  * anchor as dealt with. The correct scroll then never happens, because it looks like it already did.
  */
-export function useScrollToAnchor({ scrollWindowRef, target, showsWhatWasAskedFor, loading, lines }: useScrollToAnchor.Options) {
+export function useScrollToEvent({ scrollWindowRef, anchor, showsWhatWasAskedFor, loading, lines }: useScrollToEvent.Options) {
   const lastScrolledTo = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    if (target === undefined || loading || !showsWhatWasAskedFor || lines.length === 0) {
+    if (anchor === undefined || loading || !showsWhatWasAskedFor || lines.length === 0) {
       return;
     }
-    if (lastScrolledTo.current === target) {
+    if (lastScrolledTo.current === anchor.serialize()) {
       return;
     }
 
@@ -26,25 +26,24 @@ export function useScrollToAnchor({ scrollWindowRef, target, showsWhatWasAskedFo
     if (!scrollWindow) {
       return;
     }
-    lastScrolledTo.current = target;
+    lastScrolledTo.current = anchor.serialize();
 
     // an id names a line outright; an instant is answered by whichever line the server landed on
-    const targetAnchor = LogAnchor.parse(target);
-    const element = targetAnchor?.type === "id" ? LogRow.element(scrollWindow, targetAnchor.value) : LogRow.landed(scrollWindow);
+    const element = anchor?.type === "id" ? LogRow.element(scrollWindow, anchor.value) : LogRow.landed(scrollWindow);
     if (element) {
       element.scrollIntoView({ block: "center" });
       return;
     }
     // nothing was drawn for it, so what the reader was given instead is the end of history
     scrollWindow.scrollTop = scrollWindow.scrollHeight;
-  }, [target, showsWhatWasAskedFor, loading, lines, scrollWindowRef]);
+  }, [anchor, showsWhatWasAskedFor, loading, lines, scrollWindowRef]);
 }
 
-export namespace useScrollToAnchor {
+export namespace useScrollToEvent {
   export type Options = {
     scrollWindowRef: RefObject<HTMLElement | null>;
     /** Which line the window was opened around: an event id, or an instant. */
-    target?: string;
+    anchor?: LogAnchor;
     /** Whether the lines below are the ones this anchor asked for, rather than the previous window. */
     showsWhatWasAskedFor: boolean;
     loading: boolean;

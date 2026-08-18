@@ -27,22 +27,20 @@ export function containerLogsPage() {
   });
   const containerLogs = useContainerLogs({
     containerId,
-    activeFilter: logFilter.activeFilter,
+    activeFilter: logFilter.filter,
     logAnchor,
   });
   const logSearch = useLogSearch({
     id: containerId,
-    applied: logFilter.activeFilter,
+    applied: logFilter.filter,
     scrollWindowRef: containerLogs.scrollWindowRef,
     events: containerLogs.events,
-    onFoundOutsideWindow: containerLogs.moveWindowTo,
+    onFoundOutsideWindow: containerLogs.moveWindowToEvent,
   });
 
   const name = useContainerName(containerId, containerLogs.events);
   useDocumentTitle(`${name} | Dolog`);
 
-  // the window watches the filter itself, and re-reads around the marker or at the live end
-  const applyFilter = logFilter.formState.apply;
   return (
     <div className="full-bleed flex h-screen flex-col">
       <header className="relative flex items-center justify-center px-4 pb-3 pt-4">
@@ -52,7 +50,7 @@ export function containerLogsPage() {
         <span className="font-bold">{name}</span>
       </header>
 
-      <LogToolbar filter={logFilter} onApply={applyFilter} onJump={() => void logAnchor.navigateToTimestampAnchor()} />
+      <LogToolbar filter={logFilter} onApply={logFilter.formState.apply} onJump={() => void logAnchor.navigateToTimestampAnchor()} />
 
       <div className="relative flex-1 min-h-0">
         {/*
@@ -67,7 +65,7 @@ export function containerLogsPage() {
           onScroll={containerLogs.handleScroll}
           className="h-full overflow-y-auto [overflow-anchor:none] bg-c-dark-full text-gray-200 font-mono text-xs p-4 leading-relaxed"
         >
-          {containerLogs.loading && (
+          {containerLogs.isLoading && (
             <div className="flex justify-center py-8">
               <Spinner />
             </div>
@@ -76,9 +74,9 @@ export function containerLogsPage() {
            * The one thing about an empty window that `Renderer` cannot say: *why* it is empty. That
            * answer needs the filter as well as the window, so it is the page that gives it.
            */}
-          {!containerLogs.loading && containerLogs.lines.length === 0 && (
+          {!containerLogs.isLoading && containerLogs.lines.length === 0 && (
             <div className="text-c-dark-half py-8 text-center">
-              {logFilter.isActiveFilterNarrowing
+              {logFilter.isFilterNarrowing
                 ? "Nothing in this container matches the filter"
                 : logAnchor.anchor?.type === "timestamp"
                   ? "Nothing was logged at or after that time"
@@ -116,7 +114,7 @@ export function containerLogsPage() {
         {/* offered whenever the feed is not being followed -- scrolled up, or parked in history */}
         {!containerLogs.isFollowingStream && (
           <button
-            onClick={() => void containerLogs.jumpToLivestream()}
+            onClick={() => void containerLogs.moveWindowToLivestream()}
             title="new lines are not being added while you read back"
             className={clsx(
               "absolute right-4 flex items-center gap-2 rounded-full bg-c-accent text-white text-xs pl-3 pr-4 py-2 shadow-lg cursor-pointer hover:opacity-90",

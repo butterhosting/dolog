@@ -11,13 +11,13 @@ export function useLogFilter({ parameters, setParameters }: useLogFilter.Options
   const dialogClient = useRegistry(DialogClient);
 
   const key = Internal.PARAMS.map((param) => parameters.get(param) || "").join(" ");
-  const activeFilter = useMemo(() => Internal.parseFilter(parameters), [key]);
+  const filter = useMemo(() => Internal.parseFilter(parameters), [key]);
 
   // form
-  const [pattern, setPattern] = useState(activeFilter.pattern);
-  const [variant, setVariant] = useState<LogPattern.Variant>(activeFilter.variant);
-  const [range, setRange] = useState<LogRange.Value>(activeFilter.range);
-  const dirty = !Internal.equals(activeFilter, {
+  const [pattern, setPattern] = useState(filter.pattern);
+  const [variant, setVariant] = useState<LogPattern.Variant>(filter.variant);
+  const [range, setRange] = useState<LogRange.Value>(filter.range);
+  const dirty = !Internal.equals(filter, {
     pattern: pattern.trim(),
     variant,
     range,
@@ -43,8 +43,8 @@ export function useLogFilter({ parameters, setParameters }: useLogFilter.Options
   }
 
   return {
-    activeFilter,
-    isActiveFilterNarrowing: Internal.isNarrowing(activeFilter),
+    filter,
+    isFilterNarrowing: Internal.isNarrowing(filter),
     form: { pattern, setPattern, variant, toggleVariant, range, promptRangeDialog },
     formState: { dirty, apply },
   };
@@ -98,8 +98,8 @@ export namespace useLogFilter {
     /**
      * This value is memoized
      */
-    activeFilter: Filter;
-    isActiveFilterNarrowing: boolean;
+    filter: Filter;
+    isFilterNarrowing: boolean;
     form: {
       pattern: string;
       setPattern: (value: string) => void;
