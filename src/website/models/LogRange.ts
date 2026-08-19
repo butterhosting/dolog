@@ -13,7 +13,7 @@ import { Temporal } from "@js-temporal/polyfill";
  * Named `LogRange` because `Range` is already a DOM global.
  */
 export namespace LogRange {
-  type PresetId = "all" | "last10m" | "last30m" | "last1h" | "last24h" | "last7d" | "last30d" | "today" | "yesterday";
+  export type PresetId = "all" | "last10m" | "last30m" | "last1h" | "last24h" | "last7d" | "last30d" | "today" | "yesterday";
 
   export type Value =
     | {
@@ -63,7 +63,7 @@ export namespace LogRange {
     { id: "yesterday", label: "Yesterday", group: "exact", window: (now) => ({ since: midnight(now, 1), until: midnight(now, 0) }) },
   ];
 
-  function preset(id: PresetId): Preset {
+  export function preset(id: PresetId): Preset {
     return PRESETS.find((candidate) => candidate.id === id)!;
   }
 

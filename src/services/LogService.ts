@@ -7,11 +7,11 @@ import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";
+import { Filter } from "@/models/Filter";
 import { LogAnchor } from "@/models/LogAnchor";
-import { LogPattern } from "@/models/LogPattern";
+import { Pattern } from "@/models/Pattern";
 import { EventRepository } from "@/repositories/EventRepository";
 import { SocketService } from "@/services/SocketService";
-import { Temporal } from "@js-temporal/polyfill";
 import { Observable } from "rxjs";
 import z from "zod/v4";
 import { Fountain } from "./streaming/Fountain";
@@ -63,12 +63,7 @@ export class LogService {
     return await this.eventRepository.listEvents(containerId, listQuery.limit, {}, listQuery.filter);
   }
 
-  private async listAround(
-    containerId: string,
-    anchor: LogAnchor,
-    limit: number,
-    filter: EventRepository.Filter,
-  ): Promise<LogService.ListResult> {
+  private async listAround(containerId: string, anchor: LogAnchor, limit: number, filter: Filter): Promise<LogService.ListResult> {
     const anchorBoundary = anchor.type === "id" ? anchor.value : Uuid.fromBytes(Uuid.lowerBoundAt(anchor.value));
 
     const [before, after] = await Promise.all([
@@ -96,7 +91,6 @@ export class LogService {
       ],
       hasOlder,
       hasNewer,
-      reachesLiveFeed: this.eventRepository.reachesLiveFeed({ hasNewer, filter }),
       landedAt,
     };
   }
@@ -108,10 +102,12 @@ export class LogService {
         .refine(({ anchorInclusive, anchorExclusive }) => !(anchorInclusive && anchorExclusive), {
           error: "cannot specify both `inclusive` and `exclusive`",
         })
-        .transform(this.filterTransform)
-        .transform(({ searchPattern, searchPatternVariant, anchorInclusive, anchorExclusive, direction, ...fields }) => ({
+        .transform(({ searchPattern, searchPatternType, anchorInclusive, anchorExclusive, direction, ...fields }) => ({
           search: {
-            logPattern: { pattern: searchPattern, patternVariant: searchPatternVariant },
+            pattern: {
+              type: searchPatternType,
+              value: searchPattern,
+            },
             anchorId: anchorInclusive ?? anchorExclusive,
             anchorInclusivity: anchorInclusive !== undefined ? "inclusive" : anchorExclusive !== undefined ? "exclusive" : undefined,
             direction,
@@ -130,9 +126,8 @@ export class LogService {
       LogService.ListQuery
         // validate provided range
         .refine(({ afterExclusive, afterInclusive }) => !(afterExclusive !== undefined && afterInclusive !== undefined), {
-          error: "cannot specify both `after` and `afterInclusive`",
+          error: "cannot specify both `afterExclusive` and `afterInclusive`",
         })
-        .transform(this.filterTransform)
         .transform(({ beforeExclusive, afterInclusive, afterExclusive, ...fields }) => ({
           cursor:
             (beforeExclusive ?? afterInclusive ?? afterExclusive)
@@ -151,58 +146,43 @@ export class LogService {
         .parse(unknown)
     );
   }
-
-  private filterTransform<
-    T extends {
-      filterPattern?: string;
-      filterPatternVariant?: LogPattern.Variant;
-      filterSince?: Temporal.Instant;
-      filterUntil?: Temporal.Instant;
-    },
-  >(
-    query: T,
-  ): Omit<T, "filterPattern" | "filterPatternVariant" | "filterSince" | "filterUntil"> & {
-    filter: EventRepository.Filter;
-  } {
-    const { filterPattern, filterPatternVariant, filterSince, filterUntil, ...fields } = query;
-    return {
-      ...fields,
-      filter: {
-        logPattern:
-          filterPattern && filterPatternVariant
-            ? {
-                pattern: filterPattern,
-                patternVariant: filterPatternVariant,
-              }
-            : undefined,
-        since: filterSince,
-        until: filterUntil,
-      } satisfies EventRepository.Filter,
-    };
-  }
 }
 
 export namespace LogService {
   export enum FilterKey {
     filterPattern = "filterPattern",
-    filterPatternVariant = "filterPatternVariant",
+    filterPatternType = "filterPatternType",
     filterSince = "filterSince",
     filterUntil = "filterUntil",
   }
 
   export type FilterSubQuery = z.input<typeof FilterSubQuery>;
-  const FilterSubQuery = z.object({
-    [FilterKey.filterPattern]: z.string().optional(),
-    [FilterKey.filterPatternVariant]: z.enum(LogPattern.Variant).optional(),
-    [FilterKey.filterSince]: z.string().transform(ZodParser.instant).optional(),
-    [FilterKey.filterUntil]: z.string().transform(ZodParser.instant).optional(),
-  });
+  const FilterSubQuery = z
+    .object({
+      [FilterKey.filterPattern]: z.string().optional(),
+      [FilterKey.filterPatternType]: z.enum(Pattern.Type).optional(),
+      [FilterKey.filterSince]: z.string().transform(ZodParser.instant).optional(),
+      [FilterKey.filterUntil]: z.string().transform(ZodParser.instant).optional(),
+    })
+    .transform(({ filterPattern, filterPatternType, filterSince, filterUntil }): { filter: Filter } => ({
+      filter: {
+        pattern:
+          filterPattern && filterPatternType
+            ? {
+                type: filterPatternType,
+                value: filterPattern,
+              }
+            : undefined,
+        since: filterSince,
+        until: filterUntil,
+      },
+    }));
 
   export type FindQuery = z.input<typeof FindQuery>;
   export const FindQuery = z
     .object({
       searchPattern: z.string(),
-      searchPatternVariant: z.enum(LogPattern.Variant),
+      searchPatternType: z.enum(Pattern.Type),
       anchorInclusive: z.string().optional(),
       anchorExclusive: z.string().optional(),
       direction: z.enum(Direction),
@@ -249,7 +229,6 @@ export namespace LogService {
           data: z.array(ContainerEvent.parse.SCHEMA),
           hasOlder: z.boolean(),
           hasNewer: z.boolean(),
-          reachesLiveFeed: z.boolean(),
           landedAt: z.string().optional(),
         }),
       )

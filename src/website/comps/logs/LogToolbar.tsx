@@ -1,4 +1,3 @@
-import { LogPattern } from "@/models/LogPattern";
 import { useLogFilter } from "../../hooks/useLogFilter";
 import { LogRange } from "../../models/LogRange";
 import { LogControls } from "./LogControls";
@@ -28,7 +27,7 @@ export function LogToolbar({ filter, onApply, onJump }: Props) {
 
       <LogControls.Group label="Filter">
         <LogControls.Field>
-          <LogControls.RegexToggle on={form.patternVariant === LogPattern.Variant.regex} onClick={form.togglePatternVariant} />
+          {/*<LogControls.RegexToggle on={form.patternVariant === LogPattern.Variant.regex} onClick={form.togglePatternVariant} />*/}
           <input
             value={form.pattern}
             onChange={(event) => form.setPattern(event.target.value)}

@@ -1,9 +1,10 @@
 import { Temporal } from "@js-temporal/polyfill";
 import { Socket } from "./Socket";
+import { PredicateFactory } from "@/repositories/PredicateFactory";
 
 export type Connection = {
   socket: Socket;
   lastHeardBack: Temporal.Instant;
   watchedContainerId?: string;
-  logPredicate?: (line: string) => boolean;
+  filterPredicate?: (candidate: PredicateFactory.Candidate) => boolean;
 };

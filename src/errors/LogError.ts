@@ -12,7 +12,7 @@ export class LogError {
     };
   }>();
   public static readonly conflicting_search_anchor = Yexception.field<{ anchorInclusive: string; anchorExclusive: string }>();
-  public static readonly invalid_search_pattern = Yexception.field<{ pattern: string; reason: string }>();
+  public static readonly invalid_regex_pattern = Yexception.field<{ pattern: string; reason: string }>();
 
   static {
     Yexception.initialize(this);

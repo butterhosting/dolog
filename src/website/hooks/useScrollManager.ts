@@ -59,7 +59,7 @@ export function useScrollManager(): useScrollManager.Result {
 
 export namespace useScrollManager {
   export type Result = {
-    registerContainer(container: HTMLElement): void;
+    registerContainer(container: HTMLElement | null): void;
     currentWindowPosition: {
       atTheTop: boolean;
       atTheBottom: boolean;

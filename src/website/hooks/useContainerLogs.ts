@@ -3,12 +3,11 @@ import { LogAnchor } from "@/models/LogAnchor";
 import { ServerMessage } from "@/models/socket/ServerMessage";
 import { LogService } from "@/services/LogService";
 import { Temporal } from "@js-temporal/polyfill";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { LogClient } from "../clients/LogClient";
 import { SocketClient } from "../clients/SocketClient";
 import { Line } from "../rendering/Line";
 import { Renderer } from "../rendering/Renderer";
-import { useElementManager } from "./useElementManager";
 import { useLogFilter } from "./useLogFilter";
 import { useRegistry } from "./useRegistry";
 import { useScrollManager } from "./useScrollManager";
@@ -72,37 +71,39 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
   //
   // Load functionality
   //
-  const loadingQueue = useRef(Promise.resolve());
-
   function loadLatest(options?: Internal.PostLoadingOptions) {
-    return internalLoadQueue("latest", undefined, options);
+    return dispatchLoad("latest", undefined, options);
   }
   function loadForwards(cursor: string, options?: Internal.PostLoadingOptions) {
-    return internalLoadQueue("forwards", cursor, options);
+    return dispatchLoad("forwards", cursor, options);
   }
   function loadBackwards(cursor: string, options?: Internal.PostLoadingOptions) {
-    return internalLoadQueue("backwards", cursor, options);
+    return dispatchLoad("backwards", cursor, options);
   }
   function loadAround(cursorOrTimestamp: string | Temporal.Instant, options?: Internal.PostLoadingOptions) {
-    return internalLoadQueue("around", cursorOrTimestamp, options);
+    return dispatchLoad("around", cursorOrTimestamp, options);
   }
-  async function internalLoadQueue(
+
+  const loadingQueue = useRef(Promise.resolve());
+  async function dispatchLoad(
     variant: Internal.LoadingVariant,
     cursorOrTimestamp?: string | Temporal.Instant,
     options: Internal.PostLoadingOptions = {},
   ) {
-    loadingQueue.current = loadingQueue.current.then(() => internalLoadDispatch(variant, cursorOrTimestamp, options));
+    loadingQueue.current = loadingQueue.current
+      .then(() => performLoad(variant, cursorOrTimestamp, options))
+      .catch((error) => console.error(error));
     await loadingQueue.current;
   }
-  async function internalLoadDispatch(
+  async function performLoad(
     variant: Internal.LoadingVariant,
     cursorOrTimestamp?: string | Temporal.Instant,
     options: Internal.PostLoadingOptions = {},
   ) {
     setLoading(true);
-    const postLoadingId = Math.random();
+    const nonce = Math.random();
     loadingTransition.current = {
-      id: postLoadingId,
+      nonce,
       variant,
       postLoadingHook: options?.postLoadingFn,
     };
@@ -136,7 +137,7 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
       }
     }
     setLandedAt(landedAt);
-    setLoadingNonce(postLoadingId);
+    setLoadingNonce(nonce);
   }
 
   //
@@ -205,26 +206,23 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
   //
   // Lifecycle management; invoke post-loading hooks after the DOM has updated
   //
-  const { registerElement: registerContainer } = useElementManager({
-    mutationListener: {
-      onMutation: (_, element) => {
-        const postLoadingId = Number(element.getAttribute("data-loading-nonce"));
-        if (postLoadingId === loadingTransition.current?.id) {
-          loadingTransition.current.postLoadingHook?.();
-          setLoadingNonce(0);
-          loadingTransition.current = undefined;
-        }
-      },
-      subscription: { attributes: true },
-    },
-  });
+  // We're using `useLayoutEffect` here because it's 1% better, since it's guaranteed
+  // to run before a repaint (but always after DOM manipulation). From its docs:
+  //
+  //    > The signature is identical to useEffect, but it fires synchronously after all DOM mutations.
+  //    > Use this to read layout from the DOM and synchronously re-render.
+  //
+  useLayoutEffect(() => {
+    if (loadingTransition.current?.nonce === loadingNonce) {
+      loadingTransition.current.postLoadingHook?.();
+      loadingTransition.current = undefined;
+    }
+  }, [loadingNonce]);
 
   return {
-    registerContainer,
     lines,
     events,
     isLoading,
-    loadingNonce,
     isFollowingStream,
     followStream,
   };
@@ -234,7 +232,7 @@ namespace Internal {
   export type LoadingVariant = "latest" | "forwards" | "backwards" | "around";
 
   export type LoadingTransition = {
-    id: number;
+    nonce: number;
     variant: LoadingVariant;
     postLoadingHook?: () => unknown;
   };
@@ -260,16 +258,14 @@ namespace Internal {
 export namespace useContainerLogs {
   export type Options = {
     containerId: string;
-    filter: useLogFilter.Filter;
+    filter: useLogFilter.ClientFilter;
     anchor?: LogAnchor;
     scrollManager: useScrollManager.Result;
   };
   export type Result = {
-    registerContainer(container: HTMLElement): void;
     lines: Line[];
     events: ContainerEvent[];
     isLoading: boolean;
-    loadingNonce: number;
     isFollowingStream: boolean;
     followStream(): void;
   };

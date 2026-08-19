@@ -1,6 +1,5 @@
 import clsx from "clsx";
 import { Link, useParams } from "react-router";
-import { LogToolbar } from "../comps/logs/LogToolbar";
 import { Row } from "../comps/logs/Row";
 import { Spinner } from "../comps/Spinner";
 import { useContainerLogs } from "../hooks/useContainerLogs";
@@ -11,7 +10,7 @@ import { useLogFilter } from "../hooks/useLogFilter";
 import { useScrollManager } from "../hooks/useScrollManager";
 import { Line } from "../rendering/Line";
 import { Route } from "../Route";
-import { useElementManager } from "../hooks/useElementManager";
+import { LogToolbar } from "../comps/logs/LogToolbar";
 
 export function containerLogsPage() {
   const { id: containerId = "" } = useParams();
@@ -56,8 +55,7 @@ export function containerLogsPage() {
          * were still arriving. Both ends are compensated for deliberately here instead.
          */}
         <div
-          ref={useElementManager.compose(scrollManager.registerContainer, containerLogs.registerContainer)}
-          data-loading-nonce={containerLogs.loadingNonce}
+          ref={scrollManager.registerContainer}
           className="h-full overflow-y-auto [overflow-anchor:none] bg-c-dark-full text-gray-200 font-mono text-xs p-4 leading-relaxed"
         >
           {containerLogs.isLoading && (

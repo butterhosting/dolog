@@ -1,3 +1,4 @@
+import { Filter } from "@/models/Filter";
 import { ClientMessage } from "@/models/socket/ClientMessage";
 import { ServerMessage } from "@/models/socket/ServerMessage";
 
@@ -14,11 +15,11 @@ export class SocketClient {
 
   private interest?: ClientMessage.DeclareStreamInterest;
 
-  public declareStreamInterest(containerId: string, logPattern?: ClientMessage.DeclareStreamInterest["logPattern"]) {
+  public declareStreamInterest(containerId: string, filter?: Filter) {
     this.interest = {
       type: ClientMessage.Type.declare_stream_interest,
       containerId,
-      logPattern,
+      filter,
     };
     this.send(this.interest);
   }
@@ -27,7 +28,7 @@ export class SocketClient {
     this.interest = {
       type: ClientMessage.Type.declare_stream_interest,
       containerId: undefined,
-      logPattern: undefined,
+      filter: undefined,
     };
     this.send(this.interest);
   }

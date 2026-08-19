@@ -2,12 +2,12 @@ import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { ContainerRM } from "@/models/ContainerRM";
-import { LogPattern } from "@/models/LogPattern";
 import { Connection } from "@/models/socket/Connection";
 import { Temporal } from "@js-temporal/polyfill";
 import { ClientMessage } from "../models/socket/ClientMessage";
 import { ServerMessage } from "../models/socket/ServerMessage";
 import { Socket } from "../models/socket/Socket";
+import { PredicateFactory } from "@/repositories/PredicateFactory";
 
 export class SocketService {
   private readonly log = new Logger(__filename);
@@ -45,14 +45,14 @@ export class SocketService {
     }, KEEPALIVE_INTERVAL.total("milliseconds"));
   }
 
-  public broadcastEventStream = (data: ContainerEvent) => {
+  public broadcastEventStream = (event: ContainerEvent) => {
     const message: ServerMessage = {
       type: ServerMessage.Type.log,
-      data,
+      data: event,
     };
     [...this.connections.values()]
-      .filter((connection) => connection.watchedContainerId === data.container.id)
-      .filter((connection) => !connection.logPredicate || (data.type === ContainerEvent.Type.log && connection.logPredicate(data.line)))
+      .filter((connection) => connection.watchedContainerId === event.container.id)
+      .filter((connection) => !connection.filterPredicate || (event.type === ContainerEvent.Type.log && connection.filterPredicate(event)))
       .forEach((connection) => connection.socket.send(JSON.stringify(message)));
   };
 
@@ -73,9 +73,14 @@ export class SocketService {
     try {
       const message = ClientMessage.parse(JSON.parse(raw));
       switch (message.type) {
-        case ClientMessage.Type.declare_stream_interest:
+        case ClientMessage.Type.declare_stream_interest: {
           connection.watchedContainerId = message.containerId;
-          connection.logPredicate = message.logPattern ? LogPattern.predicate(message.logPattern) : undefined;
+          connection.filterPredicate = PredicateFactory.forFilter("full_object_test", message.filter ?? {});
+          break;
+        }
+        default: {
+          message.type satisfies never;
+        }
       }
     } catch (error) {
       this.log.warn(`Ignoring unreadable message from ${socket.data.clientId}`, error);

@@ -7,11 +7,12 @@ import { Uuid } from "@/helpers/Uuid";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";
-import { LogPattern } from "@/models/LogPattern";
+import { Filter } from "@/models/Filter";
+import { Pattern } from "@/models/Pattern";
 import { Temporal } from "@js-temporal/polyfill";
 import { and, asc, desc, eq, gt, lt, lte, notExists, sql } from "drizzle-orm";
 import { BehaviorSubject, catchError, concatMap, defer, EMPTY, interval, Observable } from "rxjs";
-import { EventPredicateFactory } from "./EventPredicateFactory";
+import { PredicateFactory } from "./PredicateFactory";
 
 /**
  * Recent events are held in a `pending` memory buffer until they are flushed
@@ -66,21 +67,23 @@ export class EventRepository {
     this.enforcePendingCeiling();
   }
 
-  public async findEvent(
-    dockerId: string,
-    search: EventRepository.Search,
-    filter: EventRepository.Filter = {},
-  ): Promise<{ id: string | undefined }> {
-    const searchPredicate = EventPredicateFactory.forSearch(search);
-    const filterPredicate = EventPredicateFactory.forFilter(filter);
+  public async findEvent(dockerId: string, search: EventRepository.Search, filter: Filter): Promise<{ id: string | undefined }> {
+    const searchPredicate = {
+      fullObjectTest: PredicateFactory.forSearch("full_object_test", search),
+      partialDatabaseTest: PredicateFactory.forSearch("partial_database_test", search),
+    };
+    const filterPredicate = {
+      fullObjectTest: PredicateFactory.forFilter("full_object_test", filter),
+      partialDatabaseTest: PredicateFactory.forFilter("partial_database_test", filter),
+    };
 
     //
     // Part A: search the buffer for a candidate
     //
     const bufferMatchesBeyondSearchAnchor = this.pending
       .filter((event): event is ContainerEvent.Log => event.container.id === dockerId && event.type === ContainerEvent.Type.log)
-      .filter((event) => searchPredicate.fullInMemoryTest(event)) // only logs matching the specific search constraints...
-      .filter((event) => filterPredicate.fullInMemoryTest(event)) // ...but only if they match the general filter window as well
+      .filter((event) => searchPredicate.fullObjectTest(event)) // only logs matching the specific search constraints...
+      .filter((event) => filterPredicate.fullObjectTest(event)) // ...but only if they match the general filter window as well
       .sort(ContainerEvent.sort(search.direction)); // sorted the way the search runs, so the nearest match is simply the first
     const bufferMatch = bufferMatchesBeyondSearchAnchor.at(0)?.id;
 
@@ -114,11 +117,11 @@ export class EventRepository {
       }
 
       for (const row of chunk) {
-        const databaseCandidate: EventPredicateFactory.Candidate = {
+        const databaseCandidate: PredicateFactory.Candidate = {
           id: Uuid.fromBytes(row.id),
-          line: row.line,
+          line: row.line ?? undefined,
         };
-        if (searchPredicate.fullInMemoryTest(databaseCandidate) && filterPredicate.fullInMemoryTest(databaseCandidate)) {
+        if (searchPredicate.fullObjectTest(databaseCandidate) && filterPredicate.fullObjectTest(databaseCandidate)) {
           const databaseMatch = databaseCandidate.id;
 
           //
@@ -149,14 +152,20 @@ export class EventRepository {
   public async listEvents(
     dockerId: string,
     limit: number,
-    cursor: EventRepository.Cursor = {},
-    filter: EventRepository.Filter = {},
+    cursor: EventRepository.Cursor,
+    filter: Filter,
   ): Promise<EventRepository.ListResult> {
     // If we didn't get any cursor, we default to showing the latest logs, and walking backwards_in_time
     const direction = cursor.after !== undefined ? Direction.forwards_in_time : Direction.backwards_in_time;
 
-    const cursorPredicate = EventPredicateFactory.forCursor(cursor);
-    const filterPredicate = EventPredicateFactory.forFilter(filter);
+    const cursorPredicate = {
+      fullObjectTest: PredicateFactory.forCursor("full_object_test", cursor),
+      fullDatabaseTest: PredicateFactory.forCursor("full_database_test", cursor),
+    };
+    const filterPredicate = {
+      fullObjectTest: PredicateFactory.forFilter("full_object_test", filter),
+      partialDatabaseTest: PredicateFactory.forFilter("partial_database_test", filter),
+    };
 
     let dbEvents: ContainerEvent[] = [];
     const dbContainer = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
@@ -174,7 +183,7 @@ export class EventRepository {
           ...cursorPredicate.fullDatabaseTest(), // only logs matching the specific cursor constraints...
           ...filterPredicate.partialDatabaseTest(), // ...but only if they match the general filter window as well
         ),
-        predicate: filterPredicate.fullInMemoryTest,
+        predicate: filterPredicate.fullObjectTest,
         mapper: (row) => ContainerEventConverter.fromDatabase(row, container),
       });
     }
@@ -183,8 +192,8 @@ export class EventRepository {
     //
     const bufferEvents = this.pending
       .filter((event): event is ContainerEvent.Log => event.container.id === dockerId && event.type === ContainerEvent.Type.log)
-      .filter((event) => cursorPredicate.fullInMemoryTest(event)) // only logs matching the specific cursor constraints...
-      .filter((event) => filterPredicate.fullInMemoryTest(event)); // ...but only if they match the general filter window as well
+      .filter((event) => cursorPredicate.fullObjectTest(event)) // only logs matching the specific cursor constraints...
+      .filter((event) => filterPredicate.fullObjectTest(event)); // ...but only if they match the general filter window as well
     //
     // Part C: combine both lists, deduplicate events by ID, and (always) sort from old to new
     //
@@ -199,7 +208,6 @@ export class EventRepository {
           data: page,
           hasNewer,
           hasOlder: this.hasAnythingOlderThan(dbContainer?.id, page.at(0)?.id, cursor.after, filter),
-          reachesLiveFeed: this.reachesLiveFeed({ hasNewer, filter }),
         };
       }
       case Direction.backwards_in_time: {
@@ -210,7 +218,6 @@ export class EventRepository {
           data: events.slice(-limit),
           hasOlder: events.length > limit,
           hasNewer,
-          reachesLiveFeed: this.reachesLiveFeed({ hasNewer, filter }),
         };
       }
     }
@@ -332,7 +339,7 @@ export class EventRepository {
     where: ReturnType<typeof and>;
     direction: Direction;
     limit: number;
-    predicate?: (candidate: EventPredicateFactory.Candidate) => boolean;
+    predicate?: (candidate: PredicateFactory.Candidate) => boolean;
     mapper?: (from: typeof $containerEvent.$inferSelect) => T;
   }): Array<T> {
     const CHUNK = 1_000;
@@ -352,8 +359,10 @@ export class EventRepository {
         break;
       }
       for (const row of chunk) {
-        if (collected.length < limit && predicate({ id: Uuid.fromBytes(row.id), line: row.line })) {
-          collected.push(row);
+        if (collected.length < limit) {
+          if (predicate({ id: Uuid.fromBytes(row.id), line: row.line ?? undefined })) {
+            collected.push(row);
+          }
         }
       }
       cursor = chunk.at(-1)!.id as Buffer;
@@ -365,7 +374,7 @@ export class EventRepository {
     container: number | undefined,
     oldestShown: string | undefined,
     cursor: string | undefined,
-    filter: EventRepository.Filter,
+    filter: Filter,
   ): boolean {
     const bound =
       oldestShown !== undefined
@@ -381,27 +390,18 @@ export class EventRepository {
      * Under a filter this stops being a free existence check: "is there anything above" becomes "is
      * there another *match* above", which is the same walk the page does, stopped at one.
      */
-    const filterPredicate = EventPredicateFactory.forFilter(filter);
+    const filterPredicate = {
+      fullObjectTest: PredicateFactory.forFilter("full_object_test", filter),
+      partialDatabaseTest: PredicateFactory.forFilter("partial_database_test", filter),
+    };
     return (
       this.queryEventsUpToLimitWithPredicate({
         limit: 1,
         direction: Direction.backwards_in_time,
         where: and(eq($containerEvent.containerId, container), bound, ...filterPredicate.partialDatabaseTest()),
-        predicate: filterPredicate.fullInMemoryTest,
+        predicate: filterPredicate.fullObjectTest,
       }).length > 0
     );
-  }
-
-  public reachesLiveFeed({
-    hasNewer,
-    filter,
-    now = Temporal.Now.instant(),
-  }: {
-    hasNewer: boolean;
-    filter: EventRepository.Filter;
-    now?: Temporal.Instant;
-  }): boolean {
-    return !hasNewer && (filter.until === undefined || Temporal.Instant.compare(filter.until, now) > 0);
   }
 
   /**
@@ -488,7 +488,7 @@ export namespace EventRepository {
    * The single specific line to search for
    */
   export type Search = {
-    logPattern: LogPattern;
+    pattern: Pattern;
     anchorId?: string;
     anchorInclusivity?: "inclusive" | "exclusive";
     direction: Direction;
@@ -505,21 +505,11 @@ export namespace EventRepository {
   };
 
   /**
-   * The overally filter, applied to every search or cursor context
-   */
-  export type Filter = {
-    logPattern?: LogPattern;
-    since?: Temporal.Instant;
-    until?: Temporal.Instant;
-  };
-
-  /**
    * Return page
    */
   export type ListResult = {
     data: ContainerEvent[];
     hasOlder: boolean;
     hasNewer: boolean;
-    reachesLiveFeed: boolean;
   };
 }

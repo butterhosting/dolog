@@ -1,6 +1,6 @@
 import { ZodParser } from "@/helpers/ZodParser";
-import { LogPattern } from "@/models/LogPattern";
 import z from "zod/v4";
+import { Filter } from "../Filter";
 
 export type ClientMessage = ClientMessage.DeclareStreamInterest;
 
@@ -12,7 +12,7 @@ export namespace ClientMessage {
   export type DeclareStreamInterest = {
     type: Type.declare_stream_interest;
     containerId?: string;
-    logPattern?: LogPattern;
+    filter?: Filter;
   };
 
   export const parse = ZodParser.forType<ClientMessage>()
@@ -21,7 +21,7 @@ export namespace ClientMessage {
         z.object({
           type: z.literal(Type.declare_stream_interest),
           containerId: z.string().optional(),
-          logPattern: LogPattern.parse.SCHEMA.optional(),
+          filter: Filter.parse.SCHEMA.optional(),
         }),
       ]),
     )
