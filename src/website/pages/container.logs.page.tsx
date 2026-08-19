@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { Link, useParams } from "react-router";
-import { LogRow } from "../comps/logviewer/LogRow";
-import { LogToolbar } from "../comps/logviewer/LogToolbar";
+import { LogRow } from "../comps/logs/LogRow";
+import { LogToolbar } from "../comps/logs/LogToolbar";
 import { Spinner } from "../comps/Spinner";
 import { useContainerLogs } from "../hooks/useContainerLogs";
 import { useContainerName } from "../hooks/useContainerName";

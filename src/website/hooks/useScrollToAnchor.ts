@@ -1,6 +1,6 @@
 import { LogAnchor } from "@/models/LogAnchor";
 import { RefObject, useEffect, useRef } from "react";
-import { LogRow } from "../comps/logviewer/LogRow";
+import { LogRow } from "../comps/logs/LogRow";
 import { Line } from "../rendering/Line";
 
 /**

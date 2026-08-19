@@ -5,19 +5,7 @@ import clsx from "clsx";
 import { ReactNode } from "react";
 import { Line } from "../../rendering/Line";
 
-/**
- * A row of the log, and the markers that can sit above one.
- *
- * The dom accessors live here too, deliberately: they select on `data-event` and `data-landed`,
- * which are written a few lines further down. Keeping the query beside the attribute means the
- * contract has one owner instead of two files that have to agree from a distance.
- */
 export namespace LogRow {
-  /**
-   * The one thing in the column that takes a click, so it is the one thing that keeps its pointer
-   * events. Straddling the left edge puts it clear of the timestamps at any width, and it wears the
-   * mark's own colour because it belongs to the mark rather than to the log.
-   */
   function DismissButton({ onDismiss, className }: { onDismiss: () => void; className: string }) {
     return (
       <button
@@ -34,17 +22,6 @@ export namespace LogRow {
     );
   }
 
-  /**
-   * The mark a navigation landed on, as a line of its own.
-   *
-   * The rule is drawn on this element's own top edge and absolutely so: it marks the boundary
-   * without occupying it, adds no height, and never joins a copied selection. The insets bleed it
-   * into the container's padding so it spans the full width.
-   *
-   * `pastEveryLine` is the exception that has to carry height, since nothing follows it for the rule
-   * to sit against -- and it says why it is there, which is otherwise not obvious at the very bottom
-   * of a log.
-   */
   export function TimestampPin({ row, onDismiss }: { row: Line.TimestampPin; onDismiss: () => void }) {
     return (
       <div data-landed="" className={clsx("relative", row.pastEveryLine && "pt-3 text-[11px] text-c-dark-half")}>
@@ -55,10 +32,6 @@ export namespace LogRow {
     );
   }
 
-  /**
-   * The quiet notes around the list -- where it begins, and which way there is more of it. Dimmed to
-   * one register together, so the pin stays the only coloured thing in the column.
-   */
   function Note({ type, children, className }: { type: Line.Type; children: ReactNode; className?: string }) {
     // named in the dom, so a note can be found by what it is rather than by what it happens to say
     return (
@@ -89,11 +62,6 @@ export namespace LogRow {
     );
   }
 
-  /**
-   * Deliberately quiet: this only says which day the lines beneath it belong to, and a filled pill
-   * gave that more weight than the log itself. Dimmed to the same register as the other notes around
-   * the list, which also leaves the pin as the one coloured thing in the column.
-   */
   export function DayMarker({ row }: { row: Line.DayMarker }) {
     return (
       <div className="relative flex justify-center py-3 text-[11px] tracking-wide text-c-dark-half">
@@ -119,11 +87,6 @@ export namespace LogRow {
     const { event, pinned } = row;
     const time = event.timestamp.toString({ smallestUnit: "second" }).replace("T", " ").replace("Z", "");
     return (
-      /*
-       * Deliberately not `content-visibility: auto`. It does make a long list cheaper, but a skipped
-       * line contributes an estimated height, so scrolling to the bottom stops short of it and the
-       * live feed reads as paused when it is not. Plain rows keep the geometry exact.
-       */
       <div
         data-event={event.id}
         data-landed={pinned ? "" : undefined}
@@ -138,11 +101,6 @@ export namespace LogRow {
         )}
       >
         {pinned && <DismissButton onDismiss={onDismiss} className="top-1/2 -translate-y-1/2" />}
-        {/*
-         * The timestamp is the handle for pinning, which is why it is the one part of a line that
-         * takes a click: it is already the line's name in every other context -- what the day marker
-         * groups, what a jump lands on -- so it is where a reader reaches to mean "this message".
-         */}
         <button
           onClick={onTogglePin}
           title={pinned ? "unpin this message" : "pin this message"}
@@ -188,15 +146,10 @@ export namespace LogRow {
     return container?.querySelector<HTMLElement>(`[data-event="${CSS.escape(eventId)}"]`) ?? null;
   }
 
-  /** Whatever marker was drawn for a navigation, which is not always on the first row. */
   export function landed(container: HTMLElement | null): HTMLElement | null {
     return container?.querySelector<HTMLElement>("[data-landed]") ?? null;
   }
 
-  /**
-   * Overlapping counts, so a line clipped by an edge is still "on screen" -- it is visible to the
-   * reader, and the alternative is a chevron that skips whatever happens to straddle the boundary.
-   */
   function overlaps(line: HTMLElement, container: HTMLElement): boolean {
     const bounds = container.getBoundingClientRect();
     const rect = line.getBoundingClientRect();
@@ -208,7 +161,6 @@ export namespace LogRow {
     return line !== null && overlaps(line, container);
   }
 
-  /** The topmost and bottommost lines in view, which is what an unmatched search anchors on. */
   export function visibleEdges(container: HTMLElement): { first?: string; last?: string } {
     const shown = [...container.querySelectorAll<HTMLElement>("[data-event]")].filter((line) => overlaps(line, container));
     return { first: shown.at(0)?.dataset.event, last: shown.at(-1)?.dataset.event };

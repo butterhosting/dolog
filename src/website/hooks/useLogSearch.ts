@@ -3,8 +3,8 @@ import { Direction } from "@/models/Direction";
 import { LogPattern } from "@/models/LogPattern";
 import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LogClient } from "../clients/LogClient";
-import { LogControls } from "../comps/logviewer/LogControls";
-import { LogRow } from "../comps/logviewer/LogRow";
+import { LogControls } from "../comps/logs/LogControls";
+import { LogRow } from "../comps/logs/LogRow";
 import { LogMatches } from "../models/LogMatches";
 import { useLogFilter } from "./useLogFilter";
 import { useRegistry } from "./useRegistry";
@@ -14,13 +14,7 @@ import { useRegistry } from "./useRegistry";
  * re-defining what the log is. It therefore holds almost no state -- what it knows is what is on
  * screen at the moment a chevron is pressed, and it asks the server for the rest.
  */
-export function useLogSearch({
-  id,
-  applied,
-  scrollWindowRef,
-  events,
-  onFoundOutsideWindow,
-}: useLogSearch.Options): useLogSearch.Result {
+export function useLogSearch({ id, applied, scrollWindowRef, events, onFoundOutsideWindow }: useLogSearch.Options): useLogSearch.Result {
   const logClient = useRegistry(LogClient);
 
   const [needle, setNeedle] = useState("");
