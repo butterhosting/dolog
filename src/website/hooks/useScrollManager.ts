@@ -1,40 +1,77 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
-export function useScrollManager({}: useScrollManager.Options): useScrollManager.Result {
-  const containerRef = useRef<{ element: HTMLElement; scrollListener: (event: Event) => unknown }>(undefined);
+const EDGE_SLACK_PX = 24;
+
+export function useScrollManager(): useScrollManager.Result {
+  const containerRef = useRef<{
+    element: HTMLElement;
+    scrollListener: (event: Event) => unknown;
+    contentObserver: MutationObserver;
+  }>(undefined);
+
+  const [atTheTop, setAtTheTop] = useState(false);
+  const [atTheBottom, setAtTheBottom] = useState(true);
+
+  function reorient(element: HTMLElement) {
+    setAtTheTop(element.scrollTop <= EDGE_SLACK_PX);
+    setAtTheBottom(element.scrollHeight - element.scrollTop - element.clientHeight <= EDGE_SLACK_PX);
+  }
 
   function registerContainer(element: HTMLElement) {
     if (!containerRef.current) {
       containerRef.current = {
         element,
-        scrollListener() {
-          console.log("scroll");
-        },
+        scrollListener: () => reorient(element),
+        contentObserver: new MutationObserver(() => reorient(element)),
       };
       containerRef.current.element.addEventListener("scroll", containerRef.current.scrollListener);
+      containerRef.current.contentObserver.observe(element, { childList: true });
     }
   }
   function deregisterContainer() {
     containerRef.current?.element.removeEventListener("scroll", containerRef.current.scrollListener);
+    containerRef.current?.contentObserver.disconnect();
   }
   useEffect(() => () => deregisterContainer(), []);
 
   return {
     registerContainer,
-    toBottom() {
-      const element = containerRef.current?.element;
-      console.log(element);
-      if (element) {
-        element.scrollTop = element.scrollHeight;
-      }
+    currentWindowPosition: {
+      atTheTop,
+      atTheBottom,
+      createRestoreFn() {
+        const element = containerRef.current?.element;
+        const heightBefore = element?.scrollHeight ?? 0;
+        return () => {
+          if (element) {
+            element.scrollTop += element.scrollHeight - heightBefore;
+            reorient(element);
+          }
+        };
+      },
+    },
+    move: {
+      toTheBottom() {
+        const element = containerRef.current?.element;
+        if (element) {
+          element.scrollTop = element.scrollHeight;
+          reorient(element);
+        }
+      },
     },
   };
 }
 
 export namespace useScrollManager {
-  export type Options = {};
   export type Result = {
     registerContainer: (container: HTMLElement) => void;
-    toBottom: () => unknown;
+    currentWindowPosition: {
+      atTheTop: boolean;
+      atTheBottom: boolean;
+      createRestoreFn: () => () => unknown;
+    };
+    move: {
+      toTheBottom: () => unknown;
+    };
   };
 }

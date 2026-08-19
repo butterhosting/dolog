@@ -17,12 +17,12 @@ export function containerLogsPage() {
 
   const logFilter = useLogFilter();
   const logAnchor = useLogAnchor();
-  const scrollManager = useScrollManager({});
+  const scrollManager = useScrollManager();
   const containerLogs = useContainerLogs({
     containerId,
     filter: logFilter.filter,
     anchor: logAnchor.anchor,
-    scrollToBottom: scrollManager.toBottom,
+    scrollManager,
   });
   // const logSearch = useLogSearch({
   //   id: containerId,
@@ -107,14 +107,14 @@ export function containerLogsPage() {
         {/*{logSearch.finding && <FindBar search={logSearch} />}*/}
 
         {/* offered whenever the feed is not being followed -- scrolled up, or parked in history */}
-        {!containerLogs.isFollowingLivestream && (
+        {!containerLogs.isFollowingStream && (
           <button
-            onClick={() => scrollManager.toBottom()}
+            onClick={() => scrollManager.move.toTheBottom()}
             title="new lines are not being added while you read back"
             className={clsx(
-              "absolute right-4 flex items-center gap-2 rounded-full bg-c-accent text-white text-xs pl-3 pr-4 py-2 shadow-lg cursor-pointer hover:opacity-90",
-              // stacked above the find bar rather than under it, since both live in this corner
-              // logSearch.finding ? "bottom-20" : "bottom-4",
+              // `bottom-4` is load-bearing: without a vertical offset an absolute element falls back
+              // to its static position, which is *below* the log container rather than over it
+              "absolute bottom-4 right-4 flex items-center gap-2 rounded-full bg-c-accent text-white text-xs pl-3 pr-4 py-2 shadow-lg cursor-pointer hover:opacity-90",
             )}
           >
             <span className="rounded-full bg-yellow-400 text-c-dark-full font-bold px-2 py-0.5">paused</span>
