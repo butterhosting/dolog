@@ -109,7 +109,7 @@ export function containerLogsPage() {
         {/* offered whenever the feed is not being followed -- scrolled up, or parked in history */}
         {!containerLogs.isFollowingStream && (
           <button
-            onClick={() => scrollManager.move.toTheBottom()}
+            onClick={() => containerLogs.followStream()}
             title="new lines are not being added while you read back"
             className={clsx(
               // `bottom-4` is load-bearing: without a vertical offset an absolute element falls back

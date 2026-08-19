@@ -27,7 +27,7 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
   const [hasNewer, setHasNewer] = useState(false);
   const [landedAt, setLandedAt] = useState<string>();
 
-  const isFollowingStream = scrollManager.currentWindowPosition.atTheBottom && !anchor;
+  const isFollowingStream = scrollManager.currentWindowPosition.atTheBottom && !hasNewer;
   const isFollowingStreamRef = useRef(isFollowingStream);
   useEffect(() => void (isFollowingStreamRef.current = isFollowingStream), [isFollowingStream]);
 
@@ -180,6 +180,9 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
     events,
     isLoading,
     isFollowingStream,
+    followStream() {
+      load("latest").then(() => scrollManager.move.toTheBottom());
+    },
   };
 }
 
@@ -218,5 +221,6 @@ export namespace useContainerLogs {
     events: ContainerEvent[];
     isLoading: boolean;
     isFollowingStream: boolean;
+    followStream(): void;
   };
 }
