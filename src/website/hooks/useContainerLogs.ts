@@ -215,7 +215,7 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
           loadingTransition.current = undefined;
         }
       },
-      subscription: { childList: true },
+      subscription: { attributes: true },
     },
   });
 
