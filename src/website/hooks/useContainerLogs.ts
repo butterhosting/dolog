@@ -8,10 +8,10 @@ import { LogClient } from "../clients/LogClient";
 import { SocketClient } from "../clients/SocketClient";
 import { Line } from "../rendering/Line";
 import { Renderer } from "../rendering/Renderer";
+import { useElementManager } from "./useElementManager";
 import { useLogFilter } from "./useLogFilter";
 import { useRegistry } from "./useRegistry";
 import { useScrollManager } from "./useScrollManager";
-import { Direction } from "@/models/Direction";
 
 const LINES_PER_PAGE = 300;
 
@@ -22,6 +22,7 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
 
   const [events, setEvents] = useState<ContainerEvent[]>([]);
   const [isLoading, setLoading] = useState(false);
+  const [loadingNonce, setLoadingNonce] = useState(0);
 
   const [hasOlder, setHasOlder] = useState(false);
   const [hasNewer, setHasNewer] = useState(false);
@@ -31,7 +32,10 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
   const isFollowingStreamRef = useRef(isFollowingStream);
   useEffect(() => void (isFollowingStreamRef.current = isFollowingStream), [isFollowingStream]);
 
-  const lines = useMemo(() => renderer.render({ events, hasOlder, hasNewer, landedAt }), [events, hasOlder, hasNewer, landedAt]);
+  const lines = useMemo(
+    () => renderer.render({ anchor, events, hasOlder, hasNewer, landedAt }),
+    [anchor, events, hasOlder, hasNewer, landedAt],
+  );
 
   //
   // Stream functionality
@@ -61,13 +65,47 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
   }, [containerId, filter]);
 
   //
+  // The presence or absence of the variable below indicates that loading is currently taking place
+  //
+  const loadingTransition = useRef<Internal.LoadingTransition>(undefined);
+
+  //
   // Load functionality
   //
-  async function load(type: "latest"): Promise<void>;
-  async function load(type: "previous" | "next" | "around", cursor: string): Promise<void>;
-  async function load(type: "around_timestamp", timestamp: Temporal.Instant): Promise<void>;
-  async function load(variant: Internal.LoadVariant, cursorOrTimestamp?: string | Temporal.Instant): Promise<void> {
+  const loadingQueue = useRef(Promise.resolve());
+
+  function loadLatest(options?: Internal.PostLoadingOptions) {
+    return internalLoadQueue("latest", undefined, options);
+  }
+  function loadForwards(cursor: string, options?: Internal.PostLoadingOptions) {
+    return internalLoadQueue("forwards", cursor, options);
+  }
+  function loadBackwards(cursor: string, options?: Internal.PostLoadingOptions) {
+    return internalLoadQueue("backwards", cursor, options);
+  }
+  function loadAround(cursorOrTimestamp: string | Temporal.Instant, options?: Internal.PostLoadingOptions) {
+    return internalLoadQueue("around", cursorOrTimestamp, options);
+  }
+  async function internalLoadQueue(
+    variant: Internal.LoadingVariant,
+    cursorOrTimestamp?: string | Temporal.Instant,
+    options: Internal.PostLoadingOptions = {},
+  ) {
+    loadingQueue.current = loadingQueue.current.then(() => internalLoadDispatch(variant, cursorOrTimestamp, options));
+    await loadingQueue.current;
+  }
+  async function internalLoadDispatch(
+    variant: Internal.LoadingVariant,
+    cursorOrTimestamp?: string | Temporal.Instant,
+    options: Internal.PostLoadingOptions = {},
+  ) {
     setLoading(true);
+    const postLoadingId = Math.random();
+    loadingTransition.current = {
+      id: postLoadingId,
+      variant,
+      postLoadingHook: options?.postLoadingFn,
+    };
     const { data, hasNewer, hasOlder, landedAt } = await logClient
       .list(containerId, {
         ...Internal.requestOptions(variant, cursorOrTimestamp),
@@ -77,19 +115,18 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
 
     switch (variant) {
       case "latest":
-      case "around":
-      case "around_timestamp": {
+      case "around": {
         setEvents(data);
         setHasNewer(hasNewer);
         setHasOlder(hasOlder);
         break;
       }
-      case "previous": {
+      case "backwards": {
         setEvents((existingEvents) => [...data, ...existingEvents]);
         setHasOlder(hasOlder);
         break;
       }
-      case "next": {
+      case "forwards": {
         setEvents((existingEvents) => [...existingEvents, ...data]);
         setHasNewer(hasNewer);
         break;
@@ -99,26 +136,30 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
       }
     }
     setLandedAt(landedAt);
+    setLoadingNonce(postLoadingId);
+  }
+
+  //
+  // Connect to the stream
+  //
+  function followStream() {
+    loadLatest({
+      postLoadingFn: scrollManager.move.toTheBottom,
+    });
   }
 
   //
   // Initial loading
   //
   useEffect(() => {
-    if (anchor?.type === "id") {
-      load("around", anchor.value);
-    } else if (anchor?.type === "timestamp") {
-      load("around_timestamp", anchor.value);
+    if (anchor) {
+      loadAround(anchor.value, {
+        postLoadingFn: scrollManager.move.toAnchor,
+      });
     } else {
-      load("latest");
+      loadLatest();
     }
   }, []);
-
-  //
-  // Paging functionality: reaching either edge triggers a new load action
-  // The presence or absence of the variable below indicates that a paging request is currently taking place
-  //
-  const pagingTransition = useRef<Internal.PagingTransition>(undefined);
 
   //
   // Loading older events (backwards in time)
@@ -126,14 +167,13 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
   useEffect(() => {
     if (scrollManager.currentWindowPosition.atTheTop) {
       const oldest = events.at(0);
-      if (!hasOlder || !oldest || pagingTransition.current) {
+      if (!hasOlder || !oldest || loadingTransition.current) {
         return;
       }
-      pagingTransition.current = {
-        direction: Direction.backwards_in_time,
-        postLoadingHook: scrollManager.currentWindowPosition.createRestoreFn(), // restore the current scroll position, because we're prepending new lines
-      };
-      load("previous", oldest.id);
+      loadBackwards(oldest.id, {
+        // restore the current scroll position, because we're prepending new lines
+        postLoadingFn: scrollManager.currentWindowPosition.createRestoreFn(),
+      });
     }
   }, [scrollManager.currentWindowPosition.atTheTop]);
 
@@ -143,13 +183,10 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
   useEffect(() => {
     if (scrollManager.currentWindowPosition.atTheBottom) {
       const newest = events.at(-1);
-      if (!hasNewer || !newest || pagingTransition.current) {
+      if (!hasNewer || !newest || loadingTransition.current) {
         return;
       }
-      pagingTransition.current = {
-        direction: Direction.forwards_in_time,
-      };
-      load("next", newest.id);
+      loadForwards(newest.id);
     }
   }, [scrollManager.currentWindowPosition.atTheBottom]);
 
@@ -157,7 +194,7 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
   // Effect to keep ourselves stuck to the bottom (when following the stream)
   //
   useEffect(() => {
-    if (pagingTransition.current?.direction === Direction.backwards_in_time) {
+    if (loadingTransition.current?.variant === "backwards") {
       return; // don't stick to the bottom, if we're in the middle of paging upwards
     }
     if (isFollowingStream) {
@@ -166,45 +203,56 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
   }, [events, isFollowingStream]);
 
   //
-  // Technical effect for any post-loading hooks (lifecycle management)
+  // Lifecycle management; invoke post-loading hooks after the DOM has updated
   //
-  useEffect(() => {
-    if (pagingTransition.current) {
-      pagingTransition.current.postLoadingHook?.();
-      pagingTransition.current = undefined;
-    }
-  }, [events]);
+  const { registerElement: registerContainer } = useElementManager({
+    mutationListener: {
+      onMutation: (_, element) => {
+        const postLoadingId = Number(element.getAttribute("data-loading-nonce"));
+        if (postLoadingId === loadingTransition.current?.id) {
+          loadingTransition.current.postLoadingHook?.();
+          setLoadingNonce(0);
+          loadingTransition.current = undefined;
+        }
+      },
+      subscription: { childList: true },
+    },
+  });
 
   return {
+    registerContainer,
     lines,
     events,
     isLoading,
+    loadingNonce,
     isFollowingStream,
-    followStream() {
-      load("latest").then(() => scrollManager.move.toTheBottom());
-    },
+    followStream,
   };
 }
 
 namespace Internal {
-  export type PagingTransition = {
-    direction: Direction;
+  export type LoadingVariant = "latest" | "forwards" | "backwards" | "around";
+
+  export type LoadingTransition = {
+    id: number;
+    variant: LoadingVariant;
     postLoadingHook?: () => unknown;
   };
 
-  export type LoadVariant = "latest" | "previous" | "next" | "around" | "around_timestamp";
-  export function requestOptions(type: LoadVariant, cursorOrTimestamp?: string | Temporal.Instant): LogService.ListQuery {
+  export type PostLoadingOptions = {
+    postLoadingFn?(): unknown;
+  };
+
+  export function requestOptions(type: LoadingVariant, cursorOrTimestamp?: string | Temporal.Instant): LogService.ListQuery {
     switch (type) {
       case "latest":
         return {};
-      case "previous":
+      case "backwards":
         return { beforeExclusive: cursorOrTimestamp as string };
-      case "next":
+      case "forwards":
         return { afterExclusive: cursorOrTimestamp as string };
       case "around":
-        return { at: cursorOrTimestamp as string };
-      case "around_timestamp":
-        return { at: (cursorOrTimestamp as Temporal.Instant).toString() };
+        return { at: cursorOrTimestamp?.toString() };
     }
   }
 }
@@ -217,9 +265,11 @@ export namespace useContainerLogs {
     scrollManager: useScrollManager.Result;
   };
   export type Result = {
+    registerContainer(container: HTMLElement): void;
     lines: Line[];
     events: ContainerEvent[];
     isLoading: boolean;
+    loadingNonce: number;
     isFollowingStream: boolean;
     followStream(): void;
   };

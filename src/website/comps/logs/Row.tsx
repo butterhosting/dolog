@@ -36,7 +36,7 @@ export namespace Row {
     dismiss: () => unknown;
   };
   export function TimestampAnchor({ line: { timestamp }, dismiss }: TimestampAnchorProps) {
-    return <div>{timestamp.toString()}</div>;
+    return <div data-anchored>{timestamp.toString()}</div>;
   }
 
   type EventProps = {
@@ -45,8 +45,8 @@ export namespace Row {
   };
   export function Event({ line: { event, isAnchored }, toggleAnchor }: EventProps) {
     return (
-      <div className="flex items-start">
-        <button onClick={toggleAnchor} className={clsx(isAnchored && "outline-2 outline-red-500")}>
+      <div className="p-px flex items-start gap-2" data-anchored={isAnchored}>
+        <button onClick={toggleAnchor} className={clsx("cursor-pointer text-c-dark-half", isAnchored && "outline-2 outline-red-500")}>
           {event.timestamp.toString()}
         </button>
         <div>{Internal.describeEvent(event)}</div>

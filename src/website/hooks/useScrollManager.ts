@@ -1,38 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { useElementManager } from "./useElementManager";
 
 const EDGE_SLACK_PX = 24;
 
 export function useScrollManager(): useScrollManager.Result {
-  const containerRef = useRef<{
-    element: HTMLElement;
-    scrollListener: (event: Event) => unknown;
-    contentObserver: MutationObserver;
-  }>(undefined);
-
   const [atTheTop, setAtTheTop] = useState(false);
   const [atTheBottom, setAtTheBottom] = useState(true);
 
-  function reorient(element: HTMLElement) {
-    setAtTheTop(element.scrollTop <= EDGE_SLACK_PX);
-    setAtTheBottom(element.scrollHeight - element.scrollTop - element.clientHeight <= EDGE_SLACK_PX);
+  function reorient(container: HTMLElement) {
+    setAtTheTop(container.scrollTop <= EDGE_SLACK_PX);
+    setAtTheBottom(container.scrollHeight - container.scrollTop - container.clientHeight <= EDGE_SLACK_PX);
   }
 
-  function registerContainer(element: HTMLElement) {
-    if (!containerRef.current) {
-      containerRef.current = {
-        element,
-        scrollListener: () => reorient(element),
-        contentObserver: new MutationObserver(() => reorient(element)),
-      };
-      containerRef.current.element.addEventListener("scroll", containerRef.current.scrollListener);
-      containerRef.current.contentObserver.observe(element, { childList: true });
-    }
-  }
-  function deregisterContainer() {
-    containerRef.current?.element.removeEventListener("scroll", containerRef.current.scrollListener);
-    containerRef.current?.contentObserver.disconnect();
-  }
-  useEffect(() => () => deregisterContainer(), []);
+  const { elementRef: containerRef, registerElement: registerContainer } = useElementManager({
+    eventListeners: {
+      scroll: (_, element) => reorient(element),
+    },
+    mutationListener: {
+      onMutation: (_, element) => reorient(element),
+      subscription: { childList: true },
+    },
+  });
 
   return {
     registerContainer,
@@ -40,22 +28,29 @@ export function useScrollManager(): useScrollManager.Result {
       atTheTop,
       atTheBottom,
       createRestoreFn() {
-        const element = containerRef.current?.element;
-        const heightBefore = element?.scrollHeight ?? 0;
+        const container = containerRef.current;
+        const heightBefore = container?.scrollHeight ?? 0;
         return () => {
-          if (element) {
-            element.scrollTop += element.scrollHeight - heightBefore;
-            reorient(element);
+          if (container) {
+            container.scrollTop += container.scrollHeight - heightBefore;
+            reorient(container);
           }
         };
       },
     },
     move: {
+      toAnchor() {
+        const container = containerRef.current;
+        if (container) {
+          const anchorElement = container.querySelector('[data-anchored="true"]'); // at most 1
+          anchorElement?.scrollIntoView({ block: "center", behavior: "instant" });
+        }
+      },
       toTheBottom() {
-        const element = containerRef.current?.element;
-        if (element) {
-          element.scrollTop = element.scrollHeight;
-          reorient(element);
+        const container = containerRef.current;
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+          reorient(container);
         }
       },
     },
@@ -64,14 +59,15 @@ export function useScrollManager(): useScrollManager.Result {
 
 export namespace useScrollManager {
   export type Result = {
-    registerContainer: (container: HTMLElement) => void;
+    registerContainer(container: HTMLElement): void;
     currentWindowPosition: {
       atTheTop: boolean;
       atTheBottom: boolean;
-      createRestoreFn: () => () => unknown;
+      createRestoreFn(): () => unknown;
     };
     move: {
-      toTheBottom: () => unknown;
+      toAnchor(): unknown;
+      toTheBottom(): unknown;
     };
   };
 }

@@ -17,11 +17,9 @@ export class Renderer {
 
     const result: Line[] = [];
     if (hasOlder) {
-      result.push({
-        id: Line.Type.scroll_teaser,
-        type: Line.Type.scroll_teaser,
-        direction: Direction.backwards_in_time,
-      });
+      const type = Line.Type.scroll_teaser;
+      const direction = Direction.backwards_in_time;
+      result.push({ id: `${type}:${direction}`, type, direction });
     } else {
       result.push({
         id: Line.Type.beginning_of_time,
@@ -83,11 +81,9 @@ export class Renderer {
       });
     }
     if (hasNewer) {
-      result.push({
-        id: Line.Type.scroll_teaser,
-        type: Line.Type.scroll_teaser,
-        direction: Direction.forwards_in_time,
-      });
+      const type = Line.Type.scroll_teaser;
+      const direction = Direction.forwards_in_time;
+      result.push({ id: `${type}:${direction}`, type, direction });
     }
     return result;
   }
@@ -103,10 +99,10 @@ export class Renderer {
 
 export namespace Renderer {
   export type Options = {
+    anchor?: LogAnchor;
     events: ContainerEvent[];
     hasOlder: boolean;
     hasNewer: boolean;
-    anchor?: LogAnchor;
     landedAt?: string;
   };
 }
