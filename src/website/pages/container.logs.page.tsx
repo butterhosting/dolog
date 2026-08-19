@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { Link, useParams } from "react-router";
-import { LogRow } from "../comps/logs/LogRow";
 import { LogToolbar } from "../comps/logs/LogToolbar";
+import { Row } from "../comps/logs/Row";
 import { Spinner } from "../comps/Spinner";
 import { useContainerLogs } from "../hooks/useContainerLogs";
 import { useContainerName } from "../hooks/useContainerName";
@@ -78,28 +78,16 @@ export function containerLogsPage() {
           )}
           {containerLogs.lines.map((line) => {
             switch (line.type) {
-              case Line.Type.beginning_marker:
-                return <LogRow.BeginningMarker key="beginning" row={line} />;
-              case Line.Type.more_marker:
-                return <LogRow.MoreMarker key={`more-${line.direction}`} row={line} />;
-              case Line.Type.day_marker:
-                return <LogRow.DayMarker key={`day-${line.date.toString()}`} row={line} />;
-              case Line.Type.timestamp_pin:
-                // at most one of these exists, so it needs no key of its own
-                return <LogRow.TimestampPin key="pin" row={line} onDismiss={logAnchor.clear} />;
+              case Line.Type.beginning_of_time:
+                return <Row.BeginningOfTime key={line.id} line={line} />;
+              case Line.Type.scroll_teaser:
+                return <Row.ScrollTeaser key={line.id} line={line} />;
+              case Line.Type.day_transition:
+                return <Row.DayTransition key={line.id} line={line} />;
+              case Line.Type.timestamp_anchor:
+                return <Row.TimestampAnchor key={line.id} line={line} dismiss={logAnchor.clear} />;
               case Line.Type.event:
-                return (
-                  <LogRow.Line
-                    key={line.event.id}
-                    row={line}
-                    onDismiss={logAnchor.clear}
-                    onTogglePin={() => logAnchor.toggleEvent(line.event.id)}
-                    // matched={logSearch.matched.has(line.event.id)}
-                    // current={line.event.id === logSearch.currentMatch}
-                    matched={false}
-                    current={false}
-                  />
-                );
+                return <Row.Event key={line.id} line={line} toggleAnchor={() => logAnchor.toggle(line.event.id)} />;
             }
           })}
         </div>

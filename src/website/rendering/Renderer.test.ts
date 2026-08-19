@@ -29,16 +29,16 @@ describe(Renderer.name, () => {
   function shape(rows: Line[]): string[] {
     return rows.map((row): string => {
       switch (row.type) {
-        case Line.Type.beginning_marker:
+        case Line.Type.beginning_of_time:
           return "beginning";
-        case Line.Type.more_marker:
+        case Line.Type.scroll_teaser:
           return row.direction === Direction.backwards_in_time ? "more:older" : "more:newer";
-        case Line.Type.day_marker:
-          return `day:${row.date.toString()}`;
-        case Line.Type.timestamp_pin:
-          return row.pastEveryLine ? "pin:past-every-line" : "pin";
+        case Line.Type.day_transition:
+          return `day:${row.day.toString()}`;
+        case Line.Type.timestamp_anchor:
+          return "pin";
         case Line.Type.event:
-          return row.pinned ? `line:${row.event.id}:pinned` : `line:${row.event.id}`;
+          return row.isAnchored ? `line:${row.event.id}:pinned` : `line:${row.event.id}`;
       }
     });
   }

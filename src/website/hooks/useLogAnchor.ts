@@ -26,7 +26,7 @@ export function useLogAnchor(): useLogAnchor.Result {
     setAnchor(LogAnchor.forTimestamp(instant));
   }
 
-  function toggleEvent(eventId: string) {
+  function toggle(eventId: string) {
     if (at?.type === "id" && at.value === eventId) {
       setParameters(Internal.clearUrlParam, { replace: true });
       setAnchor(undefined);
@@ -44,7 +44,7 @@ export function useLogAnchor(): useLogAnchor.Result {
   return {
     anchor,
     promptNavigation: promptNavigation,
-    toggleEvent,
+    toggle,
     clear,
   };
 }
@@ -71,7 +71,7 @@ export namespace useLogAnchor {
   export type Result = {
     anchor?: LogAnchor;
     promptNavigation: () => Promise<void>;
-    toggleEvent: (eventId: string) => void;
+    toggle: (eventId: string) => void;
     clear: () => void;
   };
 }

@@ -22,12 +22,11 @@ export namespace LogRow {
     );
   }
 
-  export function TimestampPin({ row, onDismiss }: { row: Line.TimestampPin; onDismiss: () => void }) {
+  export function TimestampPin({ row, onDismiss }: { row: Line.TimestampAnchor; onDismiss: () => void }) {
     return (
-      <div data-landed="" className={clsx("relative", row.pastEveryLine && "pt-3 text-[11px] text-c-dark-half")}>
+      <div data-landed="" className={clsx("relative")}>
         <span aria-hidden className="pointer-events-none absolute -left-4 -right-4 -top-px h-px bg-c-action" />
         <DismissButton onDismiss={onDismiss} className="-top-2" />
-        {row.pastEveryLine && <span className="block text-center">nothing was logged after this</span>}
       </div>
     );
   }
@@ -41,7 +40,7 @@ export namespace LogRow {
     );
   }
 
-  export function BeginningMarker({ row }: { row: Line.BeginningMarker }) {
+  export function BeginningMarker({ row }: { row: Line.BeginningOfTime }) {
     return (
       <Note type={row.type} className="pb-2">
         that is the beginning
@@ -49,7 +48,7 @@ export namespace LogRow {
     );
   }
 
-  export function MoreMarker({ row }: { row: Line.MoreMarker }) {
+  export function MoreMarker({ row }: { row: Line.ScrollTeaser }) {
     // the model says which way; the wording is this file's business
     return row.direction === Direction.backwards_in_time ? (
       <Note type={row.type} className="pb-2">
@@ -62,11 +61,11 @@ export namespace LogRow {
     );
   }
 
-  export function DayMarker({ row }: { row: Line.DayMarker }) {
+  export function DayMarker({ row }: { row: Line.DayTransition }) {
     return (
       <div className="relative flex justify-center py-3 text-[11px] tracking-wide text-c-dark-half">
         {/* the date carries its own printing, so the row hands over the day rather than a rendering of it */}
-        {row.date.toString()}
+        {row.day.toString()}
       </div>
     );
   }
@@ -84,12 +83,12 @@ export namespace LogRow {
     matched: boolean;
     current: boolean;
   }) {
-    const { event, pinned } = row;
+    const { event, isAnchored } = row;
     const time = event.timestamp.toString({ smallestUnit: "second" }).replace("T", " ").replace("Z", "");
     return (
       <div
         data-event={event.id}
-        data-landed={pinned ? "" : undefined}
+        data-landed={isAnchored ? "" : undefined}
         className={clsx(
           "relative flex gap-3 whitespace-pre-wrap break-all",
           // every match is lit, faintly; the one being stepped through is lit enough to find at a glance
@@ -97,16 +96,16 @@ export namespace LogRow {
           matched && !current && "bg-yellow-400/15",
           current && "bg-yellow-400/35 ring-1 ring-yellow-400/60",
           // a pinned message is boxed rather than ruled: the mark is about *this line*, not a seam
-          pinned && "-mx-1 rounded-sm px-1 ring-2 ring-c-action",
+          isAnchored && "-mx-1 rounded-sm px-1 ring-2 ring-c-action",
         )}
       >
-        {pinned && <DismissButton onDismiss={onDismiss} className="top-1/2 -translate-y-1/2" />}
+        {isAnchored && <DismissButton onDismiss={onDismiss} className="top-1/2 -translate-y-1/2" />}
         <button
           onClick={onTogglePin}
-          title={pinned ? "unpin this message" : "pin this message"}
+          title={isAnchored ? "unpin this message" : "pin this message"}
           className={clsx(
             "shrink-0 cursor-pointer text-left transition-colors",
-            pinned ? "text-c-action" : "text-gray-500 hover:text-gray-300",
+            isAnchored ? "text-c-action" : "text-gray-500 hover:text-gray-300",
           )}
         >
           {time}

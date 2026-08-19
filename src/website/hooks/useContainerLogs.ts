@@ -131,7 +131,7 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
       }
       pagingTransition.current = {
         direction: Direction.backwards_in_time,
-        postLoadingHook: scrollManager.currentWindowPosition.createRestoreFn(), // restore the current position, because we're prepending new lines
+        postLoadingHook: scrollManager.currentWindowPosition.createRestoreFn(), // restore the current scroll position, because we're prepending new lines
       };
       load("previous", oldest.id);
     }

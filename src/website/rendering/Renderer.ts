@@ -15,14 +15,19 @@ export class Renderer {
     const anchorId = anchor?.type === "id" ? anchor.serialize() : undefined;
     const anchorTimestamp = anchor?.type === "timestamp" ? anchor.serialize() : undefined;
 
-    const timestampPin: Line.TimestampPin = {
-      type: Line.Type.timestamp_pin,
-      pastEveryLine: false,
-    };
-
-    const result: Line[] = hasOlder
-      ? [{ type: Line.Type.more_marker, direction: Direction.backwards_in_time }] //
-      : [{ type: Line.Type.beginning_marker }];
+    const result: Line[] = [];
+    if (hasOlder) {
+      result.push({
+        id: Line.Type.scroll_teaser,
+        type: Line.Type.scroll_teaser,
+        direction: Direction.backwards_in_time,
+      });
+    } else {
+      result.push({
+        id: Line.Type.beginning_of_time,
+        type: Line.Type.beginning_of_time,
+      });
+    }
 
     events.forEach((event, index) => {
       const previousEvent: ContainerEvent | undefined = events[index - 1];
@@ -42,30 +47,45 @@ export class Renderer {
         Temporal.Instant.compare(anchorTimestamp, this.midnight(firstOfDay)) <= 0;
 
       if (landedAtThisEvent && landedAtThisEventBeforeTheDayBegan) {
-        result.push(timestampPin);
+        result.push({
+          id: anchorTimestamp!.toString(),
+          type: Line.Type.timestamp_anchor,
+          timestamp: anchor!.value as Temporal.Instant,
+        });
       }
       if (firstOfDay) {
-        result.push({ type: Line.Type.day_marker, date: firstOfDay });
+        result.push({
+          id: firstOfDay.toString(),
+          type: Line.Type.day_transition,
+          day: firstOfDay,
+        });
       }
       if (landedAtThisEvent && !landedAtThisEventBeforeTheDayBegan) {
-        result.push(timestampPin);
+        result.push({
+          id: anchorTimestamp!.toString(),
+          type: Line.Type.timestamp_anchor,
+          timestamp: anchor!.value as Temporal.Instant,
+        });
       }
       result.push({
+        id: event.id,
         type: Line.Type.event,
         event,
-        pinned: event.id === anchorId,
+        isAnchored: event.id === anchorId,
       });
     });
 
     if (anchorTimestamp !== undefined && landedAt === undefined) {
       result.push({
-        type: Line.Type.timestamp_pin,
-        pastEveryLine: true,
+        id: anchorTimestamp.toString(),
+        type: Line.Type.timestamp_anchor,
+        timestamp: anchor!.value as Temporal.Instant,
       });
     }
     if (hasNewer) {
       result.push({
-        type: Line.Type.more_marker,
+        id: Line.Type.scroll_teaser,
+        type: Line.Type.scroll_teaser,
         direction: Direction.forwards_in_time,
       });
     }
