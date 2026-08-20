@@ -8,7 +8,7 @@ export namespace Row {
   type BeginningOfTimeProps = {
     line: Line.BeginningOfTime;
   };
-  export function BeginningOfTime({ line }: BeginningOfTimeProps) {
+  export function BeginningOfTime({ line: _ }: BeginningOfTimeProps) {
     return <div>This is the beginning</div>;
   }
 
@@ -35,8 +35,25 @@ export namespace Row {
     line: Line.TimestampAnchor;
     dismiss: () => unknown;
   };
+
   export function TimestampAnchor({ line: { timestamp }, dismiss }: TimestampAnchorProps) {
-    return <div data-anchored>{timestamp.toString()}</div>;
+    return (
+      <div data-anchored className="relative py-1">
+        <span aria-hidden className="pointer-events-none absolute -left-4 -right-4 top-1/2 h-px bg-c-accent" />
+        <button
+          onClick={dismiss}
+          title="dismiss this marker"
+          className={clsx(
+            "absolute -left-4 top-1/2 z-10 flex size-4 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full",
+            "bg-c-accent text-[10px] font-bold leading-none text-white transition hover:brightness-110",
+          )}
+        >
+          ×
+        </button>
+        {/* the moment asked for, which the lines either side of the seam will not say themselves */}
+        <span className="relative z-10 ml-4 bg-c-dark-full pr-2 text-[11px] text-c-accent">{timestamp.toString()}</span>
+      </div>
+    );
   }
 
   type EventProps = {

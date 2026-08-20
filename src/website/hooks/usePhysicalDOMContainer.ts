@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useElementManager } from "./useElementManager";
 import { PhysicalDOMContainer } from "./objects/PhysicalDOMContainer";
+import { useElementManager } from "./useElementManager";
 
 const EDGE_SLACK_PX = 24;
 
@@ -13,7 +13,7 @@ export function usePhysicalDOMContainer(): usePhysicalDOMContainer.Result {
     setAtTheBottom(container.scrollHeight - container.scrollTop - container.clientHeight <= EDGE_SLACK_PX);
   }
 
-  const { elementRef: containerRef, registerElement: registerContainer } = useElementManager({
+  const { elementRef: containerRef, registerElement } = useElementManager({
     eventListeners: {
       scroll: (_, element) => reorient(element),
     },
@@ -24,7 +24,7 @@ export function usePhysicalDOMContainer(): usePhysicalDOMContainer.Result {
   });
 
   return {
-    registerContainer,
+    register: registerElement,
     physicalDOMContainer: {
       currentScrollWindowPosition: {
         atTheTop,
@@ -42,19 +42,19 @@ export function usePhysicalDOMContainer(): usePhysicalDOMContainer.Result {
       },
       events: {
         exists(eventId: string): boolean {
-          return Internal.eventElement(containerRef.current, eventId) !== null;
+          return Boolean(Internal.findEventElement(containerRef.current, eventId));
         },
         isVisible(eventId: string): boolean {
           const container = containerRef.current;
-          const element = Internal.eventElement(container, eventId);
-          return container !== undefined && element !== null && Internal.overlaps(element, container);
+          const element = Internal.findEventElement(container, eventId);
+          return container !== undefined && element !== undefined && Internal.overlaps(element, container);
         },
         outermostVisibleIds() {
           const container = containerRef.current;
           if (!container) {
             return {};
           }
-          const shown = [...container.querySelectorAll<HTMLElement>("[data-event]")].filter((line) => Internal.overlaps(line, container));
+          const shown = Internal.findAll(container).filter((line) => Internal.overlaps(line, container));
           return {
             oldest: shown.at(0)?.dataset.event,
             newest: shown.at(-1)?.dataset.event,
@@ -63,14 +63,12 @@ export function usePhysicalDOMContainer(): usePhysicalDOMContainer.Result {
       },
       move: {
         toEvent(eventId: string) {
-          Internal.eventElement(containerRef.current, eventId)?.scrollIntoView({ block: "center", behavior: "instant" });
+          const element = Internal.findEventElement(containerRef.current, eventId);
+          element?.scrollIntoView({ block: "center", behavior: "instant" });
         },
         toAnchor() {
-          const container = containerRef.current;
-          if (container) {
-            const anchorElement = container.querySelector('[data-anchored="true"]'); // at most 1
-            anchorElement?.scrollIntoView({ block: "center", behavior: "instant" });
-          }
+          const element = Internal.findAnchorElement(containerRef.current);
+          element?.scrollIntoView({ block: "center", behavior: "instant" });
         },
         toTheBottom() {
           const container = containerRef.current;
@@ -86,14 +84,22 @@ export function usePhysicalDOMContainer(): usePhysicalDOMContainer.Result {
 
 export namespace usePhysicalDOMContainer {
   export type Result = {
-    registerContainer(container: HTMLElement | null): void;
+    register(container: HTMLElement | null): void;
     physicalDOMContainer: PhysicalDOMContainer;
   };
 }
 
 namespace Internal {
-  export function eventElement(container: HTMLElement | undefined, eventId: string): HTMLElement | null {
-    return container?.querySelector<HTMLElement>(`[data-event="${CSS.escape(eventId)}"]`) ?? null;
+  export function findAnchorElement(container: HTMLElement | undefined): HTMLElement | undefined {
+    return container?.querySelector('[data-anchored="true"]') ?? undefined; // at most 1
+  }
+
+  export function findEventElement(container: HTMLElement | undefined, eventId: string): HTMLElement | undefined {
+    return container?.querySelector<HTMLElement>(`[data-event="${CSS.escape(eventId)}"]`) ?? undefined;
+  }
+
+  export function findAll(container: HTMLElement | undefined): HTMLElement[] {
+    return [...(container?.querySelectorAll<HTMLElement>("[data-event]") || [])];
   }
 
   export function overlaps(line: HTMLElement, container: HTMLElement): boolean {

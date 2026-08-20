@@ -8,8 +8,8 @@ import { ContainerCard } from "../comps/ContainerCard";
 import { Frame } from "../comps/basics/Frame";
 import { Paper } from "../comps/basics/Paper";
 import { Spinner } from "../comps/basics/Spinner";
-import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { useRegistry } from "../hooks/useRegistry";
+import { useDocumentTitle } from "../hooks/basics/useDocumentTitle";
+import { useRegistry } from "../hooks/basics/useRegistry";
 
 export function containersPage() {
   useDocumentTitle("Containers | Dolog");

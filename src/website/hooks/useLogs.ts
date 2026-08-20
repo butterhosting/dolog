@@ -5,18 +5,18 @@ import { useEffect, useMemo, useRef } from "react";
 import { SocketClient } from "../clients/SocketClient";
 import { Line } from "../rendering/Line";
 import { LineRenderer } from "../rendering/Renderer";
+import { useRegistry } from "./basics/useRegistry";
 import { ClientFilter } from "./objects/ClientFilter";
 import { PhysicalDOMContainer } from "./objects/PhysicalDOMContainer";
-import { useContainerLoading } from "./useContainerLoading";
-import { useRegistry } from "./useRegistry";
+import { useLoading } from "./useLoading";
 
 const LINES_PER_PAGE = 300;
 
-export function useContainerLogs({ containerId, filter, anchor, physicalDOMContainer }: useContainerLogs.Options): useContainerLogs.Result {
+export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: useLogs.Options): useLogs.Result {
   const socketClient = useRegistry(SocketClient);
   const renderer = useRegistry(LineRenderer);
 
-  const { events, setEvents, loadingRef, isLoading, hasNewer, hasOlder, landedAt, requestLogs } = useContainerLoading({
+  const { events, setEvents, loadingRef, isLoading, hasNewer, hasOlder, landedAt, requestLogs } = useLoading({
     containerId,
     filter,
   });
@@ -24,11 +24,6 @@ export function useContainerLogs({ containerId, filter, anchor, physicalDOMConta
   const isFollowingStream = physicalDOMContainer.currentScrollWindowPosition.atTheBottom && !hasNewer;
   const isFollowingStreamRef = useRef(isFollowingStream);
   useEffect(() => void (isFollowingStreamRef.current = isFollowingStream), [isFollowingStream]);
-
-  const lines = useMemo(
-    () => renderer.render({ anchor, events, hasOlder, hasNewer, landedAt }),
-    [anchor, events, hasOlder, hasNewer, landedAt],
-  );
 
   //
   // Stream functionality
@@ -58,7 +53,7 @@ export function useContainerLogs({ containerId, filter, anchor, physicalDOMConta
   }, [containerId, filter]);
 
   //
-  // Connect to the stream
+  // Navigate to the end of stream
   //
   function followStream() {
     requestLogs("latest", {
@@ -66,11 +61,10 @@ export function useContainerLogs({ containerId, filter, anchor, physicalDOMConta
     });
   }
 
-  /**
-   * Moves the window onto a line outside it, which is how a search result off the current page is
-   * arrived at. Nothing is marked: a search moves the view, it does not plant a flag.
-   */
-  function moveWindowToEvent(eventId: string) {
+  //
+  // Navigate to a specific event by ID (possible unloaded atm)
+  //
+  function navigateTo(eventId: string) {
     requestLogs("around", eventId, {
       postDOM: () => physicalDOMContainer.move.toEvent(eventId),
     });
@@ -130,22 +124,49 @@ export function useContainerLogs({ containerId, filter, anchor, physicalDOMConta
     }
   }, [events, isFollowingStream]);
 
+  //
+  // Effect to automatically navigate to a (timestamp) anchor after its declared
+  //
+  const honouredAnchor = useRef(anchor);
+  useEffect(() => {
+    if (anchor === honouredAnchor.current) {
+      return;
+    }
+    honouredAnchor.current = anchor;
+    if (anchor) {
+      if (anchor.type === "id") {
+        return; // anchors of type "id" are obtained by clicking on a line ... no navigation needed
+      }
+      requestLogs("around", anchor.value, {
+        postDOM: physicalDOMContainer.move.toAnchor,
+      });
+    }
+  }, [anchor]);
+
+  //
+  // Actually render the events
+  //
+  const lines = useMemo(
+    () => renderer.render({ anchor, events, hasOlder, hasNewer, landedAt }),
+    [anchor, events, hasOlder, hasNewer, landedAt],
+  );
+
   return {
     lines,
     events,
     isLoading,
     isFollowingStream,
     followStream,
-    moveWindowToEvent,
+    navigateTo,
   };
 }
 
-export namespace useContainerLogs {
+export namespace useLogs {
   export type Options = {
     containerId: string;
+    physicalDOMContainer: PhysicalDOMContainer;
     filter: ClientFilter;
     anchor?: Anchor;
-    physicalDOMContainer: PhysicalDOMContainer;
   };
   export type Result = {
     lines: Line[];
@@ -153,7 +174,6 @@ export namespace useContainerLogs {
     isLoading: boolean;
     isFollowingStream: boolean;
     followStream(): void;
-    /** Moves the window onto a line outside it, leaving no marker. Used by search. */
-    moveWindowToEvent(eventId: string): void;
+    navigateTo(eventId: string): void;
   };
 }

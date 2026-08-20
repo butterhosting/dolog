@@ -1,11 +1,11 @@
 import { Direction } from "@/models/Direction";
 import { Pattern } from "@/models/Pattern";
 import clsx from "clsx";
-import { useLogSearch } from "../hooks/useLogSearch";
+import { useSearch } from "../hooks/useSearch";
 import { LogControls } from "./LogControls";
 
 type Props = {
-  search: useLogSearch.Result;
+  search: useSearch.Result;
 };
 
 /**

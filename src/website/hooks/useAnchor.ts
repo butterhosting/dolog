@@ -2,9 +2,9 @@ import { Anchor } from "@/models/Anchor";
 import { useState } from "react";
 import { useSearchParams } from "react-router";
 import { DialogClient } from "../clients/DialogClient";
-import { useRegistry } from "./useRegistry";
+import { useRegistry } from "./basics/useRegistry";
 
-export function useLogAnchor(): useLogAnchor.Result {
+export function useAnchor(): useAnchor.Result {
   const dialogClient = useRegistry(DialogClient);
   const [parameters, setParameters] = useSearchParams();
 
@@ -67,7 +67,7 @@ namespace Internal {
   }
 }
 
-export namespace useLogAnchor {
+export namespace useAnchor {
   export type Result = {
     anchor?: Anchor;
     promptNavigation: () => Promise<void>;

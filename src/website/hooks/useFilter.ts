@@ -6,9 +6,9 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { DialogClient } from "../clients/DialogClient";
 import { ClientFilter } from "./objects/ClientFilter";
-import { useRegistry } from "./useRegistry";
+import { useRegistry } from "./basics/useRegistry";
 
-export function useLogFilter(): useLogFilter.Result {
+export function useFilter(): useFilter.Result {
   const dialogClient = useRegistry(DialogClient);
   const [parameters, setParameters] = useSearchParams();
 
@@ -159,7 +159,7 @@ namespace Internal {
   }
 }
 
-export namespace useLogFilter {
+export namespace useFilter {
   export type Result = {
     /**
      * This value is memoized

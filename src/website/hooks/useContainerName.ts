@@ -1,7 +1,7 @@
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { useEffect, useState } from "react";
 import { ContainerClient } from "../clients/ContainerClient";
-import { useRegistry } from "./useRegistry";
+import { useRegistry } from "./basics/useRegistry";
 
 /**
  * Gets the container name, either from the API, or by deriving it from the events

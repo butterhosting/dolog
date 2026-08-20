@@ -3,11 +3,11 @@ import { LogService } from "@/services/LogService";
 import { Temporal } from "@js-temporal/polyfill";
 import { Dispatch, RefObject, SetStateAction, useLayoutEffect, useRef, useState } from "react";
 import { LogClient } from "../clients/LogClient";
-import { useLogFilter } from "./useLogFilter";
-import { useRegistry } from "./useRegistry";
+import { useFilter } from "./useFilter";
+import { useRegistry } from "./basics/useRegistry";
 import { ClientFilter } from "./objects/ClientFilter";
 
-export function useContainerLoading({ containerId, filter }: useContainerLoading.Options): useContainerLoading.Result {
+export function useLoading({ containerId, filter }: useLoading.Options): useLoading.Result {
   const logClient = useRegistry(LogClient);
 
   const [events, setEvents] = useState<ContainerEvent[]>([]);
@@ -18,7 +18,7 @@ export function useContainerLoading({ containerId, filter }: useContainerLoading
   const [hasNewer, setHasNewer] = useState(false);
   const [landedAt, setLandedAt] = useState<string>();
 
-  const activeLoadVariant = useRef<useContainerLoading.Variant>(undefined);
+  const activeLoadVariant = useRef<useLoading.Variant>(undefined);
   const activeLoadState = useRef<Internal.LoadingState>(undefined);
 
   function isActivelyLoading(): boolean {
@@ -30,7 +30,7 @@ export function useContainerLoading({ containerId, filter }: useContainerLoading
   }
 
   const requestLogs: Internal.LoadingFn = (
-    variant: useContainerLoading.Variant,
+    variant: useLoading.Variant,
     arg1?: Internal.LoadingOptions | string | Temporal.Instant,
     arg2?: Internal.LoadingOptions,
   ): Promise<void> => {
@@ -51,7 +51,7 @@ export function useContainerLoading({ containerId, filter }: useContainerLoading
 
   const queue = useRef(Promise.resolve());
   async function dispatchLoad(
-    variant: useContainerLoading.Variant,
+    variant: useLoading.Variant,
     cursorOrTimestamp?: string | Temporal.Instant,
     options?: Internal.LoadingOptions,
   ) {
@@ -59,7 +59,7 @@ export function useContainerLoading({ containerId, filter }: useContainerLoading
     await queue.current;
   }
   async function performLoad(
-    variant: useContainerLoading.Variant,
+    variant: useLoading.Variant,
     cursorOrTimestamp?: string | Temporal.Instant,
     options?: Internal.LoadingOptions,
   ) {
@@ -90,7 +90,7 @@ export function useContainerLoading({ containerId, filter }: useContainerLoading
     const { data, hasNewer, hasOlder, landedAt } = await logClient
       .list(containerId, {
         ...requestOptions,
-        ...useLogFilter.serializeForServer(filter),
+        ...useFilter.serializeForServer(filter),
       })
       .finally(() => setLoading(false));
 
@@ -138,7 +138,7 @@ export function useContainerLoading({ containerId, filter }: useContainerLoading
 
   return {
     events,
-    setEvents,
+    setEvents, // TODO: expose an `append` function instead, which can be called from the livestream
     loadingRef: activeLoadVariant,
     isLoading,
     hasNewer,
@@ -149,7 +149,7 @@ export function useContainerLoading({ containerId, filter }: useContainerLoading
 }
 
 namespace Internal {
-  export type LoadingFn = useContainerLoading.Result["requestLogs"];
+  export type LoadingFn = useLoading.Result["requestLogs"];
   export type LoadingOptions = {
     postDOM?: () => unknown;
   };
@@ -160,7 +160,7 @@ namespace Internal {
   };
 }
 
-export namespace useContainerLoading {
+export namespace useLoading {
   export type Variant = "latest" | "forwards" | "backwards" | "around";
   export type Options = {
     containerId: string;

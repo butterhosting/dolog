@@ -6,21 +6,21 @@ import { LogClient } from "../clients/LogClient";
 import { LogControls } from "../comps/LogControls";
 import { ClientFilter } from "./objects/ClientFilter";
 import { PhysicalDOMContainer } from "./objects/PhysicalDOMContainer";
-import { useLogFilter } from "./useLogFilter";
-import { useRegistry } from "./useRegistry";
+import { useFilter } from "./useFilter";
+import { useRegistry } from "./basics/useRegistry";
 
 /**
  * Find, which is a different act from filtering: it moves the reader through the log rather than
  * re-defining what the log is. It therefore holds almost no state -- what it knows is what is on
  * screen at the moment a chevron is pressed, and it asks the server for the rest.
  */
-export function useLogSearch({
+export function useSearch({
   containerId,
-  filter,
   physicalDOMContainer,
+  filter,
   events,
   onFoundOutsideWindow,
-}: useLogSearch.Options): useLogSearch.Result {
+}: useSearch.Options): useSearch.Result {
   const logClient = useRegistry(LogClient);
 
   const [needle, setNeedle] = useState("");
@@ -116,7 +116,7 @@ export function useLogSearch({
         ...(onMatch ? { anchorExclusive: from } : { anchorInclusive: from }),
         direction,
         // the corpus the search happens inside, so it never lands on a line the view hides
-        ...useLogFilter.serializeForServer(filter),
+        ...useFilter.serializeForServer(filter),
       });
       if (!found) {
         // deliberately no wrapping: in a log of unknown length, silently reappearing at the other
@@ -165,11 +165,11 @@ export function useLogSearch({
   };
 }
 
-export namespace useLogSearch {
+export namespace useSearch {
   export type Options = {
     containerId: string;
-    filter: ClientFilter;
     physicalDOMContainer: PhysicalDOMContainer;
+    filter: ClientFilter;
     events: ContainerEvent[];
     onFoundOutsideWindow: (eventId: string) => void;
   };

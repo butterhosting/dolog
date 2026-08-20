@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { ComponentProps } from "react";
 import { Link } from "react-router";
-import { useRegistry } from "../../hooks/useRegistry";
+import { useRegistry } from "../../hooks/basics/useRegistry";
 import { Route } from "../../Route";
 import { Paper } from "./Paper";
 

@@ -5,36 +5,36 @@ import { Row } from "../comps/Row";
 import { SearchBox } from "../comps/SearchBox";
 import { Toolbar } from "../comps/Toolbar";
 import { Spinner } from "../comps/basics/Spinner";
-import { useContainerLogs } from "../hooks/useContainerLogs";
+import { useAnchor } from "../hooks/useAnchor";
 import { useContainerName } from "../hooks/useContainerName";
-import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { useLogAnchor } from "../hooks/useLogAnchor";
-import { useLogFilter } from "../hooks/useLogFilter";
-import { useLogSearch } from "../hooks/useLogSearch";
+import { useDocumentTitle } from "../hooks/basics/useDocumentTitle";
+import { useFilter } from "../hooks/useFilter";
+import { useLogs } from "../hooks/useLogs";
 import { usePhysicalDOMContainer } from "../hooks/usePhysicalDOMContainer";
+import { useSearch } from "../hooks/useSearch";
 import { Line } from "../rendering/Line";
 
 export function containerLogsPage() {
   const { id: containerId = "" } = useParams();
+  const { register, physicalDOMContainer } = usePhysicalDOMContainer();
 
-  const logFilter = useLogFilter();
-  const logAnchor = useLogAnchor();
-  const { registerContainer, physicalDOMContainer } = usePhysicalDOMContainer();
-  const containerLogs = useContainerLogs({
+  const filterResult = useFilter();
+  const anchorResult = useAnchor();
+  const logsResult = useLogs({
     containerId,
-    filter: logFilter.filter,
-    anchor: logAnchor.anchor,
     physicalDOMContainer,
+    filter: filterResult.filter,
+    anchor: anchorResult.anchor,
   });
-  const logSearch = useLogSearch({
+  const searchResult = useSearch({
     containerId,
-    filter: logFilter.filter,
     physicalDOMContainer,
-    events: containerLogs.events,
-    onFoundOutsideWindow: containerLogs.moveWindowToEvent,
+    filter: filterResult.filter,
+    events: logsResult.events,
+    onFoundOutsideWindow: logsResult.navigateTo,
   });
 
-  const name = useContainerName(containerId, containerLogs.events);
+  const name = useContainerName(containerId, logsResult.events);
   useDocumentTitle(`${name} | Dolog`);
 
   return (
@@ -46,7 +46,7 @@ export function containerLogsPage() {
         <span className="font-bold">{name}</span>
       </header>
 
-      <Toolbar filter={logFilter} onApply={logFilter.formState.apply} onJump={() => void logAnchor.promptNavigation()} />
+      <Toolbar filter={filterResult} onApply={filterResult.formState.apply} onJump={() => void anchorResult.promptNavigation()} />
 
       <div className="relative flex-1 min-h-0">
         {/*
@@ -57,10 +57,10 @@ export function containerLogsPage() {
          * were still arriving. Both ends are compensated for deliberately here instead.
          */}
         <div
-          ref={registerContainer}
+          ref={register}
           className="h-full overflow-y-auto [overflow-anchor:none] bg-c-dark-full text-gray-200 font-mono text-xs p-4 leading-relaxed"
         >
-          {containerLogs.isLoading && (
+          {logsResult.isLoading && (
             <div className="flex justify-center py-8">
               <Spinner />
             </div>
@@ -69,16 +69,16 @@ export function containerLogsPage() {
            * The one thing about an empty window that `Renderer` cannot say: *why* it is empty. That
            * answer needs the filter as well as the window, so it is the page that gives it.
            */}
-          {!containerLogs.isLoading && containerLogs.lines.length === 0 && (
+          {!logsResult.isLoading && logsResult.lines.length === 0 && (
             <div className="text-c-dark-half py-8 text-center">
-              {logFilter.isFilterNarrowing
+              {filterResult.isFilterNarrowing
                 ? "Nothing in this container matches the filter"
-                : logAnchor.anchor?.type === "timestamp"
+                : anchorResult.anchor?.type === "timestamp"
                   ? "Nothing was logged at or after that time"
                   : "No logs recorded yet"}
             </div>
           )}
-          {containerLogs.lines.map((line) => {
+          {logsResult.lines.map((line) => {
             switch (line.type) {
               case Line.Type.beginning_of_time:
                 return <Row.BeginningOfTime key={line.id} line={line} />;
@@ -87,27 +87,27 @@ export function containerLogsPage() {
               case Line.Type.day_transition:
                 return <Row.DayTransition key={line.id} line={line} />;
               case Line.Type.timestamp_anchor:
-                return <Row.TimestampAnchor key={line.id} line={line} dismiss={logAnchor.clear} />;
+                return <Row.TimestampAnchor key={line.id} line={line} dismiss={anchorResult.clear} />;
               case Line.Type.event:
                 return (
                   <Row.Event
                     key={line.id}
                     line={line}
-                    toggleAnchor={() => logAnchor.toggle(line.event.id)}
-                    matched={logSearch.matched.has(line.event.id)}
-                    current={line.event.id === logSearch.currentMatch}
+                    toggleAnchor={() => anchorResult.toggle(line.event.id)}
+                    matched={searchResult.matched.has(line.event.id)}
+                    current={line.event.id === searchResult.currentMatch}
                   />
                 );
             }
           })}
         </div>
 
-        {logSearch.finding && <SearchBox search={logSearch} />}
+        {searchResult.finding && <SearchBox search={searchResult} />}
 
         {/* offered whenever the feed is not being followed -- scrolled up, or parked in history */}
-        {!containerLogs.isFollowingStream && (
+        {!logsResult.isFollowingStream && (
           <button
-            onClick={() => containerLogs.followStream()}
+            onClick={() => logsResult.followStream()}
             title="new lines are not being added while you read back"
             className={clsx(
               // `bottom-4` is load-bearing: without a vertical offset an absolute element falls back

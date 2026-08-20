@@ -50,7 +50,7 @@ export function useElementManager(options: useElementManager.Options): useElemen
   };
 }
 
-export namespace useElementManager {
+namespace useElementManager {
   export type Options = {
     eventListeners?: {
       [K in keyof HTMLElementEventMap]?: (event: HTMLElementEventMap[K], element: HTMLElement) => unknown;
@@ -65,8 +65,4 @@ export namespace useElementManager {
     registerElement(element: HTMLElement | null): void;
     elementRef: RefObject<HTMLElement | undefined>;
   };
-
-  export function compose(...fns: Array<Result["registerElement"]>): Result["registerElement"] {
-    return (element) => fns.forEach((fn) => fn(element));
-  }
 }

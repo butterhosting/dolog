@@ -1,6 +1,6 @@
 import { Class } from "@/types/Class";
 import { useContext } from "react";
-import { ClientRegistry } from "../ClientRegistry";
+import { ClientRegistry } from "../../ClientRegistry";
 import { Env } from "@/Env";
 
 export function useRegistry(env: "env"): Env.Public;

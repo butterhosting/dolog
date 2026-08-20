@@ -1,9 +1,9 @@
 import { TimespanDisplay } from "@/helpers/TimespanDisplay";
-import { useLogFilter } from "../hooks/useLogFilter";
+import { useFilter } from "../hooks/useFilter";
 import { LogControls } from "./LogControls";
 
 type Props = {
-  filter: useLogFilter.Result;
+  filter: useFilter.Result;
   onApply: () => void;
   onJump: () => void;
 };
