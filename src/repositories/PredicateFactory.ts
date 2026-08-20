@@ -5,7 +5,7 @@ import { Filter } from "@/models/Filter";
 import { Pattern } from "@/models/Pattern";
 import { EventRepository } from "@/repositories/EventRepository";
 import { gt, gte, lt, lte, sql, SQL } from "drizzle-orm";
-import { Uuid } from "../helpers/Uuid";
+import { Uuid } from "../models/Uuid";
 import { ContainerEvent } from "@/models/ContainerEvent";
 
 export namespace PredicateFactory {

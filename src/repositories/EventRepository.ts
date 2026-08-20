@@ -3,7 +3,7 @@ import { Logger } from "@/Logger";
 import { ContainerEventConverter } from "@/drizzle/converters/ContainerEventConverter";
 import { $container, $containerEvent } from "@/drizzle/schema";
 import { Sqlite } from "@/drizzle/sqlite";
-import { Uuid } from "@/helpers/Uuid";
+import { Uuid } from "@/models/Uuid";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";

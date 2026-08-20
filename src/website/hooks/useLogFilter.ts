@@ -1,90 +1,160 @@
+import { Pattern } from "@/models/Pattern";
+import { Timespan } from "@/models/Timespan";
 import { LogService } from "@/services/LogService";
-import { Temporal } from "@js-temporal/polyfill";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { DialogClient } from "../clients/DialogClient";
-import { LogRange } from "../models/LogRange";
 import { useRegistry } from "./useRegistry";
-import { Filter } from "@/models/Filter";
+import { Timestamp } from "@/helpers/Timestamp";
 
 export function useLogFilter(): useLogFilter.Result {
   const dialogClient = useRegistry(DialogClient);
   const [parameters, setParameters] = useSearchParams();
 
-  const key = Internal.PARAMS.map((param) => parameters.get(param) || "").join(" ");
-  const filter = useMemo(() => Internal.parseFilter(parameters), [key]);
+  const key = Internal.hash(parameters);
+  const filter = useMemo(() => Internal.parseClientUrl(parameters), [key]);
 
   // form
-  const [pattern, setPattern] = useState(filter.pattern);
-  const [patternType, setPatternType] = useState<Filter.Pattern.Type>(filter.patternVariant);
-  const [range, setRange] = useState<LogRange.Value>(filter.range);
+  const [pattern, setPattern] = useState(filter.pattern?.value ?? "");
+  const [patternType, setPatternType] = useState<Pattern.Type>(filter.pattern?.type ?? Pattern.Type.substr);
+  const [timespan, setTimespan] = useState<Timespan>(filter.timespan);
   const dirty = !Internal.equals(filter, {
-    pattern: pattern.trim(),
-    patternVariant: patternType,
-    range,
+    pattern: pattern ? { type: patternType, value: pattern } : undefined,
+    timespan,
   });
 
-  function togglePatternVariant() {
+  function togglePatternType() {
     setPatternType((current) => {
-      return current === LogPattern.Variant.regex ? LogPattern.Variant.substr : LogPattern.Variant.regex;
+      switch (current) {
+        case Pattern.Type.regex:
+          return Pattern.Type.substr;
+        case Pattern.Type.substr:
+          return Pattern.Type.regex;
+      }
     });
   }
 
-  async function promptRangeDialog() {
-    const chosen = await dialogClient.pickRange(range);
+  async function promptTimespanDialog() {
+    const chosen = await dialogClient.pickTimespan(timespan);
     if (chosen !== "cancel") {
-      setRange(chosen);
+      setTimespan(chosen);
     }
   }
 
   function apply() {
-    setParameters((previous) => Internal.merge(previous, { pattern: pattern.trim(), patternVariant: patternType, range }));
+    // an empty box is no pattern at all, rather than a pattern that matches everything
+    const trimmed = pattern.trim();
+    setParameters((previous) =>
+      Internal.mergeClientUrl(previous, { pattern: trimmed ? { type: patternType, value: trimmed } : undefined, timespan }),
+    );
   }
 
   return {
     filter,
     isFilterNarrowing: Internal.isNarrowing(filter),
-    form: { pattern, setPattern, patternVariant: patternType, togglePatternVariant, range, promptRangeDialog },
+    form: { pattern, setPattern, patternType, togglePatternType, timespan, promptTimespanDialog },
     formState: { dirty, apply },
   };
 }
 
 namespace Internal {
-  export const PARAMS: string[] = [...Object.values(LogService.FilterKey), LogRange.PARAM];
-
-  export function parseFilter(parameters: URLSearchParams): useLogFilter.ClientFilter {
-    return {
-      pattern: parameters.get(LogService.FilterKey.filterPattern) ?? "",
-      patternVariant:
-        parameters.get(LogService.FilterKey.filterPatternType) === "regex" ? LogPattern.Variant.regex : LogPattern.Variant.substr,
-      range: LogRange.fromParams(parameters),
-    };
+  enum ClientUrlParam {
+    pattern = "pattern",
+    patternType = "patternType",
+    timespan = "timespan",
+    preset = "preset",
+    since = "since",
+    until = "until",
   }
 
-  export function merge(previous: URLSearchParams, filter: useLogFilter.ClientFilter): URLSearchParams {
-    const next = new URLSearchParams(previous);
-    // clear the params of all existing filter-related params
-    PARAMS.forEach((param) => next.delete(param));
-    // insert the new filter params
-    const filterParams = {
-      ...(filter.pattern
-        ? {
-            [LogService.FilterKey.filterPattern]: filter.pattern,
-            [LogService.FilterKey.filterPatternType]: filter.patternVariant,
+  export function hash(parameters: URLSearchParams): string {
+    return Object.values(ClientUrlParam)
+      .map((param) => parameters.get(param) || "")
+      .join(" ");
+  }
+
+  export function parseClientUrl(parameters: URLSearchParams): useLogFilter.ClientFilter {
+    const patternType = (parameters.get(ClientUrlParam.patternType) ?? undefined) as Pattern.Type;
+    const patternValue = parameters.get(ClientUrlParam.pattern) ?? undefined;
+    const timespanType = (parameters.get(ClientUrlParam.timespan) ?? undefined) as Timespan.Type;
+    const timespanPreset = (parameters.get(ClientUrlParam.preset) ?? undefined) as Timespan.Preset;
+    const timespanSince = parameters.get(ClientUrlParam.since) ?? undefined;
+    const timespanUntil = parameters.get(ClientUrlParam.until) ?? undefined;
+
+    let pattern: Pattern | undefined = undefined;
+    if (Object.values(Pattern.Type).includes(patternType) && patternValue) {
+      pattern = {
+        type: patternType,
+        value: patternValue,
+      };
+    }
+
+    let timespan: Timespan = Timespan.forPreset(Timespan.Preset.last30d);
+    if (Object.values(Timespan.Type).includes(timespanType)) {
+      switch (timespanType) {
+        case Timespan.Type.preset: {
+          if (Object.values(Timespan.Preset).includes(timespanPreset)) {
+            timespan = Timespan.forPreset(timespanPreset);
           }
-        : {}),
-      ...LogRange.toParams(filter.range),
-    };
-    Object.entries(filterParams).forEach(([param, value]) => next.set(param, value));
+          break;
+        }
+        case Timespan.Type.custom: {
+          timespan = Timespan.forCustom({
+            since: Timestamp.tryInstant(timespanSince),
+            until: Timestamp.tryInstant(timespanUntil),
+          });
+          break;
+        }
+        default: {
+          timespanType satisfies never;
+        }
+      }
+    }
+
+    return { pattern, timespan };
+  }
+
+  export function mergeClientUrl(previous: URLSearchParams, filter: useLogFilter.ClientFilter): URLSearchParams {
+    const next = new URLSearchParams(previous);
+
+    // clear the params of all existing filter-related params
+    Object.values(ClientUrlParam).forEach((param) => next.delete(param));
+
+    // insert the new filter params
+    const params: Record<string, string | undefined> = {};
+    if (filter.pattern) {
+      params[ClientUrlParam.pattern] = filter.pattern.value;
+      params[ClientUrlParam.patternType] = filter.pattern.type;
+    }
+    params[ClientUrlParam.timespan] = filter.timespan.type;
+    switch (filter.timespan.type) {
+      case "preset": {
+        params[ClientUrlParam.preset] = filter.timespan.preset;
+        break;
+      }
+      case "custom": {
+        params[ClientUrlParam.since] = filter.timespan.since?.toString();
+        params[ClientUrlParam.until] = filter.timespan.until?.toString();
+        break;
+      }
+      default: {
+        filter.timespan satisfies never;
+      }
+    }
+    Object.entries(params).forEach(([param, value]) => {
+      if (value) {
+        next.set(param, value);
+      }
+    });
     return next;
   }
 
-  export function isNarrowing(applied: useLogFilter.ClientFilter): boolean {
-    return applied.pattern !== "" || !LogRange.isAll(applied.range);
+  export function isNarrowing(filter: useLogFilter.ClientFilter): boolean {
+    return Boolean(filter.pattern?.value) || !(filter.timespan.type === "preset" && filter.timespan.preset === Timespan.Preset.all);
   }
 
-  export function equals(one: useLogFilter.ClientFilter, other: useLogFilter.ClientFilter): boolean {
-    return one.pattern === other.pattern && one.patternVariant === other.patternVariant && LogRange.equals(one.range, other.range);
+  export function equals(a: useLogFilter.ClientFilter, b: useLogFilter.ClientFilter): boolean {
+    return a.pattern?.type === b.pattern?.type && a.pattern?.value === b.pattern?.value && Timespan.equals(a.timespan, b.timespan);
   }
 }
 
@@ -98,10 +168,10 @@ export namespace useLogFilter {
     form: {
       pattern: string;
       setPattern: (value: string) => void;
-      patternVariant: LogPattern.Variant;
-      togglePatternVariant: () => void;
-      range: LogRange.Value;
-      promptRangeDialog: () => Promise<void>;
+      patternType: Pattern.Type;
+      togglePatternType: () => void;
+      timespan: Timespan;
+      promptTimespanDialog: () => Promise<void>;
     };
     formState: {
       dirty: boolean;
@@ -109,15 +179,15 @@ export namespace useLogFilter {
     };
   };
 
-  export type ClientFilter = Filter & {
-    preset?: "all" | "last10m" | "last30m" | "last1h" | "last24h" | "last7d" | "last30d" | "today" | "yesterday";
+  export type ClientFilter = {
+    pattern?: Pattern;
+    timespan: Timespan;
   };
-  export function serialize(filter: ClientFilter): LogService.FilterSubQuery {
-    // TODO ... ugly!
-    const { since, until } = filter.preset ? LogRange.preset(filter.preset).window(Temporal.Now.instant()) : filter;
+  export function serializeForServer(clientFilter: ClientFilter): LogService.FilterSubQuery {
+    const { since, until } = clientFilter.timespan.materialize();
     return {
-      filterPattern: filter.pattern?.value,
-      filterPatternType: filter.pattern?.type,
+      filterPattern: clientFilter.pattern?.value || undefined,
+      filterPatternType: clientFilter.pattern?.type || undefined,
       filterSince: since?.toString(),
       filterUntil: until?.toString(),
     };

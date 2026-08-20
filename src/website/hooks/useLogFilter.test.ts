@@ -1,50 +1,42 @@
-import { LogPattern } from "@/models/LogPattern";
+import { Pattern } from "@/models/Pattern";
+import { Timespan } from "@/models/Timespan";
 import { Temporal } from "@js-temporal/polyfill";
 import { describe, expect, it } from "bun:test";
-import { LogRange } from "../models/LogRange";
 import { useLogFilter } from "./useLogFilter";
 
 /**
- * `toRequest` is the one part of the filter that crosses a boundary, so it is the one part worth
- * pinning down from outside. Everything else the hook does to a filter is private to it.
+ * `serializeForServer` is the one part of the filter that crosses a boundary, so it is the one part
+ * worth pinning down from outside. Everything else the hook does to a filter is private to it.
  */
 describe("useLogFilter", () => {
   function applied(overrides: Partial<useLogFilter.ClientFilter> = {}): useLogFilter.ClientFilter {
     return {
-      pattern: "",
-      patternVariant: LogPattern.Variant.substr,
-      range: { kind: "preset", id: "last30d" } satisfies LogRange.Value,
+      timespan: Timespan.forPreset(Timespan.Preset.last30d),
       ...overrides,
     };
   }
 
-  describe("toRequest", () => {
-    it("drops an empty pattern rather than sending one that matches everything", () => {
+  describe("serializeForServer", () => {
+    it("drops an absent pattern rather than sending one that matches everything", () => {
       // when
-      const request = useLogFilter.serialize(applied());
+      const request = useLogFilter.serializeForServer(applied());
       // then
       expect(request.filterPattern).toBeUndefined();
+      // and a lone type would look like a filter to the server
+      expect(request.filterPatternType).toBeUndefined();
     });
 
-    it("sends no variant without a pattern for it to read", () => {
+    it("sends the type once there is a pattern to read it", () => {
       // when
-      const request = useLogFilter.serialize(applied({ patternVariant: LogPattern.Variant.regex }));
-      // then -- a lone variant would look like a filter to the server
-      expect(request.filterPattern).toBeUndefined();
-      expect(request.filterPatternVariant).toBeUndefined();
-    });
-
-    it("sends the variant once there is a pattern", () => {
-      // when
-      const request = useLogFilter.serialize(applied({ pattern: "boom", patternVariant: LogPattern.Variant.regex }));
+      const request = useLogFilter.serializeForServer(applied({ pattern: { type: Pattern.Type.regex, value: "boom" } }));
       // then
       expect(request.filterPattern).toEqual("boom");
-      expect(request.filterPatternVariant).toEqual(LogPattern.Variant.regex);
+      expect(request.filterPatternType).toEqual(Pattern.Type.regex);
     });
 
     it("resolves a relative span into instants", () => {
       // when
-      const request = useLogFilter.serialize(applied({ range: { kind: "preset", id: "last1h" } }));
+      const request = useLogFilter.serializeForServer(applied({ timespan: Timespan.forPreset(Timespan.Preset.last1h) }));
       // then -- an open end, because "the last hour" has no future edge
       expect(Temporal.Instant.from(request.filterSince!)).toBeInstanceOf(Temporal.Instant);
       expect(request.filterUntil).toBeUndefined();
@@ -52,20 +44,28 @@ describe("useLogFilter", () => {
 
     it("resolves against the clock now, so a relative span keeps sliding", () => {
       // given
-      const value = applied({ range: { kind: "preset", id: "last10m" } });
-      const before = useLogFilter.serialize(value);
+      const value = applied({ timespan: Timespan.forPreset(Timespan.Preset.last10m) });
+      const before = useLogFilter.serializeForServer(value);
       // when (the same applied filter, asked again a moment later)
-      const after = useLogFilter.serialize(value);
+      const after = useLogFilter.serializeForServer(value);
       // then
       expect(Temporal.Instant.compare(after.filterSince!, before.filterSince!)).toBeGreaterThanOrEqual(0);
     });
 
     it("closes both ends for the one preset that has a past", () => {
       // when
-      const request = useLogFilter.serialize(applied({ range: { kind: "preset", id: "yesterday" } }));
+      const request = useLogFilter.serializeForServer(applied({ timespan: Timespan.forPreset(Timespan.Preset.yesterday) }));
       // then -- both ends present, and sent as the strings a query string can actually carry
       expect(Temporal.Instant.from(request.filterSince!)).toBeInstanceOf(Temporal.Instant);
       expect(Temporal.Instant.from(request.filterUntil!)).toBeInstanceOf(Temporal.Instant);
+    });
+
+    it("leaves both ends open for all time", () => {
+      // when
+      const request = useLogFilter.serializeForServer(applied({ timespan: Timespan.forPreset(Timespan.Preset.all) }));
+      // then
+      expect(request.filterSince).toBeUndefined();
+      expect(request.filterUntil).toBeUndefined();
     });
 
     it("passes a custom span through as chosen", () => {
@@ -73,7 +73,7 @@ describe("useLogFilter", () => {
       const since = Temporal.Instant.from("2026-03-01T00:00:00Z");
       const until = Temporal.Instant.from("2026-03-02T00:00:00Z");
       // when
-      const request = useLogFilter.serialize(applied({ range: { kind: "custom", since, until } }));
+      const request = useLogFilter.serializeForServer(applied({ timespan: Timespan.forCustom({ since, until }) }));
       // then
       expect(request.filterSince?.toString()).toEqual(since.toString());
       expect(request.filterUntil?.toString()).toEqual(until.toString());

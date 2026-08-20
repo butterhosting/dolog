@@ -2,7 +2,7 @@ import { Temporal } from "@js-temporal/polyfill";
 import { isAbsolute, join } from "path";
 import { z } from "zod/v4";
 import packageJson from "../package.json";
-import { TimeZone } from "./helpers/TimeZone";
+import { TimeZone } from "./helpers/TimeX";
 import { LogLevel } from "./models/internal/LogLevel";
 
 export namespace Env {

@@ -1,5 +1,5 @@
 import { ContainerEvent } from "@/models/ContainerEvent";
-import { LogAnchor } from "@/models/LogAnchor";
+import { Anchor } from "@/models/Anchor";
 import { Line } from "./Line";
 import { Temporal } from "@js-temporal/polyfill";
 import { Direction } from "@/models/Direction";
@@ -99,7 +99,7 @@ export class Renderer {
 
 export namespace Renderer {
   export type Options = {
-    anchor?: LogAnchor;
+    anchor?: Anchor;
     events: ContainerEvent[];
     hasOlder: boolean;
     hasNewer: boolean;

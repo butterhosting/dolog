@@ -81,20 +81,20 @@ describe(LogService.name, () => {
       expect(page.hasNewer).toBe(false);
     });
 
-    it("should describe the feed by the page it served, not by the read it threw away", async () => {
+    it("should describe the page it served, not the read it threw away", async () => {
       /**
-       * The fallback re-states `hasNewer` as false, having discarded a backwards read that said
-       * otherwise. `reachesLiveFeed` is derived from that same answer, so it has to be re-stated
-       * with it -- left alone, it would still be describing the read that was abandoned.
+       * The fallback discards a backwards read that said there was more ahead, and re-states
+       * `hasNewer` as false to describe what it actually served. Whether the *feed* lies beyond
+       * that is no longer asked here: it is the client's to work out from the filter's own bound.
        */
       const { container } = await twoLines();
 
       const open = await service.list(container.id, { at: "2030-01-01T00:00:00Z" });
-      expect(open.reachesLiveFeed).toBe(true);
+      expect(open.hasNewer).toBe(false);
 
-      // and a window closed in the past reaches its own end without reaching the feed
+      // and a corpus closed in the past runs out in exactly the same way
       const closed = await service.list(container.id, { at: "2030-01-01T00:00:00Z", filterUntil: "2026-06-01T00:00:00Z" });
-      expect(closed.reachesLiveFeed).toBe(false);
+      expect(closed.hasNewer).toBe(false);
     });
   });
 
@@ -159,7 +159,7 @@ describe(LogService.name, () => {
       await Bun.sleep(0);
 
       // when (the pinned line is one the filter hides)
-      const page = await service.list(container.id, { at: all[3]!.id, limit: "10", filterPattern: "keep", filterPatternVariant: "substr" });
+      const page = await service.list(container.id, { at: all[3]!.id, limit: "10", filterPattern: "keep", filterPatternType: "substr" });
 
       // then (it lands on the first line at or after it that the filter does allow, so the client
       // can tell that the pin itself is not in what it was given)

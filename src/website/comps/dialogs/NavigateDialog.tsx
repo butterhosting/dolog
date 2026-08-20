@@ -1,8 +1,8 @@
 import { Temporal } from "@js-temporal/polyfill";
 import clsx from "clsx";
 import { useMemo, useState } from "react";
-import { Button } from "./Button";
-import { Modal } from "./Modal";
+import { Button } from "../Button";
+import { Modal } from "../Modal";
 
 type Props = {
   current?: Temporal.Instant;
@@ -14,7 +14,7 @@ type Props = {
  * One field, holding a bare wall clock read as UTC -- the same clock the timestamps beside every log
  * line are printed in, so what is typed here and what is read there are the same thing.
  */
-export function JumpModal({ current, close, done }: Props) {
+export function NavigateDialog({ current, close, done }: Props) {
   /**
    * Split in two on purpose. A date wants the calendar a native picker gives it -- "the 3rd" is
    * something you point at -- while a time is something you type, and a combined control makes you

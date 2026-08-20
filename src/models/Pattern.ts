@@ -1,4 +1,3 @@
-import { LogError } from "@/errors/LogError";
 import { ZodParser } from "@/helpers/ZodParser";
 import z from "zod/v4";
 

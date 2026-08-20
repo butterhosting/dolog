@@ -1,4 +1,4 @@
-import { LogAnchor } from "@/models/LogAnchor";
+import { Anchor } from "@/models/Anchor";
 import { useState } from "react";
 import { useSearchParams } from "react-router";
 import { DialogClient } from "../clients/DialogClient";
@@ -8,8 +8,8 @@ export function useLogAnchor(): useLogAnchor.Result {
   const dialogClient = useRegistry(DialogClient);
   const [parameters, setParameters] = useSearchParams();
 
-  const at = LogAnchor.parse(Internal.getUrlParam(parameters));
-  const [anchor, setAnchor] = useState<LogAnchor | undefined>(at);
+  const at = Anchor.parse(Internal.getUrlParam(parameters));
+  const [anchor, setAnchor] = useState<Anchor | undefined>(at);
 
   async function promptNavigation() {
     const instant = await dialogClient.promptTimestampNavigationDialog(anchor?.type === "timestamp" ? anchor.value : undefined);
@@ -23,7 +23,7 @@ export function useLogAnchor(): useLogAnchor.Result {
     if (anchor?.type === "timestamp" && anchor.serialize() === instantValue) {
       return;
     }
-    setAnchor(LogAnchor.forTimestamp(instant));
+    setAnchor(Anchor.forTimestamp(instant));
   }
 
   function toggle(eventId: string) {
@@ -32,7 +32,7 @@ export function useLogAnchor(): useLogAnchor.Result {
       setAnchor(undefined);
     } else {
       setParameters((previous) => Internal.setUrlParam(previous, eventId), { replace: true });
-      setAnchor(LogAnchor.forId(eventId));
+      setAnchor(Anchor.forId(eventId));
     }
   }
 
@@ -69,7 +69,7 @@ namespace Internal {
 
 export namespace useLogAnchor {
   export type Result = {
-    anchor?: LogAnchor;
+    anchor?: Anchor;
     promptNavigation: () => Promise<void>;
     toggle: (eventId: string) => void;
     clear: () => void;

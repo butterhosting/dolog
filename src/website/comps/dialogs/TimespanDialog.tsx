@@ -1,24 +1,25 @@
 import { Temporal } from "@js-temporal/polyfill";
 import clsx from "clsx";
 import { useState } from "react";
-import { LogRange } from "../models/LogRange";
-import { Button } from "./Button";
-import { Modal } from "./Modal";
+import { Button } from "../Button";
+import { Modal } from "../Modal";
+import { Timespan } from "@/models/Timespan";
+import { TimespanDisplay } from "../../models/TimespanDisplay";
 
 type Props = {
-  current: LogRange.Value;
+  current: Timespan;
   close: () => void;
-  done: (value: LogRange.Value) => void;
+  done: (value: Timespan) => void;
 };
 
 /**
  * Picking a preset is one click and closes; picking "Custom" turns the same modal into two fields.
  * Two panels rather than two dialogs, so the presets stay one keystroke away from a half-typed date.
  */
-export function RangeModal({ current, close, done }: Props) {
-  const [custom, setCustom] = useState(current.kind === "custom");
-  const [since, setSince] = useState(current.kind === "custom" ? Internal.toField(current.since) : "");
-  const [until, setUntil] = useState(current.kind === "custom" ? Internal.toField(current.until) : "");
+export function TimespanDialog({ current, close, done }: Props) {
+  const [custom, setCustom] = useState(current.type === "custom");
+  const [since, setSince] = useState(current.type === "custom" ? Internal.toField(current.since) : "");
+  const [until, setUntil] = useState(current.type === "custom" ? Internal.toField(current.until) : "");
 
   const parsed = { since: Internal.parse(since), until: Internal.parse(until) };
   // an empty end is open-ended, which is meaningful; a *malformed* one is not
@@ -29,19 +30,21 @@ export function RangeModal({ current, close, done }: Props) {
     <Modal isOpen issueCloseRequestWhenClickingBackdrop issueCloseRequestWhenPressingEscape onCloseRequest={close} className="p-6">
       {!custom ? (
         <div className="flex flex-col gap-5">
-          {(["relative", "exact"] as const).map((group) => (
+          {Object.values(TimespanDisplay.Group).map((group) => (
             <div key={group} className="flex flex-col gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-c-dark-half">{group}</span>
               <div className="flex flex-wrap gap-2">
-                {LogRange.PRESETS.filter((preset) => preset.group === group).map((preset) => (
+                {TimespanDisplay.presetsIn(group).map((preset) => (
                   <Internal.Pill
-                    key={preset.id}
-                    label={preset.label}
-                    active={current.kind === "preset" && current.id === preset.id}
-                    onClick={() => done({ kind: "preset", id: preset.id })}
+                    key={preset}
+                    label={TimespanDisplay.presetLabel(preset)}
+                    active={current.type === "preset" && current.preset === preset}
+                    onClick={() => done(Timespan.forPreset(preset))}
                   />
                 ))}
-                {group === "exact" && <Internal.Pill label="Custom…" active={false} onClick={() => setCustom(true)} />}
+                {group === TimespanDisplay.Group.exact && (
+                  <Internal.Pill label="Custom…" active={false} onClick={() => setCustom(true)} />
+                )}
               </div>
             </div>
           ))}
@@ -52,7 +55,7 @@ export function RangeModal({ current, close, done }: Props) {
           onSubmit={(event) => {
             event.preventDefault();
             if (!broken && !backwards) {
-              done({ kind: "custom", since: parsed.since ?? undefined, until: parsed.until ?? undefined });
+              done(Timespan.forCustom({ since: parsed.since ?? undefined, until: parsed.until ?? undefined }));
             }
           }}
         >

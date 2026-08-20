@@ -1,15 +1,17 @@
-import { Uuid } from "@/helpers/Uuid";
+import { Uuid } from "@/models/Uuid";
 import { Container } from "@/models/Container";
 import { Temporal } from "@js-temporal/polyfill";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";
-import { LogPattern } from "@/models/LogPattern";
+import { Filter } from "@/models/Filter";
+import { Pattern } from "@/models/Pattern";
 import { StreamVariant } from "@/models/StreamVariant";
 import { TestEnvironment } from "@/testing/TestEnvironment.test";
 import { TestFixture } from "@/testing/TestFixture.test";
 import { beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { firstValueFrom } from "rxjs";
 import { EventRepository } from "./EventRepository";
+import { PredicateFactory } from "./PredicateFactory";
 
 describe(EventRepository.name, () => {
   let context: TestEnvironment.Context;
@@ -34,7 +36,7 @@ describe(EventRepository.name, () => {
     // when
     await write(events);
     // then
-    const { data } = await repository.listEvents(container.id, 100);
+    const { data } = await repository.listEvents(container.id, 100, {}, {});
     expect(data.map(({ type }) => type)).toEqual([
       ContainerEvent.Type.start,
       ContainerEvent.Type.log,
@@ -56,13 +58,13 @@ describe(EventRepository.name, () => {
     repository.saveEvent(TestFixture.logEvent({ container, line: "not on disk yet" }));
 
     // when
-    const { data } = await repository.listEvents(container.id, 100);
+    const { data } = await repository.listEvents(container.id, 100, {}, {});
     // then
     expect(data.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["not on disk yet"]);
 
     // and the same events are not served twice once they do land
     await flush();
-    const { data: afterFlush } = await repository.listEvents(container.id, 100);
+    const { data: afterFlush } = await repository.listEvents(container.id, 100, {}, {});
     expect(afterFlush).toHaveLength(1);
   });
 
@@ -71,7 +73,7 @@ describe(EventRepository.name, () => {
     const { container, all } = await tenLinesHalfBuffered();
 
     // when
-    const { data } = await repository.listEvents(container.id, 100);
+    const { data } = await repository.listEvents(container.id, 100, {}, {});
     // then
     expect(data.map((event) => event.id)).toEqual(all.map((event) => event.id));
   });
@@ -103,7 +105,7 @@ describe(EventRepository.name, () => {
       // given
       const { container, all } = await tenLinesHalfBuffered();
       // when
-      const { data } = await repository.listEvents(container.id, 100, cursor(all));
+      const { data } = await repository.listEvents(container.id, 100, cursor(all), {});
       // then (nothing at the cursor itself, and nothing beyond it in the other direction)
       expect(data.map((event) => event.id)).toEqual(expected(all).map((event) => event.id));
     });
@@ -155,7 +157,7 @@ describe(EventRepository.name, () => {
       // given
       const { container, all } = await tenWrittenLines();
       // when
-      const page = await repository.listEvents(container.id, limit, { after: all[fromIndex]!.id, afterInclusivity: "exclusive" });
+      const page = await repository.listEvents(container.id, limit, { after: all[fromIndex]!.id, afterInclusivity: "exclusive" }, {});
       // then
       expect(page.data.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(expectedLines);
       expect(page.hasNewer).toBe(hasNewer);
@@ -164,57 +166,50 @@ describe(EventRepository.name, () => {
   }
 
   /**
-   * `hasNewer` runs out at the top of the *window*; the feed is a different edge. They agree only
-   * while the window is still open at the top, and reading one for the other is what puts a line
-   * from today underneath one from yesterday.
+   * `hasNewer` is about the *window* alone: whether this page has more of the corpus below it. It
+   * says nothing about the live feed, which is now the client's to work out from the filter's own
+   * upper bound -- so the cases below fix what this method does and does not claim.
    */
-  const LIVE_FEED_CASES: Array<{
+  const WINDOW_END_CASES: Array<{
     name: string;
     limit?: number;
     cursor?: (all: ContainerEvent[]) => EventRepository.Cursor;
-    filter?: () => EventRepository.Filter;
+    filter?: () => Filter;
     hasNewer: boolean;
     hasOlder?: boolean;
-    reachesLiveFeed: boolean;
   }> = [
     {
       name: "a window with no end at all, which is where a page opens with nothing in its url",
       hasNewer: false,
       hasOlder: false,
-      reachesLiveFeed: true,
     },
     {
-      // out of window and out of feed are not the same thing, and only the second is reported here
-      name: "a window closed in the past runs out without ever arriving at the feed",
+      // the corpus stops in the past, so the window runs out -- whether the *feed* did is not asked
+      name: "a window closed in the past runs out of corpus",
       filter: () => ({ until: Temporal.Now.instant() }),
       hasNewer: false,
-      reachesLiveFeed: false,
     },
     {
-      // an end was named, but the feed is comfortably inside it -- a named end is not a closed one
-      name: "a window closed in the future still contains the feed",
+      name: "a window closed in the future still has everything written in it",
       filter: () => ({ until: Temporal.Now.instant().add({ hours: 24 }) }),
       hasNewer: false,
-      reachesLiveFeed: true,
     },
     {
-      name: "a window parked in history has the feed somewhere above it",
+      name: "a window parked in history has more of the corpus above it",
       limit: 3,
       cursor: (all) => ({ before: all[8]!.id, beforeInclusivity: "exclusive" }),
       hasNewer: true,
-      reachesLiveFeed: false,
     },
   ];
 
-  for (const { name, limit, cursor, filter, hasNewer, hasOlder, reachesLiveFeed } of LIVE_FEED_CASES) {
-    it(`should tell the window's end apart from the live feed: ${name}`, async () => {
+  for (const { name, limit, cursor, filter, hasNewer, hasOlder } of WINDOW_END_CASES) {
+    it(`should report where the window itself runs out: ${name}`, async () => {
       // given
       const { container, all } = await tenWrittenLines();
       // when
       const page = await repository.listEvents(container.id, limit ?? 100, cursor?.(all) ?? {}, filter?.() ?? {});
       // then
       expect(page.hasNewer).toBe(hasNewer);
-      expect(page.reachesLiveFeed).toBe(reachesLiveFeed);
       if (hasOlder !== undefined) {
         expect(page.hasOlder).toBe(hasOlder);
       }
@@ -227,7 +222,7 @@ describe(EventRepository.name, () => {
 
     // when (arriving by time, at an instant older than every line there is)
     const beforeEverything = Uuid.fromBytes(Uuid.lowerBoundAt(Temporal.Instant.from("2000-01-01T00:00:00Z")));
-    const page = await repository.listEvents(container.id, 100, { after: beforeEverything, afterInclusivity: "exclusive" });
+    const page = await repository.listEvents(container.id, 100, { after: beforeEverything, afterInclusivity: "exclusive" }, {});
 
     // then (the whole history, and no pretending there is more above it)
     expect(page.data).toHaveLength(10);
@@ -286,29 +281,41 @@ describe(EventRepository.name, () => {
     ];
 
     for (const { name, anchorIndex, anchorInclusivity, direction, expectedIndex } of ANCHOR_CASES) {
-      it(`should search out from where it was told to: ${name}`, async () => {
-        // given
-        const { container, all } = await haystack();
-        // when
-        const found = await repository.findEvent(container.id, {
-          logPattern: { pattern: "needle", patternVariant: LogPattern.Variant.substr },
-          anchorId: anchorIndex === undefined ? undefined : all[anchorIndex]!.id,
-          anchorInclusivity,
-          direction,
-        });
-        // then
-        expect(found.id).toBe(all[expectedIndex]!.id);
-      });
+      it(
+        `should search out from where it was told to: ${name}`,
+        async () => {
+          // given
+          const { container, all } = await haystack();
+          // when
+          const found = await repository.findEvent(
+            container.id,
+            {
+              pattern: { type: Pattern.Type.substr, value: "needle" },
+              anchorId: anchorIndex === undefined ? undefined : all[anchorIndex]!.id,
+              anchorInclusivity,
+              direction,
+            },
+            {},
+          );
+          // then
+          expect(found.id).toBe(all[expectedIndex]!.id);
+        },
+        {},
+      );
     }
 
     it("should answer with nothing when the needle is not there, rather than guessing", async () => {
       // given
       const { container } = await haystack();
       // when
-      const found = await repository.findEvent(container.id, {
-        logPattern: { pattern: "haystack", patternVariant: LogPattern.Variant.substr },
-        direction: Direction.forwards_in_time,
-      });
+      const found = await repository.findEvent(
+        container.id,
+        {
+          pattern: { type: Pattern.Type.substr, value: "haystack" },
+          direction: Direction.forwards_in_time,
+        },
+        {},
+      );
       // then
       expect(found.id).toBeUndefined();
     });
@@ -320,15 +327,13 @@ describe(EventRepository.name, () => {
       await write(all);
 
       // when / then
-      const substr = LogPattern.Variant.substr;
-      const regex = LogPattern.Variant.regex;
-      const literal = { logPattern: { pattern: "shouting", patternVariant: substr }, direction: Direction.forwards_in_time } as const;
-      expect((await repository.findEvent(container.id, literal)).id).toBe(all[0]!.id);
+      const literal = { pattern: { type: Pattern.Type.substr, value: "shouting" }, direction: Direction.forwards_in_time } as const;
+      expect((await repository.findEvent(container.id, literal, {})).id).toBe(all[0]!.id);
       expect(
-        (await repository.findEvent(container.id, { ...literal, logPattern: { pattern: "shout.ng", patternVariant: regex } })).id,
+        (await repository.findEvent(container.id, { ...literal, pattern: { type: Pattern.Type.regex, value: "shout.ng" } }, {})).id,
       ).toBeUndefined();
       expect(
-        (await repository.findEvent(container.id, { ...literal, logPattern: { pattern: "SHOUT.NG", patternVariant: regex } })).id,
+        (await repository.findEvent(container.id, { ...literal, pattern: { type: Pattern.Type.regex, value: "SHOUT.NG" } }, {})).id,
       ).toBe(all[0]!.id);
     });
 
@@ -339,10 +344,14 @@ describe(EventRepository.name, () => {
       await write(all);
 
       // when
-      const found = await repository.findEvent(container.id, {
-        logPattern: { pattern: "100%", patternVariant: LogPattern.Variant.substr },
-        direction: Direction.forwards_in_time,
-      });
+      const found = await repository.findEvent(
+        container.id,
+        {
+          pattern: { type: Pattern.Type.substr, value: "100%" },
+          direction: Direction.forwards_in_time,
+        },
+        {},
+      );
       // then (the literal "100%", not "100" followed by anything)
       expect(found.id).toBe(all[0]!.id);
     });
@@ -355,10 +364,14 @@ describe(EventRepository.name, () => {
       repository.saveEvent(unwritten);
 
       // when
-      const found = await repository.findEvent(container.id, {
-        logPattern: { pattern: "needle", patternVariant: LogPattern.Variant.substr },
-        direction: Direction.forwards_in_time,
-      });
+      const found = await repository.findEvent(
+        container.id,
+        {
+          pattern: { type: Pattern.Type.substr, value: "needle" },
+          direction: Direction.forwards_in_time,
+        },
+        {},
+      );
       // then
       expect(found.id).toBe(unwritten.id);
     });
@@ -379,10 +392,14 @@ describe(EventRepository.name, () => {
       repository.saveEvent(newer);
 
       // when (stepping back from the end)
-      const found = await repository.findEvent(container.id, {
-        logPattern: { pattern: "needle", patternVariant: LogPattern.Variant.substr },
-        direction: Direction.backwards_in_time,
-      });
+      const found = await repository.findEvent(
+        container.id,
+        {
+          pattern: { type: Pattern.Type.substr, value: "needle" },
+          direction: Direction.backwards_in_time,
+        },
+        {},
+      );
       // then -- the nearest match behind, which is the newer of the two
       expect(found.id).toBe(newer.id);
     });
@@ -400,12 +417,16 @@ describe(EventRepository.name, () => {
       await write(all);
 
       // when (anchored on the very first line, and inclusive of it)
-      const found = await repository.findEvent(container.id, {
-        logPattern: { pattern: "nothing-matches-this", patternVariant: LogPattern.Variant.regex },
-        anchorId: all[0]!.id,
-        anchorInclusivity: "inclusive",
-        direction: Direction.forwards_in_time,
-      });
+      const found = await repository.findEvent(
+        container.id,
+        {
+          pattern: { type: Pattern.Type.regex, value: "nothing-matches-this" },
+          anchorId: all[0]!.id,
+          anchorInclusivity: "inclusive",
+          direction: Direction.forwards_in_time,
+        },
+        {},
+      );
       // then (it ends, rather than spinning on the last row for ever)
       expect(found.id).toBeUndefined();
     });
@@ -439,16 +460,16 @@ describe(EventRepository.name, () => {
       const buffered = TestFixture.container({ name: "buffered" });
       await write([TestFixture.logEvent({ container: written, line })]);
       repository.saveEvent(TestFixture.logEvent({ container: buffered, line }));
-      const logPattern = { pattern: needle, patternVariant: LogPattern.Variant.substr };
+      const pattern: Pattern = { type: Pattern.Type.substr, value: needle };
 
       // when (sqlite answers for the first, the predicate for the second)
-      const fromDisk = await repository.listEvents(written.id, 100, {}, { logPattern });
-      const fromBuffer = await repository.listEvents(buffered.id, 100, {}, { logPattern });
+      const fromDisk = await repository.listEvents(written.id, 100, {}, { pattern });
+      const fromBuffer = await repository.listEvents(buffered.id, 100, {}, { pattern });
 
       // then (one verdict, whichever half is asked)
       expect(fromDisk.data.length).toBe(matches ? 1 : 0);
       expect(fromBuffer.data.length).toBe(matches ? 1 : 0);
-      expect(LogPattern.predicate(logPattern)(line)).toBe(matches);
+      expect(PredicateFactory.forPattern("full_object_test", pattern)(line)).toBe(matches);
     });
   });
 
@@ -463,10 +484,10 @@ describe(EventRepository.name, () => {
     // when (a flush that fails)
     await flush();
     // then (still readable, and the next flush still writes them)
-    expect((await repository.listEvents(container.id, 100)).data).toHaveLength(1);
+    expect((await repository.listEvents(container.id, 100, {}, {})).data).toHaveLength(1);
     transaction.mockRestore();
     await flush();
-    expect((await repository.listEvents(container.id, 100)).data).toHaveLength(1);
+    expect((await repository.listEvents(container.id, 100, {}, {})).data).toHaveLength(1);
   });
 
   it("should give up on a batch the database will never accept, rather than wedging every write behind it", async () => {
@@ -486,7 +507,7 @@ describe(EventRepository.name, () => {
     // then (the bad batch is gone, and events queued after it are written normally)
     repository.saveEvent(TestFixture.logEvent({ container, line: "written after the bad batch" }));
     await flush();
-    const { data: events } = await repository.listEvents(container.id, 100);
+    const { data: events } = await repository.listEvents(container.id, 100, {}, {});
     expect(events.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["written after the bad batch"]);
   });
 
@@ -502,8 +523,8 @@ describe(EventRepository.name, () => {
     ]);
     // then
     expect(await containers()).toEqual([web, worker]);
-    expect((await repository.listEvents(web.id, 1_000)).data).toHaveLength(50);
-    expect((await repository.listEvents(worker.id, 1_000)).data).toHaveLength(50);
+    expect((await repository.listEvents(web.id, 1_000, {}, {})).data).toHaveLength(50);
+    expect((await repository.listEvents(worker.id, 1_000, {}, {})).data).toHaveLength(50);
   });
 
   it("should record the newest timestamp in a batch as when a container was last seen", async () => {
@@ -543,8 +564,8 @@ describe(EventRepository.name, () => {
     const pruned = await repository.pruneEventsPerContainer(10);
     // then (the quiet one is untouched -- its own history is not the chatty one's to spend)
     expect(pruned.eventDeleteCount).toEqual(90);
-    expect((await repository.listEvents(quiet.id, 1_000)).data).toHaveLength(3);
-    const { data: remaining } = await repository.listEvents(chatty.id, 1_000);
+    expect((await repository.listEvents(quiet.id, 1_000, {}, {})).data).toHaveLength(3);
+    const { data: remaining } = await repository.listEvents(chatty.id, 1_000, {}, {});
     expect(remaining).toHaveLength(10);
     expect(remaining.at(0)).toEqual(expect.objectContaining({ line: "chatty 90" } satisfies Partial<ContainerEvent>));
     expect(remaining.at(-1)).toEqual(expect.objectContaining({ line: "chatty 99" } satisfies Partial<ContainerEvent>));
@@ -559,7 +580,7 @@ describe(EventRepository.name, () => {
     const pruned = await repository.pruneEventsPerContainer(10);
     // then
     expect(pruned.eventDeleteCount).toEqual(0);
-    expect((await repository.listEvents(container.id, 1_000)).data).toHaveLength(5);
+    expect((await repository.listEvents(container.id, 1_000, {}, {})).data).toHaveLength(5);
   });
 
   it("should do nothing while everything is inside the window", async () => {
@@ -571,7 +592,7 @@ describe(EventRepository.name, () => {
     const pruned = await repository.pruneEventsOlderThan(Temporal.Now.instant().subtract({ hours: 24 }));
     // then
     expect(pruned).toEqual({ eventDeleteCount: 0, containerDeleteCount: 0 });
-    expect((await repository.listEvents(container.id, 1_000)).data).toHaveLength(10);
+    expect((await repository.listEvents(container.id, 1_000, {}, {})).data).toHaveLength(10);
   });
 
   it("should forget events past the window, and containers left with none", async () => {
@@ -595,7 +616,7 @@ describe(EventRepository.name, () => {
     expect(pruned.containerDeleteCount).toEqual(1);
     expect(await containers()).toEqual([staying]);
     // only what fell inside the window survived
-    const { data: remaining } = await repository.listEvents(staying.id, 100_000);
+    const { data: remaining } = await repository.listEvents(staying.id, 100_000, {}, {});
     expect(remaining).toHaveLength(10);
     expect(remaining.at(0)).toEqual(expect.objectContaining({ line: "recent 0" } satisfies Partial<ContainerEvent>));
   });

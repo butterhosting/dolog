@@ -1,5 +1,5 @@
 import { ContainerEvent } from "@/models/ContainerEvent";
-import { LogAnchor } from "@/models/LogAnchor";
+import { Anchor } from "@/models/Anchor";
 import { ServerMessage } from "@/models/socket/ServerMessage";
 import { LogService } from "@/services/LogService";
 import { Temporal } from "@js-temporal/polyfill";
@@ -110,7 +110,7 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
     const { data, hasNewer, hasOlder, landedAt } = await logClient
       .list(containerId, {
         ...Internal.requestOptions(variant, cursorOrTimestamp),
-        ...useLogFilter.serialize(filter),
+        ...useLogFilter.serializeForServer(filter),
       })
       .finally(() => setLoading(false));
 
@@ -259,7 +259,7 @@ export namespace useContainerLogs {
   export type Options = {
     containerId: string;
     filter: useLogFilter.ClientFilter;
-    anchor?: LogAnchor;
+    anchor?: Anchor;
     scrollManager: useScrollManager.Result;
   };
   export type Result = {

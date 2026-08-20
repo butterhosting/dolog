@@ -1,6 +1,6 @@
 import { LogError } from "@/errors/LogError";
 import { ServerError } from "@/errors/ServerError";
-import { Uuid } from "@/helpers/Uuid";
+import { Uuid } from "@/models/Uuid";
 import { ZodProblem } from "@/helpers/ZodIssues";
 import { ZodParser } from "@/helpers/ZodParser";
 import { Initialize } from "@/Initialize";
@@ -8,7 +8,7 @@ import { Logger } from "@/Logger";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";
 import { Filter } from "@/models/Filter";
-import { LogAnchor } from "@/models/LogAnchor";
+import { Anchor } from "@/models/Anchor";
 import { Pattern } from "@/models/Pattern";
 import { EventRepository } from "@/repositories/EventRepository";
 import { SocketService } from "@/services/SocketService";
@@ -63,7 +63,7 @@ export class LogService {
     return await this.eventRepository.listEvents(containerId, listQuery.limit, {}, listQuery.filter);
   }
 
-  private async listAround(containerId: string, anchor: LogAnchor, limit: number, filter: Filter): Promise<LogService.ListResult> {
+  private async listAround(containerId: string, anchor: Anchor, limit: number, filter: Filter): Promise<LogService.ListResult> {
     const anchorBoundary = anchor.type === "id" ? anchor.value : Uuid.fromBytes(Uuid.lowerBoundAt(anchor.value));
 
     const [before, after] = await Promise.all([
@@ -207,8 +207,8 @@ export namespace LogService {
         .transform((requested) => Math.min(requested, 500)), // = maximum number of events per page
       at: z
         .string()
-        .transform((value, ctx): LogAnchor => {
-          const anchor = LogAnchor.parse(value);
+        .transform((value, ctx): Anchor => {
+          const anchor = Anchor.parse(value);
           if (!anchor) {
             ctx.addIssue({ code: "custom", message: "must be a line id (uuid) or an instant" });
             return z.NEVER;

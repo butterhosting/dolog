@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { TimeZone } from "./TimeZone";
+import { TimeZone } from "./TimeX";
 
 describe(TimeZone.name, () => {
   describe("valid", () => {

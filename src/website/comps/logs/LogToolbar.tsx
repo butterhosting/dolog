@@ -1,5 +1,5 @@
 import { useLogFilter } from "../../hooks/useLogFilter";
-import { LogRange } from "../../models/LogRange";
+import { TimespanDisplay } from "../../models/TimespanDisplay";
 import { LogControls } from "./LogControls";
 
 type Props = {
@@ -18,7 +18,7 @@ type Props = {
  */
 export function LogToolbar({ filter, onApply, onJump }: Props) {
   const { form, formState } = filter;
-  const period = LogRange.label(form.range);
+  const period = TimespanDisplay.label(form.timespan);
   return (
     <div className="flex items-end gap-7 bg-c-dark-deep px-4 pb-3 pt-2">
       <LogControls.Group label="Navigate">
@@ -45,7 +45,7 @@ export function LogToolbar({ filter, onApply, onJump }: Props) {
 
       <LogControls.Group label="Period">
         {/* the whole span is one control: it says what is covered, and opens the picker */}
-        <LogControls.Readout onClick={() => void form.promptRangeDialog()} title="choose the time span this filter covers">
+        <LogControls.Readout onClick={() => void form.promptTimespanDialog()} title="choose the time span this filter covers">
           {period}
         </LogControls.Readout>
       </LogControls.Group>

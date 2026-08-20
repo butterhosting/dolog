@@ -1,8 +1,8 @@
+import { Timespan } from "@/models/Timespan";
 import { Temporal } from "@js-temporal/polyfill";
 import { DialogManager } from "../comps/DialogManager";
-import { JumpModal } from "../comps/JumpModal";
-import { RangeModal } from "../comps/RangeModal";
-import { LogRange } from "../models/LogRange";
+import { NavigateDialog } from "../comps/dialogs/NavigateDialog";
+import { TimespanDialog } from "../comps/dialogs/TimespanDialog";
 
 export class DialogClient {
   private _manager: DialogManager.Api | null = null;
@@ -24,20 +24,20 @@ export class DialogClient {
       this.manager.remove({ token });
     };
     const { token } = this.manager.insert(
-      <JumpModal current={current} close={() => resolve("cancel")} done={(instant) => resolve(instant)} />,
+      <NavigateDialog current={current} close={() => resolve("cancel")} done={(instant) => resolve(instant)} />,
     );
     return promise;
   }
 
-  public pickRange(current: LogRange.Value): Promise<"cancel" | LogRange.Value> {
-    type Result = Awaited<ReturnType<typeof this.pickRange>>;
+  public pickTimespan(current: Timespan): Promise<"cancel" | Timespan> {
+    type Result = Awaited<ReturnType<typeof this.pickTimespan>>;
     const { promise, resolve: internalResolve } = Promise.withResolvers<Result>();
     const resolve = (result: Result) => {
       internalResolve(result);
       this.manager.remove({ token });
     };
     const { token } = this.manager.insert(
-      <RangeModal current={current} close={() => resolve("cancel")} done={(value) => resolve(value)} />,
+      <TimespanDialog current={current} close={() => resolve("cancel")} done={(value) => resolve(value)} />,
     );
     return promise;
   }
