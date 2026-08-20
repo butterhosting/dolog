@@ -1,8 +1,8 @@
 import { Temporal } from "@js-temporal/polyfill";
 import clsx from "clsx";
 import { useMemo, useState } from "react";
-import { Button } from "../Button";
-import { Modal } from "../Modal";
+import { Button } from "../basics/Button";
+import { Dialog } from "../basics/Dialog";
 
 type Props = {
   current?: Temporal.Instant;
@@ -28,7 +28,7 @@ export function NavigateDialog({ current, close, done }: Props) {
   const presets = useMemo(() => Internal.presets(), []);
 
   return (
-    <Modal isOpen issueCloseRequestWhenClickingBackdrop issueCloseRequestWhenPressingEscape onCloseRequest={close} className="p-6">
+    <Dialog isOpen issueCloseRequestWhenClickingBackdrop issueCloseRequestWhenPressingEscape onCloseRequest={close} className="p-6">
       <form
         className="flex flex-col gap-5"
         onSubmit={(event) => {
@@ -92,7 +92,7 @@ export function NavigateDialog({ current, close, done }: Props) {
           </Button>
         </div>
       </form>
-    </Modal>
+    </Dialog>
   );
 }
 

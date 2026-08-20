@@ -66,6 +66,16 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
     });
   }
 
+  /**
+   * Moves the window onto a line outside it, which is how a search result off the current page is
+   * arrived at. Nothing is marked: a search moves the view, it does not plant a flag.
+   */
+  function moveWindowToEvent(eventId: string) {
+    requestLogs("around", eventId, {
+      postDOM: () => scrollManager.move.toEvent(eventId),
+    });
+  }
+
   //
   // Initial loading
   //
@@ -126,6 +136,7 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
     isLoading,
     isFollowingStream,
     followStream,
+    moveWindowToEvent,
   };
 }
 
@@ -142,5 +153,7 @@ export namespace useContainerLogs {
     isLoading: boolean;
     isFollowingStream: boolean;
     followStream(): void;
+    /** Moves the window onto a line outside it, leaving no marker. Used by search. */
+    moveWindowToEvent(eventId: string): void;
   };
 }

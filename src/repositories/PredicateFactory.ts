@@ -20,19 +20,8 @@ export namespace PredicateFactory {
     switch (exhaustiveness) {
       case "full_object_test": {
         try {
-          switch (type) {
-            case Pattern.Type.substr: {
-              const lowered = asciiLower(value);
-              return (line) => asciiLower(line).includes(lowered);
-            }
-            case Pattern.Type.regex: {
-              const compiled = new RegExp(value);
-              return (line) => compiled.test(line);
-            }
-            default: {
-              (type) satisfies never;
-            }
-          }
+          // the model owns what "matches" means, so the frontend can light up exactly what we find
+          return Pattern.createPredicate({ type, value });
         } catch (error) {
           if (error instanceof SyntaxError) {
             throw LogError.invalid_regex_pattern({
@@ -195,10 +184,6 @@ export namespace PredicateFactory {
         return () => clauses;
       }
     }
-  }
-
-  function asciiLower(value: string): string {
-    return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
   }
 
   function sqlSubstring(needle: string): SQL<unknown> {

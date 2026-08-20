@@ -3,7 +3,7 @@ import { createBrowserRouter, replace, RouterProvider } from "react-router";
 import { ClientRegistry } from "./ClientRegistry";
 import { DialogClient } from "./clients/DialogClient";
 import { SocketClient } from "./clients/SocketClient";
-import { DialogManager } from "./comps/DialogManager";
+import { DialogManager } from "./comps/basics/DialogManager";
 import { containerLogsPage } from "./pages/container.logs.page";
 import { containersPage } from "./pages/containers.page";
 import { Route } from "./Route";

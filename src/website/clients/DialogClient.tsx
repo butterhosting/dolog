@@ -1,6 +1,6 @@
 import { Timespan } from "@/models/Timespan";
 import { Temporal } from "@js-temporal/polyfill";
-import { DialogManager } from "../comps/DialogManager";
+import { DialogManager } from "../comps/basics/DialogManager";
 import { NavigateDialog } from "../comps/dialogs/NavigateDialog";
 import { TimespanDialog } from "../comps/dialogs/TimespanDialog";
 

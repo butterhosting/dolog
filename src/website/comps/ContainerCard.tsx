@@ -3,7 +3,7 @@ import { ContainerRM } from "@/models/ContainerRM";
 import clsx from "clsx";
 import { Link } from "react-router";
 import { Route } from "../Route";
-import { Paper } from "./Paper";
+import { Paper } from "./basics/Paper";
 
 type Props = {
   container: ContainerRM;

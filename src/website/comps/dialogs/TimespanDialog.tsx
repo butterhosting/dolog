@@ -1,8 +1,8 @@
 import { Temporal } from "@js-temporal/polyfill";
 import clsx from "clsx";
 import { useState } from "react";
-import { Button } from "../Button";
-import { Modal } from "../Modal";
+import { Button } from "../basics/Button";
+import { Dialog } from "../basics/Dialog";
 import { Timespan } from "@/models/Timespan";
 import { TimespanDisplay } from "../../models/TimespanDisplay";
 
@@ -27,7 +27,7 @@ export function TimespanDialog({ current, close, done }: Props) {
   const backwards = parsed.since && parsed.until && Temporal.Instant.compare(parsed.since, parsed.until) >= 0;
 
   return (
-    <Modal isOpen issueCloseRequestWhenClickingBackdrop issueCloseRequestWhenPressingEscape onCloseRequest={close} className="p-6">
+    <Dialog isOpen issueCloseRequestWhenClickingBackdrop issueCloseRequestWhenPressingEscape onCloseRequest={close} className="p-6">
       {!custom ? (
         <div className="flex flex-col gap-5">
           {Object.values(TimespanDisplay.Group).map((group) => (
@@ -42,9 +42,7 @@ export function TimespanDialog({ current, close, done }: Props) {
                     onClick={() => done(Timespan.forPreset(preset))}
                   />
                 ))}
-                {group === TimespanDisplay.Group.exact && (
-                  <Internal.Pill label="Custom…" active={false} onClick={() => setCustom(true)} />
-                )}
+                {group === TimespanDisplay.Group.exact && <Internal.Pill label="Custom…" active={false} onClick={() => setCustom(true)} />}
               </div>
             </div>
           ))}
@@ -96,7 +94,7 @@ export function TimespanDialog({ current, close, done }: Props) {
           </div>
         </form>
       )}
-    </Modal>
+    </Dialog>
   );
 }
 

@@ -9,7 +9,7 @@ type Props = {
   children: React.ReactNode;
   className?: string;
 };
-export function Modal({
+export function Dialog({
   isOpen,
   onCloseRequest = () => null,
   issueCloseRequestWhenPressingEscape = false,

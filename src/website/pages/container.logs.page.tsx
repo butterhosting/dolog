@@ -1,16 +1,18 @@
 import clsx from "clsx";
 import { Link, useParams } from "react-router";
-import { Row } from "../comps/logs/Row";
-import { Spinner } from "../comps/Spinner";
+import { SearchBox } from "../comps/SearchBox";
+import { Row } from "../comps/Row";
+import { Spinner } from "../comps/basics/Spinner";
 import { useContainerLogs } from "../hooks/useContainerLogs";
 import { useContainerName } from "../hooks/useContainerName";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useLogAnchor } from "../hooks/useLogAnchor";
 import { useLogFilter } from "../hooks/useLogFilter";
+import { useLogSearch } from "../hooks/useLogSearch";
 import { useScrollManager } from "../hooks/useScrollManager";
 import { Line } from "../rendering/Line";
 import { Route } from "../Route";
-import { LogToolbar } from "../comps/logs/LogToolbar";
+import { Toolbar } from "../comps/Toolbar";
 
 export function containerLogsPage() {
   const { id: containerId = "" } = useParams();
@@ -24,13 +26,13 @@ export function containerLogsPage() {
     anchor: logAnchor.anchor,
     scrollManager,
   });
-  // const logSearch = useLogSearch({
-  //   id: containerId,
-  //   applied: logFilter.filter,
-  //   scrollWindowRef: containerLogs.scrollWindowRef,
-  //   events: containerLogs.events,
-  //   onFoundOutsideWindow: containerLogs.moveWindowToEvent,
-  // });
+  const logSearch = useLogSearch({
+    containerId,
+    filter: logFilter.filter,
+    scrollManager,
+    events: containerLogs.events,
+    onFoundOutsideWindow: containerLogs.moveWindowToEvent,
+  });
 
   const name = useContainerName(containerId, containerLogs.events);
   useDocumentTitle(`${name} | Dolog`);
@@ -44,7 +46,7 @@ export function containerLogsPage() {
         <span className="font-bold">{name}</span>
       </header>
 
-      <LogToolbar filter={logFilter} onApply={logFilter.formState.apply} onJump={() => void logAnchor.promptNavigation()} />
+      <Toolbar filter={logFilter} onApply={logFilter.formState.apply} onJump={() => void logAnchor.promptNavigation()} />
 
       <div className="relative flex-1 min-h-0">
         {/*
@@ -87,12 +89,20 @@ export function containerLogsPage() {
               case Line.Type.timestamp_anchor:
                 return <Row.TimestampAnchor key={line.id} line={line} dismiss={logAnchor.clear} />;
               case Line.Type.event:
-                return <Row.Event key={line.id} line={line} toggleAnchor={() => logAnchor.toggle(line.event.id)} />;
+                return (
+                  <Row.Event
+                    key={line.id}
+                    line={line}
+                    toggleAnchor={() => logAnchor.toggle(line.event.id)}
+                    matched={logSearch.matched.has(line.event.id)}
+                    current={line.event.id === logSearch.currentMatch}
+                  />
+                );
             }
           })}
         </div>
 
-        {/*{logSearch.finding && <FindBar search={logSearch} />}*/}
+        {logSearch.finding && <SearchBox search={logSearch} />}
 
         {/* offered whenever the feed is not being followed -- scrolled up, or parked in history */}
         {!containerLogs.isFollowingStream && (

@@ -5,9 +5,9 @@ import { useYesQuery } from "react-yesquery";
 import { ContainerClient } from "../clients/ContainerClient";
 import { SocketClient } from "../clients/SocketClient";
 import { ContainerCard } from "../comps/ContainerCard";
-import { Frame } from "../comps/Frame";
-import { Paper } from "../comps/Paper";
-import { Spinner } from "../comps/Spinner";
+import { Frame } from "../comps/basics/Frame";
+import { Paper } from "../comps/basics/Paper";
+import { Spinner } from "../comps/basics/Spinner";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useRegistry } from "../hooks/useRegistry";
 

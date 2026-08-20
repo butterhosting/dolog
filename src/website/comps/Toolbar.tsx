@@ -1,22 +1,14 @@
-import { useLogFilter } from "../../hooks/useLogFilter";
-import { TimespanDisplay } from "../../models/TimespanDisplay";
+import { useLogFilter } from "../hooks/useLogFilter";
+import { TimespanDisplay } from "../models/TimespanDisplay";
 import { LogControls } from "./LogControls";
 
 type Props = {
   filter: useLogFilter.Result;
-  /** Applying is the page's to do, because it moves the window as well as changing the url. */
   onApply: () => void;
   onJump: () => void;
 };
 
-/**
- * The bar above the log. It sits a shade below the log surface rather than on it, so the two read as
- * separate planes -- one you act on, one you read.
- *
- * Takes the whole filter rather than a dozen props: every control here is one face of it, and
- * spelling them out one by one would only put a second copy of its shape in the middle.
- */
-export function LogToolbar({ filter, onApply, onJump }: Props) {
+export function Toolbar({ filter, onApply, onJump }: Props) {
   const { form, formState } = filter;
   const period = TimespanDisplay.label(form.timespan);
   return (
