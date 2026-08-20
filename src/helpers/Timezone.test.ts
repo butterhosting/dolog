@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { TimeZone } from "./TimeX";
+import { Timezone } from "./Timezone";
 
-describe(TimeZone.name, () => {
+describe(Timezone.name, () => {
   describe("valid", () => {
     // one per shape rather than per city: the check is a passthrough to `Intl`, and a fifth
     // continent proves nothing a fourth did not
@@ -13,7 +13,7 @@ describe(TimeZone.name, () => {
       "Australia/Sydney",
     ])("%s", (timezone) => {
       // when
-      const result = TimeZone.check(timezone);
+      const result = Timezone.check(timezone);
       // then
       expect(result).toEqual(true);
     });
@@ -30,7 +30,7 @@ describe(TimeZone.name, () => {
       "Europe/Londn",
     ])("invalid: %s", (timezone) => {
       // when
-      const result = TimeZone.check(timezone);
+      const result = Timezone.check(timezone);
       // then
       expect(result).toEqual(false);
     });

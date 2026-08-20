@@ -2,13 +2,13 @@ import { Temporal } from "@js-temporal/polyfill";
 import { isAbsolute, join } from "path";
 import { z } from "zod/v4";
 import packageJson from "../package.json";
-import { TimeZone } from "./helpers/TimeX";
+import { Timezone } from "./helpers/Timezone";
 import { LogLevel } from "./models/internal/LogLevel";
 
 export namespace Env {
   const baseEnv = z.object({
     O_DOLOG_STAGE: z.enum(["dev", "e2e", "prod"]),
-    O_DOLOG_TIMEZONE: z.string().refine((tz) => TimeZone.check(tz), {
+    O_DOLOG_TIMEZONE: z.string().refine((tz) => Timezone.check(tz), {
       error: "invalid_timezone",
     }),
 
