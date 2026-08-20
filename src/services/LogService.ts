@@ -41,7 +41,7 @@ export class LogService {
     return await this.eventRepository.findEvent(containerId, findQuery.search, findQuery.filter);
   }
 
-  public async list(containerId: string, unknown: unknown): Promise<EventRepository.ListResult> {
+  public async list(containerId: string, unknown: unknown): Promise<LogService.ListResult> {
     const listQuery = this.parseAndValidateListQuery(unknown);
 
     if (listQuery.at && listQuery.cursor) {
@@ -63,7 +63,7 @@ export class LogService {
     return await this.eventRepository.listEvents(containerId, listQuery.limit, {}, listQuery.filter);
   }
 
-  private async listAround(containerId: string, anchor: Anchor, limit: number, filter: Filter): Promise<EventRepository.ListResult> {
+  private async listAround(containerId: string, anchor: Anchor, limit: number, filter: Filter): Promise<LogService.ListResult> {
     const anchorBoundary = anchor.type === "id" ? anchor.value : Uuid.fromBytes(Uuid.lowerBoundAt(anchor.value));
 
     const [before, after] = await Promise.all([
@@ -217,8 +217,9 @@ export namespace LogService {
     })
     .and(FilterSubQuery);
 
+  export type ListResult = EventRepository.ListResult;
   export namespace ListResult {
-    export const parse = ZodParser.forType<EventRepository.ListResult>()
+    export const parse = ZodParser.forType<ListResult>()
       .ensureSchemaMatchesType(() =>
         z.object({
           data: z.array(ContainerEvent.parse.SCHEMA),

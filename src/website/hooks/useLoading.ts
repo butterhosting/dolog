@@ -1,11 +1,14 @@
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { LogService } from "@/services/LogService";
 import { Temporal } from "@js-temporal/polyfill";
-import { Dispatch, RefObject, SetStateAction, useLayoutEffect, useRef, useState } from "react";
+import { RefObject, useLayoutEffect, useRef, useState } from "react";
 import { LogClient } from "../clients/LogClient";
 import { useFilter } from "./useFilter";
 import { useRegistry } from "./basics/useRegistry";
 import { ClientFilter } from "./objects/ClientFilter";
+
+/** How far the window may grow while tailing, before the oldest lines are let go of. */
+const MAX_WINDOW_SIZE = 300;
 
 export function useLoading({ containerId, filter }: useLoading.Options): useLoading.Result {
   const logClient = useRegistry(LogClient);
@@ -134,9 +137,23 @@ export function useLoading({ containerId, filter }: useLoading.Options): useLoad
     }
   }, [loadingNonce]);
 
+  function appendEvent(event: ContainerEvent): boolean {
+    if (isActivelyLoading()) {
+      return false;
+    }
+    setEvents((current) => {
+      // the same line can reach us both ways, when a load covers what the socket has already sent
+      if (current.some((existing) => existing.id === event.id)) {
+        return current;
+      }
+      return [...current, event].slice(-MAX_WINDOW_SIZE);
+    });
+    return true;
+  }
+
   return {
     events,
-    setEvents, // TODO: expose an `append` function instead, which can be called from the livestream
+    appendEvent,
     loadingRef: activeLoadVariant,
     isLoading,
     hasNewer,
@@ -165,7 +182,7 @@ export namespace useLoading {
   };
   export type Result = {
     events: ContainerEvent[];
-    setEvents: Dispatch<SetStateAction<ContainerEvent[]>>; // also used by the livestream
+    appendEvent(event: ContainerEvent): boolean;
     loadingRef: RefObject<Variant | undefined>;
     isLoading: boolean;
     hasNewer: boolean;

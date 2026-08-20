@@ -10,13 +10,11 @@ import { ClientFilter } from "./objects/ClientFilter";
 import { PhysicalDOMContainer } from "./objects/PhysicalDOMContainer";
 import { useLoading } from "./useLoading";
 
-const LINES_PER_PAGE = 300;
-
 export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: useLogs.Options): useLogs.Result {
   const socketClient = useRegistry(SocketClient);
   const renderer = useRegistry(LineRenderer);
 
-  const { events, setEvents, loadingRef, isLoading, hasNewer, hasOlder, requestLogs } = useLoading({
+  const { events, appendEvent, loadingRef, isLoading, hasNewer, hasOlder, requestLogs } = useLoading({
     containerId,
     filter,
   });
@@ -37,10 +35,9 @@ export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: u
           return;
         }
         // Live lines are _only_ appended while the reader is tailing the end of the logs ...
-        // ... otherwise they're noted as missed, and caught up on when they return
-        if (isFollowingStreamRef.current) {
-          setEvents((current) => [...current, data].slice(-LINES_PER_PAGE));
-        } else {
+        // ... otherwise they're noted as missed, and caught up on when they return. The window can
+        // turn one down as well, mid-load, which counts as missed for the same reason
+        if (!isFollowingStreamRef.current || !appendEvent(data)) {
           hasMissedDataWhilePaused.current = true;
         }
       },
@@ -146,10 +143,7 @@ export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: u
   //
   // Actually render the events
   //
-  const lines = useMemo(
-    () => renderer.render({ anchor, events, hasOlder, hasNewer }),
-    [anchor, events, hasOlder, hasNewer],
-  );
+  const lines = useMemo(() => renderer.render({ anchor, events, hasOlder, hasNewer }), [anchor, events, hasOlder, hasNewer]);
 
   return {
     lines,
