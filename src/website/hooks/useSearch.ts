@@ -9,11 +9,6 @@ import { PhysicalDOMContainer } from "./objects/PhysicalDOMContainer";
 import { useFilter } from "./useFilter";
 import { useRegistry } from "./basics/useRegistry";
 
-/**
- * Find, which is a different act from filtering: it moves the reader through the log rather than
- * re-defining what the log is. It therefore holds almost no state -- what it knows is what is on
- * screen at the moment a chevron is pressed, and it asks the server for the rest.
- */
 export function useSearch({
   containerId,
   physicalDOMContainer,

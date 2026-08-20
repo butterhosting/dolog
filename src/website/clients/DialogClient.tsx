@@ -1,8 +1,8 @@
-import { Timespan } from "@/website/hooks/objects/Timespan";
+import { Range } from "@/website/hooks/objects/Range";
 import { Temporal } from "@js-temporal/polyfill";
 import { DialogManager } from "../comps/basics/DialogManager";
 import { NavigateDialog } from "../comps/dialogs/NavigateDialog";
-import { TimespanDialog } from "../comps/dialogs/TimespanDialog";
+import { RangeDialog } from "../comps/dialogs/RangeDialog";
 
 export class DialogClient {
   private _manager: DialogManager.Api | null = null;
@@ -29,15 +29,15 @@ export class DialogClient {
     return promise;
   }
 
-  public pickTimespan(current: Timespan): Promise<"cancel" | Timespan> {
-    type Result = Awaited<ReturnType<typeof this.pickTimespan>>;
+  public promptRangeDialog(current: Range): Promise<"cancel" | Range> {
+    type Result = Awaited<ReturnType<typeof this.promptRangeDialog>>;
     const { promise, resolve: internalResolve } = Promise.withResolvers<Result>();
     const resolve = (result: Result) => {
       internalResolve(result);
       this.manager.remove({ token });
     };
     const { token } = this.manager.insert(
-      <TimespanDialog current={current} close={() => resolve("cancel")} done={(value) => resolve(value)} />,
+      <RangeDialog current={current} close={() => resolve("cancel")} done={(value) => resolve(value)} />,
     );
     return promise;
   }

@@ -18,8 +18,8 @@ export function containerLogsPage() {
   const { id: containerId = "" } = useParams();
   const { register, physicalDOMContainer } = usePhysicalDOMContainer();
 
-  const filterResult = useFilter();
   const anchorResult = useAnchor();
+  const filterResult = useFilter();
   const logsResult = useLogs({
     containerId,
     physicalDOMContainer,

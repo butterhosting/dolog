@@ -1,5 +1,5 @@
-import { TimespanDisplay } from "@/helpers/TimespanDisplay";
-import { Timespan } from "@/website/hooks/objects/Timespan";
+import { RangeDisplay } from "@/helpers/RangeDisplay";
+import { Range } from "@/website/hooks/objects/Range";
 import { Temporal } from "@js-temporal/polyfill";
 import clsx from "clsx";
 import { useState } from "react";
@@ -7,16 +7,12 @@ import { Button } from "../basics/Button";
 import { Dialog } from "../basics/Dialog";
 
 type Props = {
-  current: Timespan;
+  current: Range;
   close: () => void;
-  done: (value: Timespan) => void;
+  done: (value: Range) => void;
 };
 
-/**
- * Picking a preset is one click and closes; picking "Custom" turns the same modal into two fields.
- * Two panels rather than two dialogs, so the presets stay one keystroke away from a half-typed date.
- */
-export function TimespanDialog({ current, close, done }: Props) {
+export function RangeDialog({ current, close, done }: Props) {
   const [custom, setCustom] = useState(current.type === "custom");
   const [since, setSince] = useState(current.type === "custom" ? Internal.toField(current.since) : "");
   const [until, setUntil] = useState(current.type === "custom" ? Internal.toField(current.until) : "");
@@ -30,19 +26,19 @@ export function TimespanDialog({ current, close, done }: Props) {
     <Dialog isOpen issueCloseRequestWhenClickingBackdrop issueCloseRequestWhenPressingEscape onCloseRequest={close} className="p-6">
       {!custom ? (
         <div className="flex flex-col gap-5">
-          {Object.values(TimespanDisplay.Group).map((group) => (
+          {Object.values(RangeDisplay.Group).map((group) => (
             <div key={group} className="flex flex-col gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-c-dark-half">{group}</span>
               <div className="flex flex-wrap gap-2">
-                {TimespanDisplay.presetsIn(group).map((preset) => (
+                {RangeDisplay.presetsIn(group).map((preset) => (
                   <Internal.Pill
                     key={preset}
-                    label={TimespanDisplay.presetLabel(preset)}
+                    label={RangeDisplay.presetLabel(preset)}
                     active={current.type === "preset" && current.preset === preset}
-                    onClick={() => done(Timespan.forPreset(preset))}
+                    onClick={() => done(Range.forPreset(preset))}
                   />
                 ))}
-                {group === TimespanDisplay.Group.exact && <Internal.Pill label="Custom…" active={false} onClick={() => setCustom(true)} />}
+                {group === RangeDisplay.Group.exact && <Internal.Pill label="Custom…" active={false} onClick={() => setCustom(true)} />}
               </div>
             </div>
           ))}
@@ -53,7 +49,7 @@ export function TimespanDialog({ current, close, done }: Props) {
           onSubmit={(event) => {
             event.preventDefault();
             if (!broken && !backwards) {
-              done(Timespan.forCustom({ since: parsed.since ?? undefined, until: parsed.until ?? undefined }));
+              done(Range.forCustom({ since: parsed.since ?? undefined, until: parsed.until ?? undefined }));
             }
           }}
         >

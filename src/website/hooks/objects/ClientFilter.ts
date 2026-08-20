@@ -1,7 +1,7 @@
 import { Pattern } from "@/models/Pattern";
-import { Timespan } from "@/website/hooks/objects/Timespan";
+import { Range } from "@/website/hooks/objects/Range";
 
 export type ClientFilter = {
   pattern?: Pattern;
-  timespan: Timespan;
+  range: Range;
 };

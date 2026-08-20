@@ -1,60 +1,71 @@
 import { Timestamp } from "@/helpers/Timestamp";
 import { Pattern } from "@/models/Pattern";
 import { LogService } from "@/services/LogService";
-import { Timespan } from "@/website/hooks/objects/Timespan";
-import { useMemo, useState } from "react";
+import { Range } from "@/website/hooks/objects/Range";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { DialogClient } from "../clients/DialogClient";
-import { ClientFilter } from "./objects/ClientFilter";
 import { useRegistry } from "./basics/useRegistry";
+import { ClientFilter } from "./objects/ClientFilter";
 
 export function useFilter(): useFilter.Result {
   const dialogClient = useRegistry(DialogClient);
-  const [parameters, setParameters] = useSearchParams();
+  const [parameters, setParametersx] = useSearchParams();
 
-  const key = Internal.hash(parameters);
-  const filter = useMemo(() => Internal.parseClientUrl(parameters), [key]);
+  const [filter, setFilter] = useState(Internal.parseClientUrl(parameters));
+  useEffect(() => {
+    setParametersx((previous) => Internal.mergeClientUrl(previous, filter));
+  }, [filter]);
 
-  // form
+  // Form (initial values based on the URL, see above)
   const [pattern, setPattern] = useState(filter.pattern?.value ?? "");
   const [patternType, setPatternType] = useState<Pattern.Type>(filter.pattern?.type ?? Pattern.Type.substr);
-  const [timespan, setTimespan] = useState<Timespan>(filter.timespan);
-  const dirty = !Internal.equals(filter, {
-    pattern: pattern ? { type: patternType, value: pattern } : undefined,
-    timespan,
-  });
+  const [range, setRange] = useState<Range>(filter.range);
 
-  function togglePatternType() {
-    setPatternType((current) => {
-      switch (current) {
-        case Pattern.Type.regex:
-          return Pattern.Type.substr;
-        case Pattern.Type.substr:
-          return Pattern.Type.regex;
-      }
-    });
-  }
+  const underConstruction: ClientFilter = {
+    pattern: pattern.trim()
+      ? {
+          type: patternType,
+          value: pattern.trim(),
+        }
+      : undefined,
+    range,
+  };
 
-  async function promptTimespanDialog() {
-    const chosen = await dialogClient.pickTimespan(timespan);
-    if (chosen !== "cancel") {
-      setTimespan(chosen);
-    }
-  }
-
-  function apply() {
-    // an empty box is no pattern at all, rather than a pattern that matches everything
-    const trimmed = pattern.trim();
-    setParameters((previous) =>
-      Internal.mergeClientUrl(previous, { pattern: trimmed ? { type: patternType, value: trimmed } : undefined, timespan }),
-    );
+  function apply(target = underConstruction) {
+    setFilter(target);
   }
 
   return {
     filter,
     isFilterNarrowing: Internal.isNarrowing(filter),
-    form: { pattern, setPattern, patternType, togglePatternType, timespan, promptTimespanDialog },
-    formState: { dirty, apply },
+    form: {
+      pattern,
+      setPattern,
+      patternType,
+      togglePatternType() {
+        setPatternType((current) => {
+          switch (current) {
+            case Pattern.Type.regex:
+              return Pattern.Type.substr;
+            case Pattern.Type.substr:
+              return Pattern.Type.regex;
+          }
+        });
+      },
+      range,
+      async promptRangeDialog() {
+        const result = await dialogClient.promptRangeDialog(range);
+        if (result !== "cancel") {
+          setRange(result);
+          apply({ ...underConstruction, range: result }); // immediately apply
+        }
+      },
+    },
+    formState: {
+      dirty: !Internal.equals(filter, underConstruction),
+      apply,
+    },
   };
 }
 
@@ -62,10 +73,10 @@ namespace Internal {
   enum ClientUrlParam {
     pattern = "pattern",
     patternType = "patternType",
-    timespan = "timespan",
-    preset = "preset",
-    since = "since",
-    until = "until",
+    range = "range",
+    rangePreset = "rangePreset",
+    rangeSince = "rangeSince",
+    rangeUntil = "rangeUntil",
   }
 
   export function hash(parameters: URLSearchParams): string {
@@ -77,10 +88,10 @@ namespace Internal {
   export function parseClientUrl(parameters: URLSearchParams): ClientFilter {
     const patternType = (parameters.get(ClientUrlParam.patternType) ?? undefined) as Pattern.Type;
     const patternValue = parameters.get(ClientUrlParam.pattern) ?? undefined;
-    const timespanType = (parameters.get(ClientUrlParam.timespan) ?? undefined) as Timespan.Type;
-    const timespanPreset = (parameters.get(ClientUrlParam.preset) ?? undefined) as Timespan.Preset;
-    const timespanSince = parameters.get(ClientUrlParam.since) ?? undefined;
-    const timespanUntil = parameters.get(ClientUrlParam.until) ?? undefined;
+    const rangeType = (parameters.get(ClientUrlParam.range) ?? undefined) as Range.Type;
+    const rangePreset = (parameters.get(ClientUrlParam.rangePreset) ?? undefined) as Range.Preset;
+    const rangeSince = parameters.get(ClientUrlParam.rangeSince) ?? undefined;
+    const rangeUntil = parameters.get(ClientUrlParam.rangeUntil) ?? undefined;
 
     let pattern: Pattern | undefined = undefined;
     if (Object.values(Pattern.Type).includes(patternType) && patternValue) {
@@ -90,29 +101,29 @@ namespace Internal {
       };
     }
 
-    let timespan: Timespan = Timespan.forPreset(Timespan.Preset.last30d);
-    if (Object.values(Timespan.Type).includes(timespanType)) {
-      switch (timespanType) {
-        case Timespan.Type.preset: {
-          if (Object.values(Timespan.Preset).includes(timespanPreset)) {
-            timespan = Timespan.forPreset(timespanPreset);
+    let range: Range = Range.forPreset(Range.Preset.last30d);
+    if (Object.values(Range.Type).includes(rangeType)) {
+      switch (rangeType) {
+        case Range.Type.preset: {
+          if (Object.values(Range.Preset).includes(rangePreset)) {
+            range = Range.forPreset(rangePreset);
           }
           break;
         }
-        case Timespan.Type.custom: {
-          timespan = Timespan.forCustom({
-            since: Timestamp.tryInstant(timespanSince),
-            until: Timestamp.tryInstant(timespanUntil),
+        case Range.Type.custom: {
+          range = Range.forCustom({
+            since: Timestamp.tryInstant(rangeSince),
+            until: Timestamp.tryInstant(rangeUntil),
           });
           break;
         }
         default: {
-          timespanType satisfies never;
+          rangeType satisfies never;
         }
       }
     }
 
-    return { pattern, timespan };
+    return { pattern, range };
   }
 
   export function mergeClientUrl(previous: URLSearchParams, filter: ClientFilter): URLSearchParams {
@@ -127,19 +138,19 @@ namespace Internal {
       params[ClientUrlParam.pattern] = filter.pattern.value;
       params[ClientUrlParam.patternType] = filter.pattern.type;
     }
-    params[ClientUrlParam.timespan] = filter.timespan.type;
-    switch (filter.timespan.type) {
+    params[ClientUrlParam.range] = filter.range.type;
+    switch (filter.range.type) {
       case "preset": {
-        params[ClientUrlParam.preset] = filter.timespan.preset;
+        params[ClientUrlParam.rangePreset] = filter.range.preset;
         break;
       }
       case "custom": {
-        params[ClientUrlParam.since] = filter.timespan.since?.toString();
-        params[ClientUrlParam.until] = filter.timespan.until?.toString();
+        params[ClientUrlParam.rangeSince] = filter.range.since?.toString();
+        params[ClientUrlParam.rangeUntil] = filter.range.until?.toString();
         break;
       }
       default: {
-        filter.timespan satisfies never;
+        filter.range satisfies never;
       }
     }
     Object.entries(params).forEach(([param, value]) => {
@@ -151,11 +162,11 @@ namespace Internal {
   }
 
   export function isNarrowing(filter: ClientFilter): boolean {
-    return Boolean(filter.pattern?.value) || !(filter.timespan.type === "preset" && filter.timespan.preset === Timespan.Preset.all);
+    return Boolean(filter.pattern?.value) || !(filter.range.type === "preset" && filter.range.preset === Range.Preset.all);
   }
 
   export function equals(a: ClientFilter, b: ClientFilter): boolean {
-    return a.pattern?.type === b.pattern?.type && a.pattern?.value === b.pattern?.value && Timespan.equals(a.timespan, b.timespan);
+    return a.pattern?.type === b.pattern?.type && a.pattern?.value === b.pattern?.value && Range.equals(a.range, b.range);
   }
 }
 
@@ -171,8 +182,8 @@ export namespace useFilter {
       setPattern: (value: string) => void;
       patternType: Pattern.Type;
       togglePatternType: () => void;
-      timespan: Timespan;
-      promptTimespanDialog: () => Promise<void>;
+      range: Range;
+      promptRangeDialog: () => Promise<void>;
     };
     formState: {
       dirty: boolean;
@@ -181,7 +192,7 @@ export namespace useFilter {
   };
 
   export function serializeForServer(clientFilter: ClientFilter): LogService.FilterSubQuery {
-    const { since, until } = clientFilter.timespan.materialize();
+    const { since, until } = clientFilter.range.materialize();
     return {
       filterPattern: clientFilter.pattern?.value || undefined,
       filterPatternType: clientFilter.pattern?.type || undefined,

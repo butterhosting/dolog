@@ -1,5 +1,6 @@
 import { Anchor } from "@/models/Anchor";
-import { useState } from "react";
+import { Temporal } from "@js-temporal/polyfill";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { DialogClient } from "../clients/DialogClient";
 import { useRegistry } from "./basics/useRegistry";
@@ -8,44 +9,45 @@ export function useAnchor(): useAnchor.Result {
   const dialogClient = useRegistry(DialogClient);
   const [parameters, setParameters] = useSearchParams();
 
-  const at = Anchor.parse(Internal.getUrlParam(parameters));
-  const [anchor, setAnchor] = useState<Anchor | undefined>(at);
+  const [anchor, setAnchor] = useState<Anchor | undefined>(
+    Anchor.parse(Internal.getUrlParam(parameters)), //
+  );
 
-  async function promptNavigation() {
-    const instant = await dialogClient.promptTimestampNavigationDialog(anchor?.type === "timestamp" ? anchor.value : undefined);
-    if (instant === "cancel") {
-      return;
-    }
-
-    const instantValue = instant.toString();
-    setParameters((previous) => Internal.setUrlParam(previous, instantValue));
-
-    if (anchor?.type === "timestamp" && anchor.serialize() === instantValue) {
-      return;
-    }
-    setAnchor(Anchor.forTimestamp(instant));
-  }
-
-  function toggle(eventId: string) {
-    if (at?.type === "id" && at.value === eventId) {
-      setParameters(Internal.clearUrlParam, { replace: true });
-      setAnchor(undefined);
-    } else {
-      setParameters((previous) => Internal.setUrlParam(previous, eventId), { replace: true });
-      setAnchor(Anchor.forId(eventId));
-    }
-  }
-
-  function clear() {
-    setParameters(Internal.clearUrlParam, { replace: true });
-    setAnchor(undefined);
-  }
+  // Read the URL once (above) and keep it in sync, going forward
+  useEffect(() => {
+    setParameters((previous) => {
+      if (anchor) {
+        return Internal.setUrlParam(previous, anchor.serialize());
+      } else {
+        return Internal.clearUrlParam(previous);
+      }
+    });
+  }, [anchor]);
 
   return {
     anchor,
-    promptNavigation: promptNavigation,
-    toggle,
-    clear,
+    async promptNavigation() {
+      const instant = await dialogClient.promptTimestampNavigationDialog(anchor?.type === "timestamp" ? anchor.value : undefined);
+      if (instant === "cancel") {
+        return;
+      }
+      if (anchor?.type === "timestamp" && Temporal.Instant.compare(anchor.value, instant) === 0) {
+        return;
+      }
+      setAnchor(Anchor.forTimestamp(instant));
+    },
+    toggle(eventId: string) {
+      setAnchor((currentAnchor) => {
+        if (currentAnchor?.type === "id" && currentAnchor.value === eventId) {
+          return undefined;
+        } else {
+          return Anchor.forId(eventId);
+        }
+      });
+    },
+    clear() {
+      setAnchor(undefined);
+    },
   };
 }
 
@@ -70,8 +72,8 @@ namespace Internal {
 export namespace useAnchor {
   export type Result = {
     anchor?: Anchor;
-    promptNavigation: () => Promise<void>;
-    toggle: (eventId: string) => void;
-    clear: () => void;
+    promptNavigation(): Promise<void>;
+    toggle(eventId: string): void;
+    clear(): void;
   };
 }

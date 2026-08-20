@@ -125,7 +125,7 @@ export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: u
   }, [events, isFollowingStream]);
 
   //
-  // Effect to automatically navigate to a (timestamp) anchor after its declared
+  // Effect for dealing with an Anchor change
   //
   const honouredAnchor = useRef(anchor);
   useEffect(() => {
@@ -142,6 +142,13 @@ export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: u
       });
     }
   }, [anchor]);
+
+  //
+  // Effect for dealing with a Filter change
+  //
+  useEffect(() => {
+    console.log(filter);
+  }, [filter]);
 
   //
   // Actually render the events

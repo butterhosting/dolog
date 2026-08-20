@@ -1,5 +1,5 @@
 import { Pattern } from "@/models/Pattern";
-import { Timespan } from "@/website/hooks/objects/Timespan";
+import { Range } from "@/website/hooks/objects/Range";
 import { Temporal } from "@js-temporal/polyfill";
 import { describe, expect, it } from "bun:test";
 import { useFilter } from "./useFilter";
@@ -12,7 +12,7 @@ import { ClientFilter } from "./objects/ClientFilter";
 describe("useFilter", () => {
   function applied(overrides: Partial<ClientFilter> = {}): ClientFilter {
     return {
-      timespan: Timespan.forPreset(Timespan.Preset.last30d),
+      range: Range.forPreset(Range.Preset.last30d),
       ...overrides,
     };
   }
@@ -37,7 +37,7 @@ describe("useFilter", () => {
 
     it("resolves a relative span into instants", () => {
       // when
-      const request = useFilter.serializeForServer(applied({ timespan: Timespan.forPreset(Timespan.Preset.last1h) }));
+      const request = useFilter.serializeForServer(applied({ range: Range.forPreset(Range.Preset.last1h) }));
       // then -- an open end, because "the last hour" has no future edge
       expect(Temporal.Instant.from(request.filterSince!)).toBeInstanceOf(Temporal.Instant);
       expect(request.filterUntil).toBeUndefined();
@@ -45,7 +45,7 @@ describe("useFilter", () => {
 
     it("resolves against the clock now, so a relative span keeps sliding", () => {
       // given
-      const value = applied({ timespan: Timespan.forPreset(Timespan.Preset.last10m) });
+      const value = applied({ range: Range.forPreset(Range.Preset.last10m) });
       const before = useFilter.serializeForServer(value);
       // when (the same applied filter, asked again a moment later)
       const after = useFilter.serializeForServer(value);
@@ -55,7 +55,7 @@ describe("useFilter", () => {
 
     it("closes both ends for the one preset that has a past", () => {
       // when
-      const request = useFilter.serializeForServer(applied({ timespan: Timespan.forPreset(Timespan.Preset.yesterday) }));
+      const request = useFilter.serializeForServer(applied({ range: Range.forPreset(Range.Preset.yesterday) }));
       // then -- both ends present, and sent as the strings a query string can actually carry
       expect(Temporal.Instant.from(request.filterSince!)).toBeInstanceOf(Temporal.Instant);
       expect(Temporal.Instant.from(request.filterUntil!)).toBeInstanceOf(Temporal.Instant);
@@ -63,7 +63,7 @@ describe("useFilter", () => {
 
     it("leaves both ends open for all time", () => {
       // when
-      const request = useFilter.serializeForServer(applied({ timespan: Timespan.forPreset(Timespan.Preset.all) }));
+      const request = useFilter.serializeForServer(applied({ range: Range.forPreset(Range.Preset.all) }));
       // then
       expect(request.filterSince).toBeUndefined();
       expect(request.filterUntil).toBeUndefined();
@@ -74,7 +74,7 @@ describe("useFilter", () => {
       const since = Temporal.Instant.from("2026-03-01T00:00:00Z");
       const until = Temporal.Instant.from("2026-03-02T00:00:00Z");
       // when
-      const request = useFilter.serializeForServer(applied({ timespan: Timespan.forCustom({ since, until }) }));
+      const request = useFilter.serializeForServer(applied({ range: Range.forCustom({ since, until }) }));
       // then
       expect(request.filterSince?.toString()).toEqual(since.toString());
       expect(request.filterUntil?.toString()).toEqual(until.toString());

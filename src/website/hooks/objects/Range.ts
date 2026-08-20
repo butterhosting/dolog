@@ -1,10 +1,10 @@
 import { Timestamp } from "@/helpers/Timestamp";
 import { Temporal } from "@js-temporal/polyfill";
 
-export type Timespan =
+export type Range =
   | {
       type: "preset";
-      preset: Timespan.Preset;
+      preset: Range.Preset;
       materialize(now?: Temporal.Instant): Materialization;
     }
   | {
@@ -16,7 +16,7 @@ export type Timespan =
 
 type Materialization = { since?: Temporal.Instant; until?: Temporal.Instant };
 
-export namespace Timespan {
+export namespace Range {
   export enum Type {
     preset = "preset",
     custom = "custom",
@@ -34,7 +34,7 @@ export namespace Timespan {
     yesterday = "yesterday",
   }
 
-  export function forPreset(preset: Preset): Timespan {
+  export function forPreset(preset: Preset): Range {
     return {
       type: "preset",
       preset,
@@ -44,7 +44,7 @@ export namespace Timespan {
     };
   }
 
-  export function forCustom(materialization: Materialization): Timespan {
+  export function forCustom(materialization: Materialization): Range {
     return {
       type: "custom",
       ...materialization,
@@ -54,7 +54,7 @@ export namespace Timespan {
     };
   }
 
-  export function equals(a: Timespan, b: Timespan): boolean {
+  export function equals(a: Range, b: Range): boolean {
     if (a.type === "preset" && b.type === "preset") {
       return a.preset === b.preset;
     }
@@ -85,11 +85,6 @@ export namespace Timespan {
     [Preset.last30d]: { window: lastly(60 * 24 * 30) },
     [Preset.all]: { window: () => ({}) },
     [Preset.today]: { window: (now) => ({ since: midnight(now, 0) }) },
-    /**
-     * The only preset with a closed end, and so the only one whose view has no future. Everything
-     * downstream reads that from `until` alone -- a bounded end *means* the live feed is irrelevant,
-     * which saves carrying a separate "is this historical" flag around.
-     */
     [Preset.yesterday]: {
       window: (now) => ({
         since: midnight(now, 1),
