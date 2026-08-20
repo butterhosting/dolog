@@ -81,7 +81,7 @@ export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: u
     } else {
       requestLogs("latest");
     }
-  }, []);
+  }, [filter]); // ⚠️ treat each filter change as an initial load
 
   //
   // Loading older events (backwards in time)
@@ -142,13 +142,6 @@ export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: u
       });
     }
   }, [anchor]);
-
-  //
-  // Effect for dealing with a Filter change
-  //
-  useEffect(() => {
-    console.log(filter);
-  }, [filter]);
 
   //
   // Actually render the events
