@@ -5,6 +5,7 @@ import { Dispatch, RefObject, SetStateAction, useLayoutEffect, useRef, useState 
 import { LogClient } from "../clients/LogClient";
 import { useLogFilter } from "./useLogFilter";
 import { useRegistry } from "./useRegistry";
+import { ClientFilter } from "./objects/ClientFilter";
 
 export function useContainerLoading({ containerId, filter }: useContainerLoading.Options): useContainerLoading.Result {
   const logClient = useRegistry(LogClient);
@@ -163,7 +164,7 @@ export namespace useContainerLoading {
   export type Variant = "latest" | "forwards" | "backwards" | "around";
   export type Options = {
     containerId: string;
-    filter: useLogFilter.ClientFilter;
+    filter: ClientFilter;
   };
   export type Result = {
     events: ContainerEvent[];

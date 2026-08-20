@@ -1,7 +1,9 @@
 import clsx from "clsx";
 import { Link, useParams } from "react-router";
-import { SearchBox } from "../comps/SearchBox";
+import { Route } from "../Route";
 import { Row } from "../comps/Row";
+import { SearchBox } from "../comps/SearchBox";
+import { Toolbar } from "../comps/Toolbar";
 import { Spinner } from "../comps/basics/Spinner";
 import { useContainerLogs } from "../hooks/useContainerLogs";
 import { useContainerName } from "../hooks/useContainerName";
@@ -9,27 +11,25 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useLogAnchor } from "../hooks/useLogAnchor";
 import { useLogFilter } from "../hooks/useLogFilter";
 import { useLogSearch } from "../hooks/useLogSearch";
-import { useScrollManager } from "../hooks/useScrollManager";
+import { usePhysicalDOMContainer } from "../hooks/usePhysicalDOMContainer";
 import { Line } from "../rendering/Line";
-import { Route } from "../Route";
-import { Toolbar } from "../comps/Toolbar";
 
 export function containerLogsPage() {
   const { id: containerId = "" } = useParams();
 
   const logFilter = useLogFilter();
   const logAnchor = useLogAnchor();
-  const scrollManager = useScrollManager();
+  const { registerContainer, physicalDOMContainer } = usePhysicalDOMContainer();
   const containerLogs = useContainerLogs({
     containerId,
     filter: logFilter.filter,
     anchor: logAnchor.anchor,
-    scrollManager,
+    physicalDOMContainer,
   });
   const logSearch = useLogSearch({
     containerId,
     filter: logFilter.filter,
-    scrollManager,
+    physicalDOMContainer,
     events: containerLogs.events,
     onFoundOutsideWindow: containerLogs.moveWindowToEvent,
   });
@@ -57,7 +57,7 @@ export function containerLogsPage() {
          * were still arriving. Both ends are compensated for deliberately here instead.
          */}
         <div
-          ref={scrollManager.registerContainer}
+          ref={registerContainer}
           className="h-full overflow-y-auto [overflow-anchor:none] bg-c-dark-full text-gray-200 font-mono text-xs p-4 leading-relaxed"
         >
           {containerLogs.isLoading && (

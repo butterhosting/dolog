@@ -1,4 +1,4 @@
-import { Timespan } from "@/models/Timespan";
+import { Timespan } from "@/website/hooks/objects/Timespan";
 import { Temporal } from "@js-temporal/polyfill";
 import { DialogManager } from "../comps/basics/DialogManager";
 import { NavigateDialog } from "../comps/dialogs/NavigateDialog";

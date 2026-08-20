@@ -1,14 +1,7 @@
-import { Timespan } from "@/models/Timespan";
+import { Timespan } from "@/website/hooks/objects/Timespan";
 import { Temporal } from "@js-temporal/polyfill";
 
-/**
- * How a timespan is written down and arranged for a reader.
- *
- * Kept out of the model deliberately: what `last30d` *means* is shared with the api, but "Last 30d"
- * and which shelf it sits on are this frontend's business and nobody else's.
- */
 export namespace TimespanDisplay {
-  /** Spans that slide with the clock, and spans pinned to dates. Only a grouping for the picker. */
   export enum Group {
     relative = "relative",
     exact = "exact",
@@ -30,12 +23,10 @@ export namespace TimespanDisplay {
     return PRESETS[preset].label;
   }
 
-  /** In declaration order, which is the order they are offered in. */
   export function presetsIn(group: Group): Timespan.Preset[] {
     return Object.values(Timespan.Preset).filter((preset) => PRESETS[preset].group === group);
   }
 
-  /** What the toolbar prints on the button: a preset by name, a custom span by its two ends. */
   export function label(timespan: Timespan): string {
     if (timespan.type === "preset") {
       return presetLabel(timespan.preset);

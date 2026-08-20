@@ -1,10 +1,10 @@
+import { TimespanDisplay } from "@/helpers/TimespanDisplay";
+import { Timespan } from "@/website/hooks/objects/Timespan";
 import { Temporal } from "@js-temporal/polyfill";
 import clsx from "clsx";
 import { useState } from "react";
 import { Button } from "../basics/Button";
 import { Dialog } from "../basics/Dialog";
-import { Timespan } from "@/models/Timespan";
-import { TimespanDisplay } from "../../models/TimespanDisplay";
 
 type Props = {
   current: Timespan;

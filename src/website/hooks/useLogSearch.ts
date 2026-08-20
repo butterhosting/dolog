@@ -4,9 +4,10 @@ import { Pattern } from "@/models/Pattern";
 import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LogClient } from "../clients/LogClient";
 import { LogControls } from "../comps/LogControls";
+import { ClientFilter } from "./objects/ClientFilter";
+import { PhysicalDOMContainer } from "./objects/PhysicalDOMContainer";
 import { useLogFilter } from "./useLogFilter";
 import { useRegistry } from "./useRegistry";
-import { useScrollManager } from "./useScrollManager";
 
 /**
  * Find, which is a different act from filtering: it moves the reader through the log rather than
@@ -16,7 +17,7 @@ import { useScrollManager } from "./useScrollManager";
 export function useLogSearch({
   containerId,
   filter,
-  scrollManager,
+  physicalDOMContainer,
   events,
   onFoundOutsideWindow,
 }: useLogSearch.Options): useLogSearch.Result {
@@ -103,10 +104,9 @@ export function useLogSearch({
     if (!value || searching !== null) {
       return;
     }
-    const { currentWindowPosition, move } = scrollManager;
-    const onMatch = currentMatch !== null && currentWindowPosition.isEventOnScreen(currentMatch);
-    const edges = onMatch ? {} : currentWindowPosition.visibleEventIds();
-    const from = onMatch ? currentMatch : direction === Direction.backwards_in_time ? edges.last : edges.first;
+    const onMatch = currentMatch !== null && physicalDOMContainer.events.isVisible(currentMatch);
+    const edges = onMatch ? {} : physicalDOMContainer.events.outermostVisibleIds();
+    const from = onMatch ? currentMatch : direction === Direction.forwards_in_time ? edges.oldest : edges.newest;
 
     setSearching(direction);
     try {
@@ -130,14 +130,14 @@ export function useLogSearch({
        * the answer is to scroll to that line: one the list holds but has not painted yet is not one
        * that can be scrolled to.
        */
-      if (currentWindowPosition.hasEvent(found)) {
+      if (physicalDOMContainer.events.exists(found)) {
         /**
          * Only move the view for an answer the reader cannot already see. Recentring on a match that
          * was on screen the whole time shifts everything around it for no gain -- they were reading
          * that page, and the highlight moving is the whole of the news.
          */
-        if (!currentWindowPosition.isEventOnScreen(found)) {
-          move.toEvent(found);
+        if (!physicalDOMContainer.events.isVisible(found)) {
+          physicalDOMContainer.move.toEvent(found);
         }
         return;
       }
@@ -168,18 +168,13 @@ export function useLogSearch({
 export namespace useLogSearch {
   export type Options = {
     containerId: string;
-    /** The corpus the search happens inside, so it never lands on a line the view hides. */
-    filter: useLogFilter.ClientFilter;
-    /** Where "on screen" is measured, and what moves the view once an answer comes back. */
-    scrollManager: useScrollManager.Result;
-    /** The lines held, since the highlights have to be recomputed when they change. */
+    filter: ClientFilter;
+    physicalDOMContainer: PhysicalDOMContainer;
     events: ContainerEvent[];
-    /** Asked to move the window when the answer is a line that is not in it. */
     onFoundOutsideWindow: (eventId: string) => void;
   };
 
   export type Result = {
-    /** Whether the find bar is up at all. */
     finding: boolean;
     close: () => void;
     field: RefObject<HTMLInputElement | null>;
@@ -187,9 +182,7 @@ export namespace useLogSearch {
     setNeedle: (value: string) => void;
     patternType: Pattern.Type;
     togglePatternType: () => void;
-    /** Ids of the loaded lines the needle lights up. */
     matched: Set<string>;
-    /** Whether the needle is not yet a usable pattern. */
     broken: boolean;
     currentMatch: string | null;
     searching: Direction | null;
@@ -203,11 +196,7 @@ namespace Internal {
    * Which of the loaded lines the needle lights up. Only ever a claim about what is in hand --
    * stepping is what asks the server about the lines that are not.
    */
-  export function highlight(
-    events: ContainerEvent[],
-    needle: string,
-    type: Pattern.Type,
-  ): { matched: Set<string>; broken: boolean } {
+  export function highlight(events: ContainerEvent[], needle: string, type: Pattern.Type): { matched: Set<string>; broken: boolean } {
     const value = needle.trim();
     if (!value) {
       return { matched: new Set(), broken: false };
@@ -215,9 +204,7 @@ namespace Internal {
     try {
       const matches = Pattern.createPredicate({ type, value });
       return {
-        matched: new Set(
-          events.filter((event) => event.type === ContainerEvent.Type.log && matches(event.line)).map((event) => event.id),
-        ),
+        matched: new Set(events.filter((event) => event.type === ContainerEvent.Type.log && matches(event.line)).map((event) => event.id)),
         broken: false,
       };
     } catch {

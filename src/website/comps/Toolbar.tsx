@@ -1,5 +1,5 @@
+import { TimespanDisplay } from "@/helpers/TimespanDisplay";
 import { useLogFilter } from "../hooks/useLogFilter";
-import { TimespanDisplay } from "../models/TimespanDisplay";
 import { LogControls } from "./LogControls";
 
 type Props = {

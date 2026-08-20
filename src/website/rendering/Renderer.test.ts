@@ -4,7 +4,7 @@ import { TestFixture } from "@/testing/TestFixture.test";
 import { Temporal } from "@js-temporal/polyfill";
 import { describe, expect, it } from "bun:test";
 import { Line } from "./Line";
-import { Renderer } from "./Renderer";
+import { LineRenderer as Renderer } from "./Renderer";
 import { Anchor } from "@/models/Anchor";
 
 /**

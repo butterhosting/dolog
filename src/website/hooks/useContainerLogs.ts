@@ -4,24 +4,24 @@ import { ServerMessage } from "@/models/socket/ServerMessage";
 import { useEffect, useMemo, useRef } from "react";
 import { SocketClient } from "../clients/SocketClient";
 import { Line } from "../rendering/Line";
-import { Renderer } from "../rendering/Renderer";
+import { LineRenderer } from "../rendering/Renderer";
+import { ClientFilter } from "./objects/ClientFilter";
+import { PhysicalDOMContainer } from "./objects/PhysicalDOMContainer";
 import { useContainerLoading } from "./useContainerLoading";
-import { useLogFilter } from "./useLogFilter";
 import { useRegistry } from "./useRegistry";
-import { useScrollManager } from "./useScrollManager";
 
 const LINES_PER_PAGE = 300;
 
-export function useContainerLogs({ containerId, filter, anchor, scrollManager }: useContainerLogs.Options): useContainerLogs.Result {
+export function useContainerLogs({ containerId, filter, anchor, physicalDOMContainer }: useContainerLogs.Options): useContainerLogs.Result {
   const socketClient = useRegistry(SocketClient);
-  const renderer = useRegistry(Renderer);
+  const renderer = useRegistry(LineRenderer);
 
   const { events, setEvents, loadingRef, isLoading, hasNewer, hasOlder, landedAt, requestLogs } = useContainerLoading({
     containerId,
     filter,
   });
 
-  const isFollowingStream = scrollManager.currentWindowPosition.atTheBottom && !hasNewer;
+  const isFollowingStream = physicalDOMContainer.currentScrollWindowPosition.atTheBottom && !hasNewer;
   const isFollowingStreamRef = useRef(isFollowingStream);
   useEffect(() => void (isFollowingStreamRef.current = isFollowingStream), [isFollowingStream]);
 
@@ -62,7 +62,7 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
   //
   function followStream() {
     requestLogs("latest", {
-      postDOM: scrollManager.move.toTheBottom,
+      postDOM: physicalDOMContainer.move.toTheBottom,
     });
   }
 
@@ -72,7 +72,7 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
    */
   function moveWindowToEvent(eventId: string) {
     requestLogs("around", eventId, {
-      postDOM: () => scrollManager.move.toEvent(eventId),
+      postDOM: () => physicalDOMContainer.move.toEvent(eventId),
     });
   }
 
@@ -82,7 +82,7 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
   useEffect(() => {
     if (anchor) {
       requestLogs("around", anchor.value, {
-        postDOM: scrollManager.move.toAnchor,
+        postDOM: physicalDOMContainer.move.toAnchor,
       });
     } else {
       requestLogs("latest");
@@ -93,30 +93,30 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
   // Loading older events (backwards in time)
   //
   useEffect(() => {
-    if (scrollManager.currentWindowPosition.atTheTop) {
+    if (physicalDOMContainer.currentScrollWindowPosition.atTheTop) {
       const oldest = events.at(0);
       if (!hasOlder || !oldest) {
         return;
       }
       requestLogs("backwards", oldest.id, {
         // restore the current scroll position, because we're prepending new lines
-        postDOM: scrollManager.currentWindowPosition.createRestoreFn(),
+        postDOM: physicalDOMContainer.currentScrollWindowPosition.createRestoreFn(),
       });
     }
-  }, [scrollManager.currentWindowPosition.atTheTop]);
+  }, [physicalDOMContainer.currentScrollWindowPosition.atTheTop]);
 
   //
   // Loading newer events (forwards in time)
   //
   useEffect(() => {
-    if (scrollManager.currentWindowPosition.atTheBottom) {
+    if (physicalDOMContainer.currentScrollWindowPosition.atTheBottom) {
       const newest = events.at(-1);
       if (!hasNewer || !newest) {
         return;
       }
       requestLogs("forwards", newest.id);
     }
-  }, [scrollManager.currentWindowPosition.atTheBottom]);
+  }, [physicalDOMContainer.currentScrollWindowPosition.atTheBottom]);
 
   //
   // Effect to keep ourselves stuck to the bottom (when following the stream)
@@ -126,7 +126,7 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
       return; // don't stick to the bottom, if we're in the middle of paging upwards
     }
     if (isFollowingStream) {
-      scrollManager.move.toTheBottom();
+      physicalDOMContainer.move.toTheBottom();
     }
   }, [events, isFollowingStream]);
 
@@ -143,9 +143,9 @@ export function useContainerLogs({ containerId, filter, anchor, scrollManager }:
 export namespace useContainerLogs {
   export type Options = {
     containerId: string;
-    filter: useLogFilter.ClientFilter;
+    filter: ClientFilter;
     anchor?: Anchor;
-    scrollManager: useScrollManager.Result;
+    physicalDOMContainer: PhysicalDOMContainer;
   };
   export type Result = {
     lines: Line[];

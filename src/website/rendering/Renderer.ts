@@ -4,8 +4,8 @@ import { Line } from "./Line";
 import { Temporal } from "@js-temporal/polyfill";
 import { Direction } from "@/models/Direction";
 
-export class Renderer {
-  public render({ events, hasOlder, hasNewer, anchor, landedAt }: Renderer.Options): Line[] {
+export class LineRenderer {
+  public render({ events, hasOlder, hasNewer, anchor, landedAt }: LineRenderer.Options): Line[] {
     if (events.length === 0) {
       return [];
     }
@@ -97,7 +97,7 @@ export class Renderer {
   }
 }
 
-export namespace Renderer {
+export namespace LineRenderer {
   export type Options = {
     anchor?: Anchor;
     events: ContainerEvent[];

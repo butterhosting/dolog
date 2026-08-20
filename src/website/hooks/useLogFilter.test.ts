@@ -1,15 +1,16 @@
 import { Pattern } from "@/models/Pattern";
-import { Timespan } from "@/models/Timespan";
+import { Timespan } from "@/website/hooks/objects/Timespan";
 import { Temporal } from "@js-temporal/polyfill";
 import { describe, expect, it } from "bun:test";
 import { useLogFilter } from "./useLogFilter";
+import { ClientFilter } from "./objects/ClientFilter";
 
 /**
  * `serializeForServer` is the one part of the filter that crosses a boundary, so it is the one part
  * worth pinning down from outside. Everything else the hook does to a filter is private to it.
  */
 describe("useLogFilter", () => {
-  function applied(overrides: Partial<useLogFilter.ClientFilter> = {}): useLogFilter.ClientFilter {
+  function applied(overrides: Partial<ClientFilter> = {}): ClientFilter {
     return {
       timespan: Timespan.forPreset(Timespan.Preset.last30d),
       ...overrides,

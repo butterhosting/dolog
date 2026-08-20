@@ -1,11 +1,12 @@
+import { Timestamp } from "@/helpers/Timestamp";
 import { Pattern } from "@/models/Pattern";
-import { Timespan } from "@/models/Timespan";
 import { LogService } from "@/services/LogService";
+import { Timespan } from "@/website/hooks/objects/Timespan";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { DialogClient } from "../clients/DialogClient";
+import { ClientFilter } from "./objects/ClientFilter";
 import { useRegistry } from "./useRegistry";
-import { Timestamp } from "@/helpers/Timestamp";
 
 export function useLogFilter(): useLogFilter.Result {
   const dialogClient = useRegistry(DialogClient);
@@ -73,7 +74,7 @@ namespace Internal {
       .join(" ");
   }
 
-  export function parseClientUrl(parameters: URLSearchParams): useLogFilter.ClientFilter {
+  export function parseClientUrl(parameters: URLSearchParams): ClientFilter {
     const patternType = (parameters.get(ClientUrlParam.patternType) ?? undefined) as Pattern.Type;
     const patternValue = parameters.get(ClientUrlParam.pattern) ?? undefined;
     const timespanType = (parameters.get(ClientUrlParam.timespan) ?? undefined) as Timespan.Type;
@@ -114,7 +115,7 @@ namespace Internal {
     return { pattern, timespan };
   }
 
-  export function mergeClientUrl(previous: URLSearchParams, filter: useLogFilter.ClientFilter): URLSearchParams {
+  export function mergeClientUrl(previous: URLSearchParams, filter: ClientFilter): URLSearchParams {
     const next = new URLSearchParams(previous);
 
     // clear the params of all existing filter-related params
@@ -149,11 +150,11 @@ namespace Internal {
     return next;
   }
 
-  export function isNarrowing(filter: useLogFilter.ClientFilter): boolean {
+  export function isNarrowing(filter: ClientFilter): boolean {
     return Boolean(filter.pattern?.value) || !(filter.timespan.type === "preset" && filter.timespan.preset === Timespan.Preset.all);
   }
 
-  export function equals(a: useLogFilter.ClientFilter, b: useLogFilter.ClientFilter): boolean {
+  export function equals(a: ClientFilter, b: ClientFilter): boolean {
     return a.pattern?.type === b.pattern?.type && a.pattern?.value === b.pattern?.value && Timespan.equals(a.timespan, b.timespan);
   }
 }
@@ -179,10 +180,6 @@ export namespace useLogFilter {
     };
   };
 
-  export type ClientFilter = {
-    pattern?: Pattern;
-    timespan: Timespan;
-  };
   export function serializeForServer(clientFilter: ClientFilter): LogService.FilterSubQuery {
     const { since, until } = clientFilter.timespan.materialize();
     return {
