@@ -1,3 +1,4 @@
+import { Timestamp } from "@/helpers/Timestamp";
 import { Uuid } from "@/models/Uuid";
 import { Temporal } from "@js-temporal/polyfill";
 
@@ -33,20 +34,9 @@ export namespace Anchor {
       return undefined;
     }
     if (Uuid.check(raw)) {
-      return {
-        type: "id",
-        value: raw,
-        serialize: () => raw,
-      };
+      return forId(raw);
     }
-    try {
-      return {
-        type: "timestamp",
-        value: Temporal.Instant.from(raw),
-        serialize: () => raw,
-      };
-    } catch {
-      return undefined;
-    }
+    const instant = Timestamp.tryInstant(raw);
+    return instant ? forTimestamp(instant) : undefined;
   }
 }

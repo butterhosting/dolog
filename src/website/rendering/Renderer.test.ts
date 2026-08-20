@@ -100,7 +100,7 @@ describe(Renderer.name, () => {
         anchor: Anchor.parse("2027-01-01T00:00:00Z"),
       });
       // then -- the mark belongs to the log, the note belongs to the window around it
-      expect(body(rows)).toEqual(["line:2026-03-01T09:00:00Z", "pin:past-every-line", "more:newer"]);
+      expect(body(rows)).toEqual(["line:2026-03-01T09:00:00Z", "pin", "more:newer"]);
     });
 
     it("says nothing at all about an empty window", () => {
@@ -182,7 +182,7 @@ describe(Renderer.name, () => {
         anchor: Anchor.parse("2027-01-01T00:00:00Z"),
       });
       // then
-      expect(body(rows)).toEqual(["line:2026-03-01T09:00:00Z", "pin:past-every-line"]);
+      expect(body(rows)).toEqual(["line:2026-03-01T09:00:00Z", "pin"]);
     });
 
     it("is left off when there is no history to sit past", () => {

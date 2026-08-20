@@ -142,10 +142,14 @@ export namespace PredicateFactory {
     exhaustiveness: "full_object_test" | "full_database_test",
     { before, beforeInclusivity, after, afterInclusivity }: EventRepository.Cursor,
   ): ((candidate: Candidate) => boolean) | (() => Array<SQL<unknown>>) {
+    if (before !== undefined && beforeInclusivity === undefined) {
+      throw new Error("cursor `before` was given without its inclusivity");
+    }
+    if (after !== undefined && afterInclusivity === undefined) {
+      throw new Error("cursor `after` was given without its inclusivity");
+    }
     //
-    // ⚠️
     // ⚠️ Remember; `beforeInclusivity` can only ever be `exclusive`, never `inclusive`
-    // ⚠️
     //
     switch (exhaustiveness) {
       case "full_object_test": {

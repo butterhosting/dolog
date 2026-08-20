@@ -12,8 +12,8 @@ export class LineRenderer {
 
     // `at` is whatever the url says right now and can be dismissed; `landedAt` trails behind it,
     // because dismissing a pin does not re-fetch the data
-    const anchorId = anchor?.type === "id" ? anchor.serialize() : undefined;
-    const anchorTimestamp = anchor?.type === "timestamp" ? anchor.serialize() : undefined;
+    const anchorId = anchor?.type === "id" ? anchor.value : undefined;
+    const anchorInstant = anchor?.type === "timestamp" ? anchor.value : undefined;
 
     const result: Line[] = [];
     if (hasOlder) {
@@ -38,18 +38,18 @@ export class LineRenderer {
         firstOfDay = hasOlder ? undefined : this.day(event);
       }
 
-      const landedAtThisEvent = Boolean(anchorTimestamp !== undefined) && Boolean(landedAt === event.id);
-      const landedAtThisEventBeforeTheDayBegan =
-        anchorTimestamp !== undefined && //
+      const landedAtThisEvent = anchorInstant !== undefined && landedAt === event.id;
+      // an instant that is exactly when a line was logged *is* that line, so it is boxed rather than
+      // drawn above it: a mark between two lines claims a gap, and here there is none
+      const isThisEvent = landedAtThisEvent && Temporal.Instant.compare(anchorInstant, event.timestamp) === 0;
+      const marked = landedAtThisEvent && !isThisEvent;
+      const markedBeforeTheDayBegan =
+        anchorInstant !== undefined && //
         firstOfDay !== undefined &&
-        Temporal.Instant.compare(anchorTimestamp, this.midnight(firstOfDay)) <= 0;
+        Temporal.Instant.compare(anchorInstant, this.midnight(firstOfDay)) <= 0;
 
-      if (landedAtThisEvent && landedAtThisEventBeforeTheDayBegan) {
-        result.push({
-          id: anchorTimestamp!.toString(),
-          type: Line.Type.timestamp_anchor,
-          timestamp: anchor!.value as Temporal.Instant,
-        });
+      if (marked && markedBeforeTheDayBegan) {
+        result.push(this.timestampAnchor(anchorInstant));
       }
       if (firstOfDay) {
         result.push({
@@ -58,27 +58,21 @@ export class LineRenderer {
           day: firstOfDay,
         });
       }
-      if (landedAtThisEvent && !landedAtThisEventBeforeTheDayBegan) {
-        result.push({
-          id: anchorTimestamp!.toString(),
-          type: Line.Type.timestamp_anchor,
-          timestamp: anchor!.value as Temporal.Instant,
-        });
+      if (marked && !markedBeforeTheDayBegan) {
+        result.push(this.timestampAnchor(anchorInstant));
       }
       result.push({
         id: event.id,
         type: Line.Type.event,
         event,
-        isAnchored: event.id === anchorId,
+        isAnchored: event.id === anchorId || isThisEvent,
       });
     });
 
-    if (anchorTimestamp !== undefined && landedAt === undefined) {
-      result.push({
-        id: anchorTimestamp.toString(),
-        type: Line.Type.timestamp_anchor,
-        timestamp: anchor!.value as Temporal.Instant,
-      });
+    // the server landing on nothing, while still returning history, is how it says the moment asked
+    // for is later than anything logged
+    if (anchorInstant !== undefined && landedAt === undefined) {
+      result.push(this.timestampAnchor(anchorInstant));
     }
     if (hasNewer) {
       const type = Line.Type.scroll_teaser;
@@ -86,6 +80,10 @@ export class LineRenderer {
       result.push({ id: `${type}:${direction}`, type, direction });
     }
     return result;
+  }
+
+  private timestampAnchor(timestamp: Temporal.Instant): Line.TimestampAnchor {
+    return { id: timestamp.toString(), type: Line.Type.timestamp_anchor, timestamp };
   }
 
   private day(event: ContainerEvent): Temporal.PlainDate {
