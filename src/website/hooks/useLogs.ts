@@ -16,7 +16,7 @@ export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: u
   const socketClient = useRegistry(SocketClient);
   const renderer = useRegistry(LineRenderer);
 
-  const { events, setEvents, loadingRef, isLoading, hasNewer, hasOlder, landedAt, requestLogs } = useLoading({
+  const { events, setEvents, loadingRef, isLoading, hasNewer, hasOlder, requestLogs } = useLoading({
     containerId,
     filter,
   });
@@ -147,8 +147,8 @@ export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: u
   // Actually render the events
   //
   const lines = useMemo(
-    () => renderer.render({ anchor, events, hasOlder, hasNewer, landedAt }),
-    [anchor, events, hasOlder, hasNewer, landedAt],
+    () => renderer.render({ anchor, events, hasOlder, hasNewer }),
+    [anchor, events, hasOlder, hasNewer],
   );
 
   return {

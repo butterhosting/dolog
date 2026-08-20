@@ -16,7 +16,6 @@ export function useLoading({ containerId, filter }: useLoading.Options): useLoad
 
   const [hasOlder, setHasOlder] = useState(false);
   const [hasNewer, setHasNewer] = useState(false);
-  const [landedAt, setLandedAt] = useState<string>();
 
   const activeLoadVariant = useRef<useLoading.Variant>(undefined);
   const activeLoadState = useRef<Internal.LoadingState>(undefined);
@@ -87,7 +86,7 @@ export function useLoading({ containerId, filter }: useLoading.Options): useLoad
         break;
       }
     }
-    const { data, hasNewer, hasOlder, landedAt } = await logClient
+    const { data, hasNewer, hasOlder } = await logClient
       .list(containerId, {
         ...requestOptions,
         ...useFilter.serializeForServer(filter),
@@ -116,7 +115,6 @@ export function useLoading({ containerId, filter }: useLoading.Options): useLoad
         variant satisfies never;
       }
     }
-    setLandedAt(landedAt);
     setLoadingNonce(nonce);
   }
 
@@ -143,7 +141,6 @@ export function useLoading({ containerId, filter }: useLoading.Options): useLoad
     isLoading,
     hasNewer,
     hasOlder,
-    landedAt,
     requestLogs,
   };
 }
@@ -173,7 +170,6 @@ export namespace useLoading {
     isLoading: boolean;
     hasNewer: boolean;
     hasOlder: boolean;
-    landedAt?: string;
     requestLogs(variant: Extract<Variant, "latest">, opts?: Internal.LoadingOptions): Promise<void>;
     requestLogs(variant: Extract<Variant, "forwards">, cursor: string, opts?: Internal.LoadingOptions): Promise<void>;
     requestLogs(variant: Extract<Variant, "backwards">, cursor: string, opts?: Internal.LoadingOptions): Promise<void>;

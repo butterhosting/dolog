@@ -5,15 +5,33 @@ import { Temporal } from "@js-temporal/polyfill";
 import { Direction } from "@/models/Direction";
 
 export class LineRenderer {
-  public render({ events, hasOlder, hasNewer, anchor, landedAt }: LineRenderer.Options): Line[] {
+  public render({ events, hasOlder, hasNewer, anchor }: LineRenderer.Options): Line[] {
     if (events.length === 0) {
       return [];
     }
 
-    // `at` is whatever the url says right now and can be dismissed; `landedAt` trails behind it,
-    // because dismissing a pin does not re-fetch the data
     const anchorId = anchor?.type === "id" ? anchor.value : undefined;
     const anchorInstant = anchor?.type === "timestamp" ? anchor.value : undefined;
+
+    //
+    // Where a moment falls is a fact about the lines on screen, so it is read off them rather than
+    // carried over from the request that fetched them: lines arrive on the stream and leave when the
+    // window pages, and the answer has to move with them.
+    //
+    let boxedEventId: string | undefined;
+    let mark: Line.TimestampAnchor | undefined;
+    let markBeforeEventId: string | undefined;
+    if (anchorInstant !== undefined) {
+      const landedOn = events.find((event) => Temporal.Instant.compare(event.timestamp, anchorInstant) >= 0);
+      if (landedOn !== undefined && Temporal.Instant.compare(landedOn.timestamp, anchorInstant) === 0) {
+        // an instant that is exactly when a line was logged *is* that line, so it is boxed rather
+        // than drawn above it: a mark between two lines claims a gap, and here there is none
+        boxedEventId = landedOn.id;
+      } else {
+        mark = this.timestampAnchor(anchorInstant);
+        markBeforeEventId = landedOn?.id; // nothing at or after it means it belongs past every line
+      }
+    }
 
     const result: Line[] = [];
     if (hasOlder) {
@@ -38,18 +56,14 @@ export class LineRenderer {
         firstOfDay = hasOlder ? undefined : this.day(event);
       }
 
-      const landedAtThisEvent = anchorInstant !== undefined && landedAt === event.id;
-      // an instant that is exactly when a line was logged *is* that line, so it is boxed rather than
-      // drawn above it: a mark between two lines claims a gap, and here there is none
-      const isThisEvent = landedAtThisEvent && Temporal.Instant.compare(anchorInstant, event.timestamp) === 0;
-      const marked = landedAtThisEvent && !isThisEvent;
+      const markHere = markBeforeEventId === event.id ? mark : undefined;
       const markedBeforeTheDayBegan =
         anchorInstant !== undefined && //
         firstOfDay !== undefined &&
         Temporal.Instant.compare(anchorInstant, this.midnight(firstOfDay)) <= 0;
 
-      if (marked && markedBeforeTheDayBegan) {
-        result.push(this.timestampAnchor(anchorInstant));
+      if (markHere && markedBeforeTheDayBegan) {
+        result.push(markHere);
       }
       if (firstOfDay) {
         result.push({
@@ -58,21 +72,19 @@ export class LineRenderer {
           day: firstOfDay,
         });
       }
-      if (marked && !markedBeforeTheDayBegan) {
-        result.push(this.timestampAnchor(anchorInstant));
+      if (markHere && !markedBeforeTheDayBegan) {
+        result.push(markHere);
       }
       result.push({
         id: event.id,
         type: Line.Type.event,
         event,
-        isAnchored: event.id === anchorId || isThisEvent,
+        isAnchored: event.id === anchorId || event.id === boxedEventId,
       });
     });
 
-    // the server landing on nothing, while still returning history, is how it says the moment asked
-    // for is later than anything logged
-    if (anchorInstant !== undefined && landedAt === undefined) {
-      result.push(this.timestampAnchor(anchorInstant));
+    if (mark && markBeforeEventId === undefined) {
+      result.push(mark);
     }
     if (hasNewer) {
       const type = Line.Type.scroll_teaser;
@@ -101,6 +113,5 @@ export namespace LineRenderer {
     events: ContainerEvent[];
     hasOlder: boolean;
     hasNewer: boolean;
-    landedAt?: string;
   };
 }

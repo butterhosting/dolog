@@ -42,9 +42,10 @@ describe(LogService.name, () => {
   describe("arriving by time", () => {
     /**
      * An `at` opens a window *around* itself rather than a page starting at it: half the limit from
-     * before it, half from after, and a short side made up by the other. Where it actually landed is
-     * reported as `landedAt`, which is absent when nothing lay at or after it -- the one case where
-     * the window served is the tail of history rather than a window around anything.
+     * before it, half from after, and a short side made up by the other. Where the instant fell among
+     * those lines is not reported: it is derivable from the lines themselves, and only stays right
+     * while they do -- the stream appends and paging replaces, so a figure fixed at request time
+     * would go stale in the client's hands.
      */
     async function twoLines() {
       const container = TestFixture.container();
@@ -58,15 +59,15 @@ describe(LogService.name, () => {
       return { container, all };
     }
 
-    it("should report the line it landed on when the instant has history ahead of it", async () => {
+    it("should open on the first line at or after the instant when history lies ahead of it", async () => {
       const { container } = await twoLines();
 
       // when (an instant older than everything logged)
       const page = await service.list(container.id, { at: "2020-01-01T00:00:00Z" });
 
-      // then (it opened on the first line at or after the instant, and says which that was)
-      expect(page.landedAt).toBe(page.data[0]!.id);
+      // then (nothing sits before it to fill the near half, so the window is all of what follows)
       expect(page.data.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["older", "newer"]);
+      expect(page.hasOlder).toBe(false);
     });
 
     it("should serve the end of history when the instant lies past everything logged", async () => {
@@ -75,8 +76,8 @@ describe(LogService.name, () => {
       // when (an instant in the future, so reading forwards from it finds nothing)
       const page = await service.list(container.id, { at: "2030-01-01T00:00:00Z" });
 
-      // then (`landedAt` is absent precisely because it did not land where it was asked)
-      expect(page.landedAt).toBeUndefined();
+      // then (the tail of history, and nothing claimed to lie beyond it -- which is how the client
+      // works out that the instant sits past every line it was given)
       expect(page.data.map((event) => event.id)).toEqual(all.map((event) => event.id));
       expect(page.hasNewer).toBe(false);
     });
@@ -120,7 +121,6 @@ describe(LogService.name, () => {
 
       // then (half the limit before it, and the line itself heading the other half)
       expect(shown(page)).toEqual(["line 15", "line 16", "line 17", "line 18", "line 19", "line 20", "line 21", "line 22", "line 23", "line 24"]);
-      expect(page.landedAt).toBe(all[20]!.id);
       expect(page.hasOlder).toBe(true);
       expect(page.hasNewer).toBe(true);
     });
@@ -161,10 +161,11 @@ describe(LogService.name, () => {
       // when (the pinned line is one the filter hides)
       const page = await service.list(container.id, { at: all[3]!.id, limit: "10", filterPattern: "keep", filterPatternType: "substr" });
 
-      // then (it lands on the first line at or after it that the filter does allow, so the client
-      // can tell that the pin itself is not in what it was given)
-      expect(page.landedAt).toBe(all[4]!.id);
-      expect(page.landedAt).not.toBe(all[3]!.id);
+      // then (the window opens around where the pin would have been, made of lines the filter allows,
+      // with the pin itself absent -- which is the client's answer too, since it marks a line by id
+      // and finds none)
+      expect(shown(page)).toEqual(["keep 0", "keep 2", "keep 4"]);
+      expect(page.data.map((event) => event.id)).not.toContain(all[3]!.id);
     });
   });
 

@@ -113,21 +113,20 @@ describe(Renderer.name, () => {
     it("draws nothing when no instant was navigated to", () => {
       // given
       const events = [at("2026-03-01T09:00:00Z")];
-      // when (a `landedAt` with no `at` is the server answering a question nobody asked -- which is
-      // exactly what a dismissed mark leaves behind, since dismissing does not re-fetch)
-      const rows = build({ events, landedAt: "2026-03-01T09:00:00Z" });
+      // when (which is also what a dismissed mark leaves behind: placement is read off the anchor, so
+      // letting the anchor go takes the mark with it, without re-fetching a thing)
+      const rows = build({ events });
       // then
       expect(body(rows)).toEqual(["line:2026-03-01T09:00:00Z"]);
     });
 
-    it("comes before the line the server settled on", () => {
+    it("comes before the first line at or after the instant", () => {
       // given
       const events = [at("2026-03-01T09:00:00Z"), at("2026-03-01T10:00:00Z")];
       // when
       const rows = build({
         events,
         anchor: Anchor.parse("2026-03-01T09:30:00Z"),
-        landedAt: "2026-03-01T10:00:00Z",
       });
       // then
       expect(body(rows)).toEqual(["line:2026-03-01T09:00:00Z", "pin", "line:2026-03-01T10:00:00Z"]);
@@ -141,7 +140,6 @@ describe(Renderer.name, () => {
       const rows = build({
         events,
         anchor: Anchor.parse("2026-03-01T23:30:00Z"),
-        landedAt: "2026-03-02T00:05:00Z",
       });
       // then -- above the date, since the instant asked for came before that date began
       expect(body(rows)).toEqual(["line:2026-03-01T23:00:00Z", "pin", "day:2026-03-02", "line:2026-03-02T00:05:00Z"]);
@@ -154,7 +152,6 @@ describe(Renderer.name, () => {
       const rows = build({
         events,
         anchor: Anchor.parse("2026-03-02T08:00:00Z"),
-        landedAt: "2026-03-02T09:00:00Z",
       });
       // then
       expect(body(rows)).toEqual(["line:2026-03-01T23:00:00Z", "day:2026-03-02", "pin", "line:2026-03-02T09:00:00Z"]);
@@ -167,7 +164,6 @@ describe(Renderer.name, () => {
       const rows = build({
         events,
         anchor: Anchor.parse("2026-03-02T00:00:00Z"),
-        landedAt: "2026-03-02T09:00:00Z",
       });
       // then
       expect(body(rows)).toEqual(["line:2026-03-01T23:00:00Z", "pin", "day:2026-03-02", "line:2026-03-02T09:00:00Z"]);
@@ -214,7 +210,6 @@ describe(Renderer.name, () => {
       const rows = build({
         events,
         anchor: Anchor.parse("2026-03-01T10:00:00Z"),
-        landedAt: "2026-03-01T10:00:00Z",
       });
       // then -- the mark is about the message, not about a moment falling between two of them
       expect(body(rows)).toEqual(["line:2026-03-01T09:00:00Z", "line:2026-03-01T10:00:00Z:pinned"]);

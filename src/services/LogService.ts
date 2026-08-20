@@ -41,7 +41,7 @@ export class LogService {
     return await this.eventRepository.findEvent(containerId, findQuery.search, findQuery.filter);
   }
 
-  public async list(containerId: string, unknown: unknown): Promise<LogService.ListResult> {
+  public async list(containerId: string, unknown: unknown): Promise<EventRepository.ListResult> {
     const listQuery = this.parseAndValidateListQuery(unknown);
 
     if (listQuery.at && listQuery.cursor) {
@@ -63,7 +63,7 @@ export class LogService {
     return await this.eventRepository.listEvents(containerId, listQuery.limit, {}, listQuery.filter);
   }
 
-  private async listAround(containerId: string, anchor: Anchor, limit: number, filter: Filter): Promise<LogService.ListResult> {
+  private async listAround(containerId: string, anchor: Anchor, limit: number, filter: Filter): Promise<EventRepository.ListResult> {
     const anchorBoundary = anchor.type === "id" ? anchor.value : Uuid.fromBytes(Uuid.lowerBoundAt(anchor.value));
 
     const [before, after] = await Promise.all([
@@ -81,7 +81,6 @@ export class LogService {
     const afterCount = Math.min(after.data.length, limit - Math.min(before.data.length, half));
     const beforeCount = Math.min(before.data.length, limit - afterCount);
 
-    const landedAt = after.data.at(0)?.id;
     const hasNewer = after.data.length > afterCount || after.hasNewer;
     const hasOlder = before.data.length > beforeCount || before.hasOlder;
     return {
@@ -91,7 +90,6 @@ export class LogService {
       ],
       hasOlder,
       hasNewer,
-      landedAt,
     };
   }
 
@@ -219,17 +217,13 @@ export namespace LogService {
     })
     .and(FilterSubQuery);
 
-  export type ListResult = EventRepository.ListResult & {
-    landedAt?: string;
-  };
   export namespace ListResult {
-    export const parse = ZodParser.forType<ListResult>()
+    export const parse = ZodParser.forType<EventRepository.ListResult>()
       .ensureSchemaMatchesType(() =>
         z.object({
           data: z.array(ContainerEvent.parse.SCHEMA),
           hasOlder: z.boolean(),
           hasNewer: z.boolean(),
-          landedAt: z.string().optional(),
         }),
       )
       .ensureTypeMatchesSchema();
