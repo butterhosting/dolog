@@ -105,12 +105,12 @@ export function useLoading({ containerId, filter }: useLoading.Options): useLoad
         break;
       }
       case "backwards": {
-        setEvents((existingEvents) => [...data, ...existingEvents]);
+        setEvents((existingEvents) => ContainerEvent.deduplicate([...data, ...existingEvents])); // websocket race
         setHasOlder(hasOlder);
         break;
       }
       case "forwards": {
-        setEvents((existingEvents) => [...existingEvents, ...data]);
+        setEvents((existingEvents) => ContainerEvent.deduplicate([...existingEvents, ...data])); // websocket race
         setHasNewer(hasNewer);
         break;
       }
@@ -141,13 +141,9 @@ export function useLoading({ containerId, filter }: useLoading.Options): useLoad
     if (isActivelyLoading()) {
       return false;
     }
-    setEvents((current) => {
-      // the same line can reach us both ways, when a load covers what the socket has already sent
-      if (current.some((existing) => existing.id === event.id)) {
-        return current;
-      }
-      return [...current, event].slice(-MAX_WINDOW_SIZE);
-    });
+    // appended rather than sorted in: the stream delivers a container's lines in the order they were
+    // logged, which is the order their ids sort in
+    setEvents((current) => [...current, event].slice(-MAX_WINDOW_SIZE));
     return true;
   }
 
