@@ -59,21 +59,17 @@ export namespace Row {
   type EventProps = {
     line: Line.Event;
     toggleAnchor: () => unknown;
-    /** Lit faintly because the needle matches it, and lit properly when it is the one stepped to. */
-    matched?: boolean;
-    current?: boolean;
+    match?: "main_character" | "side_character";
   };
-  export function Event({ line: { event, isAnchored }, toggleAnchor, matched, current }: EventProps) {
+  export function Event({ line: { event, isAnchored }, toggleAnchor, match }: EventProps) {
     return (
-      /* `data-event` is how search finds a line in the dom: to ask whether it is loaded at all, to
-         read which lines are on screen, and to scroll to one it has just been given */
       <div
-        data-event={event.id}
-        data-anchored={isAnchored}
+        data-event={event.id} // TODO: use a shared constant for these custom DOM attributes
+        data-anchored={isAnchored} // TODO: use a shared constant for these custom DOM attributes
         className={clsx(
           "p-px flex items-start gap-2",
-          matched && !current && "bg-yellow-400/15",
-          current && "bg-yellow-400/35 ring-1 ring-yellow-400/60",
+          match === "main_character" && "bg-yellow-400/35 ring-1 ring-yellow-400/60",
+          match === "side_character" && "bg-yellow-400/15",
         )}
       >
         <button onClick={toggleAnchor} className={clsx("cursor-pointer text-c-dark-half", isAnchored && "outline-2 outline-red-500")}>
