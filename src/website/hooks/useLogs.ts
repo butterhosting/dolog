@@ -7,10 +7,10 @@ import { Line } from "../rendering/Line";
 import { LineRenderer } from "../rendering/Renderer";
 import { useRegistry } from "./basics/useRegistry";
 import { ClientFilter } from "./objects/ClientFilter";
-import { LogsContainerNode } from "./objects/LogsContainerNode";
+import { ParentNode } from "./objects/ParentNode";
 import { useLoading } from "./useLoading";
 
-export function useLogs({ containerId, logsContainerNode, filter, anchor }: useLogs.Options): useLogs.Result {
+export function useLogs({ containerId, parentNode, filter, anchor }: useLogs.Options): useLogs.Result {
   const socketClient = useRegistry(SocketClient);
   const renderer = useRegistry(LineRenderer);
 
@@ -19,7 +19,7 @@ export function useLogs({ containerId, logsContainerNode, filter, anchor }: useL
     filter,
   });
 
-  const isFollowingStream = logsContainerNode.currentScrollWindowPosition.atTheBottom && !hasNewer;
+  const isFollowingStream = parentNode.currentScrollWindowPosition.atTheBottom && !hasNewer;
   const isFollowingStreamRef = useRef(isFollowingStream);
   useEffect(() => void (isFollowingStreamRef.current = isFollowingStream), [isFollowingStream]);
 
@@ -54,7 +54,7 @@ export function useLogs({ containerId, logsContainerNode, filter, anchor }: useL
   //
   function followStream() {
     requestLogs("latest", {
-      postDOM: logsContainerNode.move.toTheBottom,
+      postDOM: parentNode.move.toTheBottom,
     });
   }
 
@@ -63,7 +63,7 @@ export function useLogs({ containerId, logsContainerNode, filter, anchor }: useL
   //
   function navigateTo(eventId: string) {
     requestLogs("around", eventId, {
-      postDOM: () => logsContainerNode.move.toEvent(eventId),
+      postDOM: () => parentNode.move.toEvent(eventId),
     });
   }
 
@@ -73,7 +73,7 @@ export function useLogs({ containerId, logsContainerNode, filter, anchor }: useL
   useEffect(() => {
     if (anchor) {
       requestLogs("around", anchor.value, {
-        postDOM: logsContainerNode.move.toAnchor,
+        postDOM: parentNode.move.toAnchor,
       });
     } else {
       requestLogs("latest");
@@ -84,30 +84,30 @@ export function useLogs({ containerId, logsContainerNode, filter, anchor }: useL
   // Loading older events (backwards in time)
   //
   useEffect(() => {
-    if (logsContainerNode.currentScrollWindowPosition.atTheTop) {
+    if (parentNode.currentScrollWindowPosition.atTheTop) {
       const oldest = events.at(0);
       if (!hasOlder || !oldest) {
         return;
       }
       requestLogs("backwards", oldest.id, {
         // restore the current scroll position, because we're prepending new lines
-        postDOM: logsContainerNode.currentScrollWindowPosition.createRestoreFn(),
+        postDOM: parentNode.currentScrollWindowPosition.createRestoreFn(),
       });
     }
-  }, [logsContainerNode.currentScrollWindowPosition.atTheTop]);
+  }, [parentNode.currentScrollWindowPosition.atTheTop]);
 
   //
   // Loading newer events (forwards in time)
   //
   useEffect(() => {
-    if (logsContainerNode.currentScrollWindowPosition.atTheBottom) {
+    if (parentNode.currentScrollWindowPosition.atTheBottom) {
       const newest = events.at(-1);
       if (!hasNewer || !newest) {
         return;
       }
       requestLogs("forwards", newest.id);
     }
-  }, [logsContainerNode.currentScrollWindowPosition.atTheBottom]);
+  }, [parentNode.currentScrollWindowPosition.atTheBottom]);
 
   //
   // Effect to keep ourselves stuck to the bottom (when following the stream)
@@ -117,7 +117,7 @@ export function useLogs({ containerId, logsContainerNode, filter, anchor }: useL
       return; // don't stick to the bottom, if we're in the middle of paging upwards
     }
     if (isFollowingStream) {
-      logsContainerNode.move.toTheBottom();
+      parentNode.move.toTheBottom();
     }
   }, [events, isFollowingStream]);
 
@@ -135,7 +135,7 @@ export function useLogs({ containerId, logsContainerNode, filter, anchor }: useL
         return; // anchors of type "id" are obtained by clicking on a line ... no navigation needed
       }
       requestLogs("around", anchor.value, {
-        postDOM: logsContainerNode.move.toAnchor,
+        postDOM: parentNode.move.toAnchor,
       });
     }
   }, [anchor]);
@@ -158,7 +158,7 @@ export function useLogs({ containerId, logsContainerNode, filter, anchor }: useL
 export namespace useLogs {
   export type Options = {
     containerId: string;
-    logsContainerNode: LogsContainerNode;
+    parentNode: ParentNode;
     filter: ClientFilter;
     anchor?: Anchor;
   };

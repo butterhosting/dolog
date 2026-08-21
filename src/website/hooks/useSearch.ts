@@ -6,12 +6,12 @@ import { RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { LogClient } from "../clients/LogClient";
 import { useRegistry } from "./basics/useRegistry";
 import { ClientFilter } from "./objects/ClientFilter";
-import { LogsContainerNode } from "./objects/LogsContainerNode";
+import { ParentNode } from "./objects/ParentNode";
 import { useFilter } from "./useFilter";
 
 export function useSearch({
   containerId,
-  logsContainerNode,
+  parentNode,
   filter,
   events,
   isFollowingStream,
@@ -85,7 +85,7 @@ export function useSearch({
 
     let cursor: string | undefined;
 
-    const isCurrentMatchVisible = currentMatchId && logsContainerNode.events.isVisible(currentMatchId);
+    const isCurrentMatchVisible = currentMatchId && parentNode.events.isVisible(currentMatchId);
     if (isCurrentMatchVisible) {
       cursor = currentMatchId;
     } else {
@@ -97,7 +97,7 @@ export function useSearch({
         // that (just) went offscreen, or we could never escape our current window prison
         cursor = currentMatchId;
       } else {
-        const { uppermostId, bottommostId } = logsContainerNode.events.outermostVisibleIds();
+        const { uppermostId, bottommostId } = parentNode.events.outermostVisibleIds();
         cursor = direction === Direction.forwards_in_time ? uppermostId : bottommostId;
       }
     }
@@ -119,8 +119,8 @@ export function useSearch({
         return;
       }
 
-      if (logsContainerNode.events.exists(nextMatchId)) {
-        logsContainerNode.move.toEvent(nextMatchId, "minimize_distance");
+      if (parentNode.events.exists(nextMatchId)) {
+        parentNode.move.toEvent(nextMatchId, "minimize_distance");
       } else {
         navigateToUnloadedMatchResult(nextMatchId);
       }
@@ -185,7 +185,7 @@ namespace Internal {
 export namespace useSearch {
   export type Options = {
     containerId: string;
-    logsContainerNode: LogsContainerNode;
+    parentNode: ParentNode;
     filter: ClientFilter;
     events: ContainerEvent[];
     isFollowingStream: boolean;

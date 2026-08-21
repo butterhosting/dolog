@@ -1,10 +1,13 @@
 import { useState } from "react";
-import { LogsContainerNode } from "./objects/LogsContainerNode";
+import { ParentNode } from "./objects/ParentNode";
 import { usePhysicalDOMElement } from "./usePhysicalDOMElement";
 
 const EDGE_SLACK_PX = 24;
 
-export function useLogsContainerNode(): useLogsContainerNode.Result {
+/**
+ * `container` as in `the HTML container element` to the log lines
+ */
+export function useParentNode(): useParentNode.Result {
   const [atTheTop, setAtTheTop] = useState(false);
   const [atTheBottom, setAtTheBottom] = useState(true);
 
@@ -13,7 +16,7 @@ export function useLogsContainerNode(): useLogsContainerNode.Result {
     setAtTheBottom(container.scrollHeight - container.scrollTop - container.clientHeight <= EDGE_SLACK_PX);
   }
 
-  const { elementRef: containerRef, registerElement } = usePhysicalDOMElement({
+  const { elementRef, registerElement } = usePhysicalDOMElement({
     eventListeners: {
       scroll: (_, element) => reorient(element),
     },
@@ -24,13 +27,13 @@ export function useLogsContainerNode(): useLogsContainerNode.Result {
   });
 
   return {
-    register: registerElement,
-    logsContainerNode: {
+    registerParentNode: registerElement,
+    parentNode: {
       currentScrollWindowPosition: {
         atTheTop,
         atTheBottom,
         createRestoreFn() {
-          const container = containerRef.current;
+          const container = elementRef.current;
           const heightBefore = container?.scrollHeight ?? 0;
           return () => {
             if (container) {
@@ -42,15 +45,15 @@ export function useLogsContainerNode(): useLogsContainerNode.Result {
       },
       events: {
         exists(eventId: string): boolean {
-          return Boolean(Internal.findEventElement(containerRef.current, eventId));
+          return Boolean(Internal.findEventElement(elementRef.current, eventId));
         },
         isVisible(eventId: string): boolean {
-          const container = containerRef.current;
+          const container = elementRef.current;
           const element = Internal.findEventElement(container, eventId);
           return container !== undefined && element !== undefined && Internal.overlaps(element, container);
         },
         outermostVisibleIds() {
-          const container = containerRef.current;
+          const container = elementRef.current;
           if (!container) {
             return {};
           }
@@ -63,15 +66,15 @@ export function useLogsContainerNode(): useLogsContainerNode.Result {
       },
       move: {
         toEvent(eventId: string, method?: "minimize_distance") {
-          const element = Internal.findEventElement(containerRef.current, eventId);
+          const element = Internal.findEventElement(elementRef.current, eventId);
           element?.scrollIntoView({ block: method === "minimize_distance" ? "nearest" : "center", behavior: "instant" });
         },
         toAnchor() {
-          const element = Internal.findAnchorElement(containerRef.current);
+          const element = Internal.findAnchorElement(elementRef.current);
           element?.scrollIntoView({ block: "center", behavior: "instant" });
         },
         toTheBottom() {
-          const container = containerRef.current;
+          const container = elementRef.current;
           if (container) {
             container.scrollTop = container.scrollHeight;
             reorient(container);
@@ -82,10 +85,10 @@ export function useLogsContainerNode(): useLogsContainerNode.Result {
   };
 }
 
-export namespace useLogsContainerNode {
+export namespace useParentNode {
   export type Result = {
-    register(container: HTMLElement | null): void;
-    logsContainerNode: LogsContainerNode;
+    registerParentNode(container: HTMLElement | null): void;
+    parentNode: ParentNode;
   };
 }
 

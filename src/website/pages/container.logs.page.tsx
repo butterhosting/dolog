@@ -5,30 +5,30 @@ import { Row } from "../comps/Row";
 import { SearchBox } from "../comps/SearchBox";
 import { Toolbar } from "../comps/Toolbar";
 import { Spinner } from "../comps/basics/Spinner";
+import { useDocumentTitle } from "../hooks/basics/useDocumentTitle";
 import { useAnchor } from "../hooks/useAnchor";
 import { useContainerName } from "../hooks/useContainerName";
-import { useDocumentTitle } from "../hooks/basics/useDocumentTitle";
 import { useFilter } from "../hooks/useFilter";
 import { useLogs } from "../hooks/useLogs";
-import { useLogsContainerNode } from "../hooks/useLogsContainerNode";
+import { useParentNode } from "../hooks/useParentNode";
 import { useSearch } from "../hooks/useSearch";
 import { Line } from "../rendering/Line";
 
 export function containerLogsPage() {
   const { id: containerId = "" } = useParams();
-  const { register, logsContainerNode } = useLogsContainerNode();
+  const { registerParentNode, parentNode } = useParentNode();
 
   const anchorResult = useAnchor();
   const filterResult = useFilter();
   const logsResult = useLogs({
     containerId,
-    logsContainerNode,
+    parentNode,
     anchor: anchorResult.anchor,
     filter: filterResult.filter,
   });
   const searchResult = useSearch({
     containerId,
-    logsContainerNode,
+    parentNode,
     filter: filterResult.filter,
     events: logsResult.events,
     isFollowingStream: logsResult.isFollowingStream,
@@ -51,7 +51,7 @@ export function containerLogsPage() {
 
       <div className="relative flex-1 min-h-0">
         <div
-          ref={register}
+          ref={registerParentNode}
           className="h-full overflow-y-auto [overflow-anchor:none] bg-c-dark-full text-gray-200 font-mono text-xs p-4 leading-relaxed"
         >
           {logsResult.isLoading && (

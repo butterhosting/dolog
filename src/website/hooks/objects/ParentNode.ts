@@ -1,4 +1,4 @@
-export type LogsContainerNode = {
+export type ParentNode = {
   currentScrollWindowPosition: {
     atTheTop: boolean;
     atTheBottom: boolean;
