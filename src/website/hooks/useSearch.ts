@@ -5,17 +5,11 @@ import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { LogClient } from "../clients/LogClient";
 import { LogControls } from "../comps/LogControls";
 import { ClientFilter } from "./objects/ClientFilter";
-import { PhysicalDOMContainer } from "./objects/PhysicalDOMContainer";
+import { LogsContainerNode } from "./objects/LogsContainerNode";
 import { useFilter } from "./useFilter";
 import { useRegistry } from "./basics/useRegistry";
 
-export function useSearch({
-  containerId,
-  physicalDOMContainer,
-  filter,
-  events,
-  onFoundOutsideWindow,
-}: useSearch.Options): useSearch.Result {
+export function useSearch({ containerId, logsContainerNode, filter, events, onFoundOutsideWindow }: useSearch.Options): useSearch.Result {
   const logClient = useRegistry(LogClient);
 
   const [needle, setNeedle] = useState("");
@@ -99,8 +93,8 @@ export function useSearch({
     if (!value || searching !== null) {
       return;
     }
-    const onMatch = currentMatch !== null && physicalDOMContainer.events.isVisible(currentMatch);
-    const edges = onMatch ? {} : physicalDOMContainer.events.outermostVisibleIds();
+    const onMatch = currentMatch !== null && logsContainerNode.events.isVisible(currentMatch);
+    const edges = onMatch ? {} : logsContainerNode.events.outermostVisibleIds();
     const from = onMatch ? currentMatch : direction === Direction.forwards_in_time ? edges.oldest : edges.newest;
 
     setSearching(direction);
@@ -125,14 +119,14 @@ export function useSearch({
        * the answer is to scroll to that line: one the list holds but has not painted yet is not one
        * that can be scrolled to.
        */
-      if (physicalDOMContainer.events.exists(found)) {
+      if (logsContainerNode.events.exists(found)) {
         /**
          * Only move the view for an answer the reader cannot already see. Recentring on a match that
          * was on screen the whole time shifts everything around it for no gain -- they were reading
          * that page, and the highlight moving is the whole of the news.
          */
-        if (!physicalDOMContainer.events.isVisible(found)) {
-          physicalDOMContainer.move.toEvent(found);
+        if (!logsContainerNode.events.isVisible(found)) {
+          logsContainerNode.move.toEvent(found);
         }
         return;
       }
@@ -163,7 +157,7 @@ export function useSearch({
 export namespace useSearch {
   export type Options = {
     containerId: string;
-    physicalDOMContainer: PhysicalDOMContainer;
+    logsContainerNode: LogsContainerNode;
     filter: ClientFilter;
     events: ContainerEvent[];
     onFoundOutsideWindow: (eventId: string) => void;

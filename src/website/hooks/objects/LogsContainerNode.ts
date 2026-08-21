@@ -1,4 +1,4 @@
-export type PhysicalDOMContainer = {
+export type LogsContainerNode = {
   currentScrollWindowPosition: {
     atTheTop: boolean;
     atTheBottom: boolean;

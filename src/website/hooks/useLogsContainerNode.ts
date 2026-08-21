@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { PhysicalDOMContainer } from "./objects/PhysicalDOMContainer";
-import { useElementManager } from "./useElementManager";
+import { LogsContainerNode } from "./objects/LogsContainerNode";
+import { usePhysicalDOMElement } from "./usePhysicalDOMElement";
 
 const EDGE_SLACK_PX = 24;
 
-export function usePhysicalDOMContainer(): usePhysicalDOMContainer.Result {
+export function useLogsContainerNode(): useLogsContainerNode.Result {
   const [atTheTop, setAtTheTop] = useState(false);
   const [atTheBottom, setAtTheBottom] = useState(true);
 
@@ -13,7 +13,7 @@ export function usePhysicalDOMContainer(): usePhysicalDOMContainer.Result {
     setAtTheBottom(container.scrollHeight - container.scrollTop - container.clientHeight <= EDGE_SLACK_PX);
   }
 
-  const { elementRef: containerRef, registerElement } = useElementManager({
+  const { elementRef: containerRef, registerElement } = usePhysicalDOMElement({
     eventListeners: {
       scroll: (_, element) => reorient(element),
     },
@@ -25,7 +25,7 @@ export function usePhysicalDOMContainer(): usePhysicalDOMContainer.Result {
 
   return {
     register: registerElement,
-    physicalDOMContainer: {
+    logsContainerNode: {
       currentScrollWindowPosition: {
         atTheTop,
         atTheBottom,
@@ -82,10 +82,10 @@ export function usePhysicalDOMContainer(): usePhysicalDOMContainer.Result {
   };
 }
 
-export namespace usePhysicalDOMContainer {
+export namespace useLogsContainerNode {
   export type Result = {
     register(container: HTMLElement | null): void;
-    physicalDOMContainer: PhysicalDOMContainer;
+    logsContainerNode: LogsContainerNode;
   };
 }
 

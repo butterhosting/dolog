@@ -10,25 +10,25 @@ import { useContainerName } from "../hooks/useContainerName";
 import { useDocumentTitle } from "../hooks/basics/useDocumentTitle";
 import { useFilter } from "../hooks/useFilter";
 import { useLogs } from "../hooks/useLogs";
-import { usePhysicalDOMContainer } from "../hooks/usePhysicalDOMContainer";
+import { useLogsContainerNode } from "../hooks/useLogsContainerNode";
 import { useSearch } from "../hooks/useSearch";
 import { Line } from "../rendering/Line";
 
 export function containerLogsPage() {
   const { id: containerId = "" } = useParams();
-  const { register, physicalDOMContainer } = usePhysicalDOMContainer();
+  const { register, logsContainerNode } = useLogsContainerNode();
 
   const anchorResult = useAnchor();
   const filterResult = useFilter();
   const logsResult = useLogs({
     containerId,
-    physicalDOMContainer,
+    logsContainerNode,
     filter: filterResult.filter,
     anchor: anchorResult.anchor,
   });
   const searchResult = useSearch({
     containerId,
-    physicalDOMContainer,
+    logsContainerNode,
     filter: filterResult.filter,
     events: logsResult.events,
     onFoundOutsideWindow: logsResult.navigateTo,
@@ -49,13 +49,6 @@ export function containerLogsPage() {
       <Toolbar filter={filterResult} onApply={filterResult.formState.apply} onJump={() => void anchorResult.promptNavigation()} />
 
       <div className="relative flex-1 min-h-0">
-        {/*
-         * `overflow-anchor: none` because this list is edited at both ends and the browser's scroll
-         * anchoring fights that. Trimming lines off the top made it rewind `scrollTop` to hold the
-         * view still, which arrives as a scroll to somewhere far from the bottom -- and being at the
-         * bottom is exactly how following is detected, so the feed latched to paused while lines
-         * were still arriving. Both ends are compensated for deliberately here instead.
-         */}
         <div
           ref={register}
           className="h-full overflow-y-auto [overflow-anchor:none] bg-c-dark-full text-gray-200 font-mono text-xs p-4 leading-relaxed"
@@ -65,10 +58,6 @@ export function containerLogsPage() {
               <Spinner />
             </div>
           )}
-          {/*
-           * The one thing about an empty window that `Renderer` cannot say: *why* it is empty. That
-           * answer needs the filter as well as the window, so it is the page that gives it.
-           */}
           {!logsResult.isLoading && logsResult.lines.length === 0 && (
             <div className="text-c-dark-half py-8 text-center">
               {filterResult.isFilterNarrowing
@@ -104,14 +93,11 @@ export function containerLogsPage() {
 
         {searchResult.finding && <SearchBox search={searchResult} />}
 
-        {/* offered whenever the feed is not being followed -- scrolled up, or parked in history */}
         {!logsResult.isFollowingStream && (
           <button
             onClick={() => logsResult.followStream()}
             title="new lines are not being added while you read back"
             className={clsx(
-              // `bottom-4` is load-bearing: without a vertical offset an absolute element falls back
-              // to its static position, which is *below* the log container rather than over it
               "absolute bottom-4 right-4 flex items-center gap-2 rounded-full bg-c-accent text-white text-xs pl-3 pr-4 py-2 shadow-lg cursor-pointer hover:opacity-90",
             )}
           >

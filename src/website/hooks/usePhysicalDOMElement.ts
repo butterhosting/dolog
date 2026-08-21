@@ -1,7 +1,7 @@
 import { ValueOf } from "@/types/ValueOf";
 import { RefObject, useCallback, useEffect, useRef } from "react";
 
-export function useElementManager(options: useElementManager.Options): useElementManager.Result {
+export function usePhysicalDOMElement(options: usePhysicalDOMElement.Options): usePhysicalDOMElement.Result {
   const optionsRef = useRef(options); // can only be set once
   const elementRef = useRef<HTMLElement>(undefined);
 
@@ -14,7 +14,7 @@ export function useElementManager(options: useElementManager.Options): useElemen
       Object.entries(optionsRef.current.eventListeners ?? {}).forEach(([property, listenerFn]) => {
         const boundListenerFn = (event: any) => listenerFn(event, element);
         eventListersRef.current[property] = boundListenerFn;
-        type EventListenersMap = useElementManager.Options["eventListeners"];
+        type EventListenersMap = usePhysicalDOMElement.Options["eventListeners"];
         element.addEventListener(property as keyof EventListenersMap, boundListenerFn as ValueOf<EventListenersMap>);
       });
       if (optionsRef.current.mutationListener) {
@@ -33,7 +33,7 @@ export function useElementManager(options: useElementManager.Options): useElemen
     if (elementRef.current) {
       const element = elementRef.current;
       Object.entries(optionsRef.current.eventListeners ?? {}).forEach(([property, listenerFn]) => {
-        type EventListenersMap = useElementManager.Options["eventListeners"];
+        type EventListenersMap = usePhysicalDOMElement.Options["eventListeners"];
         element.removeEventListener(property as keyof EventListenersMap, listenerFn as ValueOf<EventListenersMap>);
       });
       if (mutationObserverRef.current) {
@@ -50,7 +50,7 @@ export function useElementManager(options: useElementManager.Options): useElemen
   };
 }
 
-namespace useElementManager {
+namespace usePhysicalDOMElement {
   export type Options = {
     eventListeners?: {
       [K in keyof HTMLElementEventMap]?: (event: HTMLElementEventMap[K], element: HTMLElement) => unknown;

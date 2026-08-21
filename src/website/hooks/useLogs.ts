@@ -7,10 +7,10 @@ import { Line } from "../rendering/Line";
 import { LineRenderer } from "../rendering/Renderer";
 import { useRegistry } from "./basics/useRegistry";
 import { ClientFilter } from "./objects/ClientFilter";
-import { PhysicalDOMContainer } from "./objects/PhysicalDOMContainer";
+import { LogsContainerNode } from "./objects/LogsContainerNode";
 import { useLoading } from "./useLoading";
 
-export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: useLogs.Options): useLogs.Result {
+export function useLogs({ containerId, logsContainerNode, filter, anchor }: useLogs.Options): useLogs.Result {
   const socketClient = useRegistry(SocketClient);
   const renderer = useRegistry(LineRenderer);
 
@@ -19,7 +19,7 @@ export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: u
     filter,
   });
 
-  const isFollowingStream = physicalDOMContainer.currentScrollWindowPosition.atTheBottom && !hasNewer;
+  const isFollowingStream = logsContainerNode.currentScrollWindowPosition.atTheBottom && !hasNewer;
   const isFollowingStreamRef = useRef(isFollowingStream);
   useEffect(() => void (isFollowingStreamRef.current = isFollowingStream), [isFollowingStream]);
 
@@ -54,7 +54,7 @@ export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: u
   //
   function followStream() {
     requestLogs("latest", {
-      postDOM: physicalDOMContainer.move.toTheBottom,
+      postDOM: logsContainerNode.move.toTheBottom,
     });
   }
 
@@ -63,7 +63,7 @@ export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: u
   //
   function navigateTo(eventId: string) {
     requestLogs("around", eventId, {
-      postDOM: () => physicalDOMContainer.move.toEvent(eventId),
+      postDOM: () => logsContainerNode.move.toEvent(eventId),
     });
   }
 
@@ -73,7 +73,7 @@ export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: u
   useEffect(() => {
     if (anchor) {
       requestLogs("around", anchor.value, {
-        postDOM: physicalDOMContainer.move.toAnchor,
+        postDOM: logsContainerNode.move.toAnchor,
       });
     } else {
       requestLogs("latest");
@@ -84,30 +84,30 @@ export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: u
   // Loading older events (backwards in time)
   //
   useEffect(() => {
-    if (physicalDOMContainer.currentScrollWindowPosition.atTheTop) {
+    if (logsContainerNode.currentScrollWindowPosition.atTheTop) {
       const oldest = events.at(0);
       if (!hasOlder || !oldest) {
         return;
       }
       requestLogs("backwards", oldest.id, {
         // restore the current scroll position, because we're prepending new lines
-        postDOM: physicalDOMContainer.currentScrollWindowPosition.createRestoreFn(),
+        postDOM: logsContainerNode.currentScrollWindowPosition.createRestoreFn(),
       });
     }
-  }, [physicalDOMContainer.currentScrollWindowPosition.atTheTop]);
+  }, [logsContainerNode.currentScrollWindowPosition.atTheTop]);
 
   //
   // Loading newer events (forwards in time)
   //
   useEffect(() => {
-    if (physicalDOMContainer.currentScrollWindowPosition.atTheBottom) {
+    if (logsContainerNode.currentScrollWindowPosition.atTheBottom) {
       const newest = events.at(-1);
       if (!hasNewer || !newest) {
         return;
       }
       requestLogs("forwards", newest.id);
     }
-  }, [physicalDOMContainer.currentScrollWindowPosition.atTheBottom]);
+  }, [logsContainerNode.currentScrollWindowPosition.atTheBottom]);
 
   //
   // Effect to keep ourselves stuck to the bottom (when following the stream)
@@ -117,7 +117,7 @@ export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: u
       return; // don't stick to the bottom, if we're in the middle of paging upwards
     }
     if (isFollowingStream) {
-      physicalDOMContainer.move.toTheBottom();
+      logsContainerNode.move.toTheBottom();
     }
   }, [events, isFollowingStream]);
 
@@ -135,7 +135,7 @@ export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: u
         return; // anchors of type "id" are obtained by clicking on a line ... no navigation needed
       }
       requestLogs("around", anchor.value, {
-        postDOM: physicalDOMContainer.move.toAnchor,
+        postDOM: logsContainerNode.move.toAnchor,
       });
     }
   }, [anchor]);
@@ -158,7 +158,7 @@ export function useLogs({ containerId, physicalDOMContainer, filter, anchor }: u
 export namespace useLogs {
   export type Options = {
     containerId: string;
-    physicalDOMContainer: PhysicalDOMContainer;
+    logsContainerNode: LogsContainerNode;
     filter: ClientFilter;
     anchor?: Anchor;
   };
