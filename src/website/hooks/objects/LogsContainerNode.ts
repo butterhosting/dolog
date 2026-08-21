@@ -8,8 +8,8 @@ export type LogsContainerNode = {
     exists(eventId: string): boolean;
     isVisible(eventId: string): boolean;
     outermostVisibleIds(): {
-      oldest?: string;
-      newest?: string;
+      topOfScreenId?: string;
+      bottomOfScreenId?: string;
     };
   };
   move: {

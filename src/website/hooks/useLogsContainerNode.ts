@@ -56,8 +56,8 @@ export function useLogsContainerNode(): useLogsContainerNode.Result {
           }
           const shown = Internal.findAll(container).filter((line) => Internal.overlaps(line, container));
           return {
-            oldest: shown.at(0)?.dataset.event,
-            newest: shown.at(-1)?.dataset.event,
+            topOfScreenId: shown.at(0)?.dataset.event,
+            bottomOfScreenId: shown.at(-1)?.dataset.event,
           };
         },
       },

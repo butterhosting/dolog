@@ -17,9 +17,9 @@ export function SearchBox({ search }: Props) {
   return (
     <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-xl bg-c-dark-deep p-2 shadow-2xl">
       <LogControls.Field>
-        <LogControls.RegexToggle on={search.patternType === Pattern.Type.regex} onClick={search.togglePatternType} />
+        <LogControls.RegexToggle on={search.needleType === Pattern.Type.regex} onClick={search.toggleNeedleType} />
         <input
-          ref={search.field}
+          ref={search.textField}
           autoFocus
           value={search.needle}
           onChange={(event) => search.setNeedle(event.target.value)}
@@ -29,7 +29,7 @@ export function SearchBox({ search }: Props) {
           placeholder="type to search"
           className={clsx(
             "w-56 bg-transparent font-mono text-xs outline-none placeholder:text-c-dark-half",
-            search.broken ? "text-c-error" : "text-c-dark-full",
+            search.isRegexInvalid ? "text-c-error" : "text-c-dark-full",
           )}
         />
       </LogControls.Field>
@@ -40,16 +40,20 @@ export function SearchBox({ search }: Props) {
         direction={Direction.backwards_in_time}
         onClick={() => void search.step(Direction.backwards_in_time)}
         disabled={!search.needle.trim()}
-        busy={search.searching === Direction.backwards_in_time}
+        busy={search.searchDirection === Direction.backwards_in_time}
       />
       <LogControls.Step
         ref={search.chevrons[Direction.forwards_in_time]}
         direction={Direction.forwards_in_time}
         onClick={() => void search.step(Direction.forwards_in_time)}
         disabled={!search.needle.trim()}
-        busy={search.searching === Direction.forwards_in_time}
+        busy={search.searchDirection === Direction.forwards_in_time}
       />
-      <button onClick={search.close} title="close (esc)" className="px-1.5 text-sm text-c-dark-half cursor-pointer hover:text-gray-200">
+      <button
+        onClick={search.deactivate}
+        title="close (esc)"
+        className="px-1.5 text-sm text-c-dark-half cursor-pointer hover:text-gray-200"
+      >
         ×
       </button>
     </div>

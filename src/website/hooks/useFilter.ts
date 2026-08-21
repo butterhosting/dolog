@@ -44,14 +44,7 @@ export function useFilter(): useFilter.Result {
       setPattern,
       patternType,
       togglePatternType() {
-        setPatternType((current) => {
-          switch (current) {
-            case Pattern.Type.regex:
-              return Pattern.Type.substr;
-            case Pattern.Type.substr:
-              return Pattern.Type.regex;
-          }
-        });
+        setPatternType(Pattern.flipType);
       },
       range,
       async promptRangeDialog() {

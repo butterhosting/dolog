@@ -23,15 +23,15 @@ export function containerLogsPage() {
   const logsResult = useLogs({
     containerId,
     logsContainerNode,
-    filter: filterResult.filter,
     anchor: anchorResult.anchor,
+    filter: filterResult.filter,
   });
   const searchResult = useSearch({
     containerId,
     logsContainerNode,
     filter: filterResult.filter,
     events: logsResult.events,
-    onFoundOutsideWindow: logsResult.navigateTo,
+    navigateToUnloadedMatchResult: logsResult.navigateTo,
   });
 
   const name = useContainerName(containerId, logsResult.events);
@@ -83,15 +83,15 @@ export function containerLogsPage() {
                     key={line.id}
                     line={line}
                     toggleAnchor={() => anchorResult.toggle(line.event.id)}
-                    matched={searchResult.matched.has(line.event.id)}
-                    current={line.event.id === searchResult.currentMatch}
+                    matched={searchResult.matchedIds.has(line.event.id)}
+                    current={line.event.id === searchResult.currentMatchId}
                   />
                 );
             }
           })}
         </div>
 
-        {searchResult.finding && <SearchBox search={searchResult} />}
+        {searchResult.activated && <SearchBox search={searchResult} />}
 
         {!logsResult.isFollowingStream && (
           <button

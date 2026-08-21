@@ -12,6 +12,15 @@ export namespace Pattern {
     regex = "regex",
   }
 
+  export function flipType(type: Type): Type {
+    switch (type) {
+      case Type.substr:
+        return Type.regex;
+      case Type.regex:
+        return Type.substr;
+    }
+  }
+
   export const parse = ZodParser.forType<Pattern>()
     .ensureSchemaMatchesType(() =>
       z.object({
