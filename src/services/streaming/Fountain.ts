@@ -1,27 +1,11 @@
 import { Logger } from "@/Logger";
 import { Container } from "@/models/Container";
-import { Temporal } from "@js-temporal/polyfill";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Throughput } from "@/models/Throughput";
-import {
-  catchError,
-  defer,
-  EMPTY,
-  from,
-  map,
-  merge,
-  mergeMap,
-  Observable,
-  of,
-  repeat,
-  retry,
-  share,
-  timer,
-} from "rxjs";
+import { Temporal } from "@js-temporal/polyfill";
+import { defer, EMPTY, filter, from, map, merge, mergeMap, Observable, of, repeat, retry, share, takeUntil, timer } from "rxjs";
 import { DockerSocket } from "./DockerSocket";
 import { ThrottleService } from "./ThrottleService";
-
-const RECONNECT_DELAY = Temporal.Duration.from({ seconds: 2 });
 
 /**
  * Our single source of continuous events.
@@ -58,67 +42,59 @@ export class Fountain {
     return this.throttleService.streamThroughputs();
   }
 
-  private rawSocketStream(): Observable<
-    ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log
-  > {
+  private rawSocketStream(): Observable<ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log> {
     const containersBeingFollowed = new Set<string>();
-    /**
-     * The listing and the event stream are opened concurrently, so a container starting in that
-     * window shows up in both. Attaching twice would duplicate every one of its log lines.
-     */
+
+    const lifecycle = this.lifecycle().pipe(share());
+
+    const isStopped = (containerId: string): Observable<ContainerEvent.Stop> => {
+      return lifecycle.pipe(
+        filter((event): event is ContainerEvent.Stop => {
+          return event.type === ContainerEvent.Type.stop && event.container.id === containerId;
+        }),
+      );
+    };
+
     const follow = (container: Container): Observable<ContainerEvent.Log> => {
       if (containersBeingFollowed.has(container.id)) {
         return EMPTY;
       }
       containersBeingFollowed.add(container.id);
-      return this.logs(container);
+      return this.logs(container).pipe(takeUntil(isStopped(container.id)));
     };
+
     return merge(
       this.alreadyRunning().pipe(mergeMap(follow)),
-      this.lifecycle().pipe(
+      lifecycle.pipe(
         mergeMap((event) => {
           switch (event.type) {
+            case ContainerEvent.Type.start: {
+              return merge(of(event), follow(event.container));
+            }
             case ContainerEvent.Type.stop: {
               containersBeingFollowed.delete(event.container.id);
               return of(event);
             }
-            case ContainerEvent.Type.start:
-              return merge(of(event), follow(event.container));
           }
         }),
       ),
     );
   }
 
-  /**
-   * Docker's event stream only reports from the moment it is opened, so without this the fountain
-   * would stay silent until something happened to restart. These containers are followed for their
-   * logs only -- they produce no event of their own.
-   */
   private alreadyRunning(): Observable<Container> {
     return defer(() => this.dockerSocket.listRunningContainers()).pipe(
       retry({
-        delay: (error) =>
-          this.reconnect("Could not list running containers", error),
+        delay: (error, retryCount) => this.exponentialBackoff(retryCount, "Could not list running containers", error),
+        resetOnSuccess: true,
       }),
       mergeMap((containers) => from(containers)),
     );
   }
 
-  /**
-   * `retry` covers a socket that errors out, `repeat` covers one that closes cleanly; between them
-   * this observable never terminates, which is what keeps the fountain running.
-   */
   private lifecycle(): Observable<ContainerEvent.Start | ContainerEvent.Stop> {
-    return this.abortable((signal) =>
-      this.dockerSocket.streamLifecycles(signal),
-    ).pipe(
-      map(
-        ({
-          status,
-          timestamp,
-          container,
-        }): ContainerEvent.Start | ContainerEvent.Stop => {
+    return this.toObservable((signal) => this.dockerSocket.streamLifecycles(signal)) //
+      .pipe(
+        map(({ status, timestamp, container }): ContainerEvent.Start | ContainerEvent.Stop => {
           return status === "start"
             ? {
                 type: ContainerEvent.Type.start,
@@ -134,50 +110,67 @@ export class Fountain {
                 timestamp,
                 container,
               };
-        },
-      ),
-      retry({
-        delay: (error) => this.reconnect("Docker event stream failed", error),
-      }),
-      repeat({ delay: () => this.reconnect("Docker event stream closed") }),
-    );
+        }),
+        retry({
+          // retry indefinitely when the stream closes with an error
+          delay: (error, retryCount) => this.exponentialBackoff(retryCount, "Docker event stream failed", error),
+          resetOnSuccess: true,
+        }),
+        repeat({
+          // retry indefinitely when the stream closes cleanly
+          delay: (retryCount) => this.exponentialBackoff(retryCount, "Docker event stream closed"),
+        }),
+      );
+  }
+
+  private logs(container: Container): Observable<ContainerEvent.Log> {
+    return this.toObservable((signal) => this.dockerSocket.streamLogLines(container.id, signal)) //
+      .pipe(
+        map(({ streamVariant, timestamp, line }): ContainerEvent.Log => ({
+          object: "container_event",
+          id: Bun.randomUUIDv7(),
+          type: ContainerEvent.Type.log,
+          timestamp,
+          container,
+          streamVariant,
+          line,
+        })),
+        retry({
+          // retry indefinitely when the stream closes with an error
+          delay: (error, retryCount) => this.exponentialBackoff(retryCount, `Log stream failed for ${container.name}`, error),
+          resetOnSuccess: true, // a stream that ran fine for hours starts its next trouble from scratch
+        }),
+        repeat({
+          // retry indefinitely when the stream closes cleanly
+          delay: (retryCount) => this.exponentialBackoff(retryCount, `Log stream closed for ${container.name}`),
+        }),
+      );
   }
 
   /**
-   * One container's logs failing must not take the fountain down with it.
+   * `retryCount` = 1,2,3,4,5,...
    */
-  private logs(container: Container): Observable<ContainerEvent.Log> {
-    return this.abortable((signal) =>
-      this.dockerSocket.streamLogLines(container.id, signal),
-    ).pipe(
-      map(({ streamVariant, timestamp, line }): ContainerEvent.Log => ({
-        object: "container_event",
-        id: Bun.randomUUIDv7(),
-        type: ContainerEvent.Type.log,
-        timestamp,
-        container,
-        streamVariant,
-        line,
-      })),
-      catchError((error) => {
-        this.log.warn(`Stopped following logs for ${container.name}`, error);
-        return EMPTY;
-      }),
-    );
-  }
+  private exponentialBackoff(retryCount: number, message: string, error?: unknown): Observable<unknown> {
+    const min = Temporal.Duration.from({ milliseconds: 100 });
+    const max = Temporal.Duration.from({ seconds: 2 });
 
-  private reconnect(message: string, error?: unknown): Observable<unknown> {
-    this.log.warn(`${message}, retrying in ${RECONNECT_DELAY.total("seconds")}s`, error ?? "");
-    return timer(RECONNECT_DELAY.total("milliseconds"));
+    // 100ms -> 200ms -> 400ms -> 800ms -> 1600ms -> 2000ms ....
+    const delay = Math.min(max.total("milliseconds"), min.total("milliseconds") * Math.pow(2, retryCount - 1));
+
+    const logMessage = `${message}, retrying in ${delay}ms (#${retryCount})`;
+    if (error) {
+      this.log.warn(logMessage, error);
+    } else {
+      this.log.debug(logMessage);
+    }
+    return timer(delay);
   }
 
   /**
    * Bridges an async generator into an Observable, wiring unsubscription to an AbortSignal so that
    * tearing down the stream also closes the underlying HTTP request to the socket.
    */
-  private abortable<T>(
-    generate: (signal: AbortSignal) => AsyncGenerator<T>,
-  ): Observable<T> {
+  private toObservable<T>(generate: (signal: AbortSignal) => AsyncGenerator<T>): Observable<T> {
     return new Observable<T>((subscriber) => {
       const controller = new AbortController();
       void (async () => {
