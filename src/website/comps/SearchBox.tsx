@@ -1,33 +1,29 @@
 import { Direction } from "@/models/Direction";
-import { Pattern } from "@/models/Pattern";
-import clsx from "clsx";
 import { useSearch } from "../hooks/useSearch";
+import { Overlay } from "./basics/Overlay";
 import { ChevronButton } from "./ChevronButton";
-import { RegexToggle } from "./RegexToggle";
+import { PatternField } from "./PatternField";
 
 type Props = {
   search: useSearch.Result;
 };
 export function SearchBox({ search }: Props) {
   return (
-    <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-xl bg-c-dark-deep p-2 shadow-2xl">
-      <div className="bg-white">
-        <RegexToggle active={search.form.needleType === Pattern.Type.regex} onClick={search.form.toggleNeedleType} />
-        <input
-          ref={search.form.textField}
-          autoFocus
-          value={search.form.needle}
-          onChange={(event) => search.form.setNeedle(event.target.value)}
-          onKeyDown={(event) =>
-            event.key === "Enter" && void search.matching.step(event.shiftKey ? Direction.backwards_in_time : Direction.forwards_in_time)
-          }
-          placeholder="type to search"
-          className={clsx(
-            "w-56 bg-transparent font-mono text-xs outline-none placeholder:text-c-dark-half",
-            search.form.isRegexInvalid ? "text-c-error" : "text-c-dark-full",
-          )}
-        />
-      </div>
+    <Overlay className="left-1/2 -translate-x-1/2">
+      <PatternField
+        className="w-60"
+        inputRef={search.form.textField}
+        autoFocus
+        type={search.form.needleType}
+        onToggleType={search.form.toggleNeedleType}
+        value={search.form.needle}
+        onValueChange={search.form.setNeedle}
+        onKeyDown={(event) =>
+          event.key === "Enter" && void search.matching.step(event.shiftKey ? Direction.backwards_in_time : Direction.forwards_in_time)
+        }
+        placeholder="Type to search"
+        invalid={search.form.isRegexInvalid}
+      />
       <ChevronButton
         ref={search.matching.chevrons[Direction.backwards_in_time]}
         direction={Direction.backwards_in_time}
@@ -42,13 +38,6 @@ export function SearchBox({ search }: Props) {
         disabled={!search.form.needle}
         busy={search.matching.isSearchingRightNow === Direction.forwards_in_time}
       />
-      <button
-        onClick={search.deactivate}
-        title="close (esc)"
-        className="px-1.5 text-sm text-c-dark-half cursor-pointer hover:text-gray-200"
-      >
-        ×
-      </button>
-    </div>
+    </Overlay>
   );
 }

@@ -53,7 +53,7 @@ export function useSearch({
   //
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && (event.key === "f" || event.key === "k")) {
+      if ((event.metaKey || event.ctrlKey) && event.key === "k") {
         event.preventDefault();
         activate();
       }

@@ -8,14 +8,22 @@
     /* DESKTOP FIRST / PART A -> https://stackoverflow.com/a/79607480 */
     --breakpoint-*: initial;
     /* Colors */
-    --color-c-accent: #4647d2;
-    --color-c-error: #d5000d;
-    --color-c-dark-full: #2d2c32;
-    --color-c-dark-half: #6c6b72;
-    /* the controls bar, a shade below the log surface so the two read as separate planes */
-    --color-c-dark-deep: #1b1a1f;
-    /* reserved for controls that *do* something, and for the jump marker they place */
-    --color-c-action: #7dd3fc;
+    /* the chrome around the logs -- header and toolbar sit on this */
+    --color-c-shell: #0f0e11;
+    /* the logs themselves, one step darker so the two read as separate planes */
+    --color-c-surface: #000000;
+    /* reserved for controls that *do* something; nothing decorative is allowed to wear it */
+    --color-c-accent: #feea3a;
+    /* hairlines and any text the eye should skip past, timestamps included */
+    --color-c-rule: #b3b3b3;
+    /* the one light surface: a field you are invited to type into */
+    --color-c-field: #d7d7d7;
+    --color-c-chip: #2a2a2a;
+    --color-c-chip-edge: #979797;
+    --color-c-error: #ff4d4d;
+
+    /* one typeface for the whole app: the logs are monospaced, so the chrome around them is too */
+    --font-mono: Menlo, "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
 /* DESKTOP FIRST / PART B -> https://stackoverflow.com/a/79607480 */
@@ -30,16 +38,17 @@
  */
 @layer base {
     html {
+        /*
+         * The one dial for how large the app is. Every control is sized off tailwind's scale, which is
+         * `rem` throughout, so moving this number moves the whole interface together -- change it here
+         * rather than reaching for a pixel size in a component.
+         */
         font-size: 14px;
+        /* the native date pickers and scrollbars are told which way round the app is, and match it */
+        color-scheme: dark;
     }
     body {
-        @apply relative min-w-[320px] min-h-screen text-c-dark-full;
-        font-family:
-            system-ui,
-            -apple-system,
-            "Segoe UI",
-            sans-serif;
-        background-color: rgb(252, 252, 252);
+        @apply relative min-w-[20rem] min-h-screen bg-c-shell text-white font-mono;
     }
     #root {
         @apply min-h-screen flex flex-col w-full max-w-4xl px-3 mx-auto;

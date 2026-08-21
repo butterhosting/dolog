@@ -11,18 +11,18 @@ type Props = {
 export function ContainerCard({ container: { id, name, group, running, logsPerSecond, throttling, lastSeen } }: Props) {
   return (
     <Link to={Route.containerLogs(id)}>
-      <Paper className="px-5 py-4 h-full flex flex-col gap-1 hover:shadow-xl transition-shadow">
+      <Paper className="flex h-full flex-col gap-1 px-5 py-4 transition-colors hover:border-c-accent">
         <div className="flex items-baseline gap-2">
-          <span className={clsx("font-bold truncate", running ? "text-c-accent" : "text-c-dark-half")}>{name}</span>
-          {!running && <span className="text-xs tracking-wide text-c-dark-half shrink-0">STOPPED</span>}
+          <span className={clsx("truncate", running ? "text-c-accent" : "text-c-rule")}>{name}</span>
+          {!running && <span className="shrink-0 text-xs tracking-wide text-c-rule">STOPPED</span>}
         </div>
-        {group && <span className="text-xs text-c-dark-half truncate">{group}</span>}
+        {group && <span className="truncate text-xs text-c-rule">{group}</span>}
         <div className="mt-2 flex items-baseline gap-2">
-          <span className="font-mono text-sm">{logsPerSecond}</span>
-          <span className="text-xs text-c-dark-half">logs/s</span>
-          {throttling && <span className="text-xs font-bold text-c-error">THROTTLED</span>}
+          <span className="text-sm">{logsPerSecond}</span>
+          <span className="text-xs text-c-rule">logs/s</span>
+          {throttling && <span className="text-xs text-c-error">THROTTLED</span>}
         </div>
-        <span className="text-xs text-c-dark-half">{Prettify.describeLastSeenLogs(lastSeen)}</span>
+        <span className="text-xs text-c-rule">{Prettify.describeLastSeenLogs(lastSeen)}</span>
       </Paper>
     </Link>
   );

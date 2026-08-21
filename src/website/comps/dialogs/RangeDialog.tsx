@@ -28,7 +28,7 @@ export function RangeDialog({ current, close, done }: Props) {
         <div className="flex flex-col gap-5">
           {Object.values(RangeDisplay.Group).map((group) => (
             <div key={group} className="flex flex-col gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-c-dark-half">{group}</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-c-rule">{group}</span>
               <div className="flex flex-wrap gap-2">
                 {RangeDisplay.presetsIn(group).map((preset) => (
                   <Internal.Pill
@@ -55,7 +55,7 @@ export function RangeDialog({ current, close, done }: Props) {
         >
           <div className="flex flex-col gap-1">
             <h2 className="text-lg font-bold">Custom range</h2>
-            <p className="text-sm text-c-dark-half">In UTC. Leave either side empty for an open end.</p> {/* TODO: timezone aware */}
+            <p className="text-sm text-c-rule">In UTC. Leave either side empty for an open end.</p> {/* TODO: timezone aware */}
           </div>
           <div className="flex gap-3">
             {(
@@ -65,13 +65,13 @@ export function RangeDialog({ current, close, done }: Props) {
               ] as const
             ).map(([label, value, set]) => (
               <label key={label} className="flex flex-1 flex-col gap-1.5">
-                <span className="text-xs font-semibold text-c-dark-half">{label}</span>
+                <span className="text-xs font-semibold text-c-rule">{label}</span>
                 <input
                   type="datetime-local"
                   step="1"
                   value={value}
                   onChange={(event) => set(event.target.value)}
-                  className="rounded-lg border border-c-dark-half/40 px-3 py-2 font-mono text-sm outline-none focus:border-c-accent"
+                  className="rounded-lg border border-c-chip-edge bg-c-chip px-3 py-2 text-sm outline-none focus:border-c-accent"
                 />
               </label>
             ))}
@@ -103,8 +103,8 @@ namespace Internal {
         className={clsx(
           "rounded-full border px-3 py-1 text-xs cursor-pointer transition-colors",
           active
-            ? "border-c-accent bg-c-accent text-white"
-            : "border-c-dark-half/30 text-c-dark-half hover:border-c-accent hover:text-c-accent",
+            ? "border-c-accent bg-c-accent text-c-shell"
+            : "border-c-chip-edge bg-c-chip text-white hover:border-c-accent hover:text-c-accent",
         )}
       >
         {label}

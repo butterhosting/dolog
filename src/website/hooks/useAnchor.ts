@@ -1,6 +1,6 @@
 import { Anchor } from "@/models/Anchor";
 import { Temporal } from "@js-temporal/polyfill";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { DialogClient } from "../clients/DialogClient";
 import { useRegistry } from "./basics/useRegistry";
@@ -24,18 +24,44 @@ export function useAnchor(): useAnchor.Result {
     });
   }, [anchor]);
 
+  const isDialogOpen = useRef(false);
+  async function promptNavigation() {
+    if (isDialogOpen.current) {
+      return;
+    }
+    isDialogOpen.current = true;
+    const instant = await dialogClient
+      .promptTimestampNavigationDialog(anchor?.type === "timestamp" ? anchor.value : undefined)
+      .finally(() => {
+        isDialogOpen.current = false;
+      });
+    if (instant === "cancel") {
+      return;
+    }
+    if (anchor?.type === "timestamp" && Temporal.Instant.compare(anchor.value, instant) === 0) {
+      return;
+    }
+    setAnchor(Anchor.forTimestamp(instant));
+  }
+
+  //
+  // Effect for binding the shortcut key that opens the navigation dialog
+  //
+  useEffect(() => {
+    // TODO: pressing CMD+I repeatedly keeps opening modals on top of eachother
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "i") {
+        event.preventDefault();
+        void promptNavigation();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [anchor]);
+
   return {
     anchor,
-    async promptNavigation() {
-      const instant = await dialogClient.promptTimestampNavigationDialog(anchor?.type === "timestamp" ? anchor.value : undefined);
-      if (instant === "cancel") {
-        return;
-      }
-      if (anchor?.type === "timestamp" && Temporal.Instant.compare(anchor.value, instant) === 0) {
-        return;
-      }
-      setAnchor(Anchor.forTimestamp(instant));
-    },
+    promptNavigation,
     toggle(eventId: string) {
       setAnchor((currentAnchor) => {
         if (currentAnchor?.type === "id" && currentAnchor.value === eventId) {

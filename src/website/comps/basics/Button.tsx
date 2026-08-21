@@ -12,13 +12,14 @@ export function Button({ theme = "accent", variant = "filled", loading, disabled
       {...props}
       disabled={disabled || loading}
       className={clsx(
-        "inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
-        variant === "filled" && theme === "accent" && "bg-c-accent text-white hover:bg-c-accent/90",
-        variant === "filled" && theme === "error" && "bg-c-error text-white hover:bg-c-error/90",
-        variant === "filled" && theme === "neutral" && "bg-c-dark-half text-white hover:bg-c-dark-full",
-        variant === "ghost" && theme === "accent" && "text-c-accent hover:bg-c-accent/5",
-        variant === "ghost" && theme === "error" && "text-c-error/80 hover:text-c-error",
-        variant === "ghost" && theme === "neutral" && "text-c-dark-half hover:text-c-dark-full",
+        "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg px-3.5 text-sm leading-none",
+        "cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+        variant === "filled" && theme === "accent" && "bg-c-accent text-c-shell hover:brightness-110",
+        variant === "filled" && theme === "error" && "bg-c-error text-c-shell hover:brightness-110",
+        variant === "filled" && theme === "neutral" && "border border-c-chip-edge bg-c-chip text-white hover:border-white",
+        variant === "ghost" && theme === "accent" && "text-c-accent hover:bg-c-accent/10",
+        variant === "ghost" && theme === "error" && "text-c-error hover:bg-c-error/10",
+        variant === "ghost" && theme === "neutral" && "text-c-rule hover:text-white",
         className,
       )}
     >

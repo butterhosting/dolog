@@ -1,41 +1,74 @@
-import { RangeDisplay } from "@/helpers/RangeDisplay";
-import { Pattern } from "@/models/Pattern";
+import clsx from "clsx";
+import { ReactNode } from "react";
 import { useFilter } from "../hooks/useFilter";
+import { useTextSize } from "../hooks/useTextSize";
 import { Button } from "./basics/Button";
-import { RegexToggle } from "./RegexToggle";
+import { Toggle } from "./basics/Toggle";
+import { PatternField } from "./PatternField";
 
 type Props = {
   filter: useFilter.Result;
+  textSize: useTextSize.Result;
   onApply: () => void;
-  onJump: () => void;
+  onNavigate: () => void;
+  onSearch: () => void;
 };
 
-export function Toolbar({ filter, onApply, onJump }: Props) {
+export function Toolbar({ filter, textSize, onApply, onNavigate, onSearch }: Props) {
   const { form, formState } = filter;
-  const period = RangeDisplay.label(form.range);
   return (
-    <div className="flex items-end gap-7 bg-c-dark-deep px-4 pb-3 pt-2">
-      <Button onClick={onJump}>Jump</Button>
+    <div className="flex h-14 items-center border-b border-c-rule bg-c-shell">
+      <Internal.Cell className="pl-5 pr-4">
+        <Button onClick={onNavigate} title="jump to a moment in time">
+          Navigate {Internal.MODIFIER}I
+        </Button>
+      </Internal.Cell>
 
-      <div className="bg-white">
-        <RegexToggle active={form.patternType === Pattern.Type.regex} onClick={form.togglePatternType} />
-        <input
+      <Internal.Cell className="px-4">
+        <Button onClick={onSearch} title="find a line among the ones on screen">
+          Search {Internal.MODIFIER}K
+        </Button>
+      </Internal.Cell>
+
+      <Internal.Cell className="gap-2 px-4">
+        {useTextSize.SIZES.map((size) => (
+          <Toggle key={size} active={textSize.size === size} onClick={() => textSize.setSize(size)} title={`${size.toUpperCase()} text`}>
+            {size.toUpperCase()}
+          </Toggle>
+        ))}
+      </Internal.Cell>
+
+      <Internal.Cell className="flex-1" />
+
+      <Internal.Cell last className="gap-2.5 px-4">
+        <PatternField
+          className="w-64"
+          type={form.patternType}
+          onToggleType={form.togglePatternType}
           value={form.pattern}
-          onChange={(event) => form.setPattern(event.target.value)}
+          onValueChange={form.setPattern}
           onKeyDown={(event) => event.key === "Enter" && formState.dirty && onApply()}
-          placeholder="type to filter"
-          className="w-72 font-mono text-xs text-c-dark-full outline-none placeholder:text-c-dark-half"
+          placeholder="Type to filter"
         />
-      </div>
-      <Button onClick={onApply} disabled={!formState.dirty}>
-        Apply
-      </Button>
-
-      <div className="flex-1" />
-
-      <Button onClick={() => void form.promptRangeDialog()} title="choose the time span this filter covers">
-        {period}
-      </Button>
+        <Button onClick={onApply} disabled={!formState.dirty}>
+          Apply
+        </Button>
+      </Internal.Cell>
     </div>
   );
+}
+
+namespace Internal {
+  /** The shortcut the page actually binds accepts either, so the hint names the one this keyboard has. */
+  export const MODIFIER = typeof navigator !== "undefined" && navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+";
+
+  type CellProps = {
+    className?: string;
+    last?: boolean;
+    children?: ReactNode;
+  };
+  /** The toolbar is ruled into compartments, and only the last one has nothing to its right. */
+  export function Cell({ className, last, children }: CellProps) {
+    return <div className={clsx("flex h-full items-center", !last && "border-r border-c-rule", className)}>{children}</div>;
+  }
 }

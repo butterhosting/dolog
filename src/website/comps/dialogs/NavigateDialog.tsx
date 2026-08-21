@@ -52,8 +52,8 @@ export function NavigateDialog({ current, close, done }: Props) {
               className={clsx(
                 "rounded-full border px-3 py-1 text-xs cursor-pointer transition-colors",
                 date === at && time === Internal.MIDNIGHT
-                  ? "border-c-accent bg-c-accent text-white"
-                  : "border-c-dark-half/30 text-c-dark-half hover:border-c-accent hover:text-c-accent",
+                  ? "border-c-accent bg-c-accent text-c-shell"
+                  : "border-c-chip-edge bg-c-chip text-white hover:border-c-accent hover:text-c-accent",
               )}
             >
               {label}
@@ -67,7 +67,7 @@ export function NavigateDialog({ current, close, done }: Props) {
             type="date"
             value={date}
             onChange={(event) => setDate(event.target.value)}
-            className="flex-1 rounded-lg border border-c-dark-half/40 px-3 py-2 font-mono text-sm outline-none focus:border-c-accent"
+            className="flex-1 rounded-lg border border-c-chip-edge bg-c-chip px-3 py-2 text-sm outline-none focus:border-c-accent"
           />
           <input
             type="text"
@@ -76,9 +76,9 @@ export function NavigateDialog({ current, close, done }: Props) {
             placeholder={Internal.MIDNIGHT}
             aria-label="time"
             className={clsx(
-              "w-32 rounded-lg border px-3 py-2 font-mono text-sm outline-none focus:border-c-accent",
+              "w-32 rounded-lg border bg-c-chip px-3 py-2 text-sm outline-none focus:border-c-accent",
               // only complains once there is a date to go with it, so an empty form is not an error
-              date && !instant ? "border-c-error text-c-error" : "border-c-dark-half/40",
+              date && !instant ? "border-c-error text-c-error" : "border-c-chip-edge",
             )}
           />
         </div>

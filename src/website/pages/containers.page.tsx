@@ -48,7 +48,7 @@ export function containersPage() {
     <Frame>
       {data.length === 0 && (
         <Paper className="px-6 py-12 text-center">
-          <span className="text-sm font-bold tracking-wide text-c-dark-half">NO CONTAINERS</span>
+          <span className="text-sm tracking-wide text-c-rule">NO CONTAINERS</span>
         </Paper>
       )}
       <div className="grid grid-cols-3 lg:grid-cols-2 sm:grid-cols-1 gap-4">

@@ -20,8 +20,8 @@ namespace Internal {
   export function Header() {
     return (
       <nav className="mt-10 flex flex-wrap items-center gap-3 md:items-start">
-        <Paper className="flex items-center hover:shadow-xl">
-          <Link to={Route.containers()} className="p-4 text-lg hover:text-c-accent transition-colors">
+        <Paper className="flex items-center transition-colors hover:border-c-accent">
+          <Link to={Route.containers()} className="p-4 text-lg transition-colors hover:text-c-accent">
             Containers
           </Link>
         </Paper>
@@ -37,8 +37,8 @@ namespace Internal {
     const { O_DOLOG_VERSION } = useRegistry("env");
     return (
       <footer className="my-12 flex flex-col items-center gap-4">
-        <div className="text-4xl font-extrabold italic">Dolog</div>
-        <div className="italic -mt-3 text-c-dark-half">{O_DOLOG_VERSION}</div>
+        <div className="text-4xl font-bold text-c-accent">Dolog</div>
+        <div className="-mt-3 text-c-rule">{O_DOLOG_VERSION}</div>
       </footer>
     );
   }
