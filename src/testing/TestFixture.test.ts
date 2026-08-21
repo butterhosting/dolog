@@ -58,7 +58,7 @@ export namespace TestFixture {
       type: ContainerEvent.Type.log_throttle,
       timestamp: Temporal.Now.instant(),
       container: container(),
-      foldCount: 3,
+      dropCount: 3,
     };
     return deepMerge(defaults, overrides);
   }

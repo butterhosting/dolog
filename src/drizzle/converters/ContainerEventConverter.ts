@@ -19,7 +19,7 @@ export namespace ContainerEventConverter {
       type: model.type,
       streamVariant: model.type === ContainerEvent.Type.log ? model.streamVariant : null,
       line: model.type === ContainerEvent.Type.log ? model.line : null,
-      foldCount: model.type === ContainerEvent.Type.log_throttle ? model.foldCount : null,
+      dropCount: model.type === ContainerEvent.Type.log_throttle ? model.dropCount : null,
     };
   }
 
@@ -36,7 +36,7 @@ export namespace ContainerEventConverter {
       case ContainerEvent.Type.stop:
         return { ...common, type: ContainerEvent.Type.stop };
       case ContainerEvent.Type.log_throttle:
-        return { ...common, type: ContainerEvent.Type.log_throttle, foldCount: db.foldCount ?? 0 };
+        return { ...common, type: ContainerEvent.Type.log_throttle, dropCount: db.dropCount ?? 0 };
       case ContainerEvent.Type.log:
         return {
           ...common,

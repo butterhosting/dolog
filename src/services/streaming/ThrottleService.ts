@@ -5,20 +5,20 @@ import { Throughput } from "@/models/Throughput";
 import { Temporal } from "@js-temporal/polyfill";
 import { Buffer } from "buffer";
 import {
-  BehaviorSubject,
-  debounceTime,
-  EMPTY,
-  finalize,
-  groupBy,
-  GroupedObservable,
-  interval,
-  merge,
-  mergeMap,
-  Observable,
-  of,
-  pipe,
-  Subject,
-  takeUntil,
+    BehaviorSubject,
+    debounceTime,
+    EMPTY,
+    finalize,
+    groupBy,
+    GroupedObservable,
+    interval,
+    merge,
+    mergeMap,
+    Observable,
+    of,
+    pipe,
+    Subject,
+    takeUntil,
 } from "rxjs";
 
 export class ThrottleService {
@@ -38,20 +38,14 @@ export class ThrottleService {
     const IDLE_EVICTION = Temporal.Duration.from({ minutes: 1 });
 
     return pipe(
-      groupBy(
-        (
-          event:
-            ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log,
-        ) => event.container.id,
-        {
-          // we set a `duration`, otherwise every container creates its own group
-          // and every created group stays alive forever ... thats a bit expensive
-          // because each group has a periodic timer for calculating throughputs,
-          // so if we dont clean up container groups after some time, we'll forever
-          // accumulate periodic timers for each container, including all historic ones
-          duration: (group) => group.pipe(debounceTime(IDLE_EVICTION.total("milliseconds"))),
-        },
-      ),
+      groupBy((event: ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log) => event.container.id, {
+        // we set a `duration`, otherwise every container creates its own group
+        // and every created group stays alive forever ... thats a bit expensive
+        // because each group has a periodic timer for calculating throughputs,
+        // so if we dont clean up container groups after some time, we'll forever
+        // accumulate periodic timers for each container, including all historic ones
+        duration: (group) => group.pipe(debounceTime(IDLE_EVICTION.total("milliseconds"))),
+      }),
       mergeMap((group) => this.throttleContainer(group)),
     );
   }
@@ -62,38 +56,33 @@ export class ThrottleService {
    * containers therefore see no added latency at all.
    */
   private throttleContainer(
-    group: GroupedObservable<
-      string,
-      ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log
-    >,
+    group: GroupedObservable<string, ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log>,
   ): Observable<ContainerEvent> {
     const RATE_LIMIT = this.env.X_DOLOG_THROTTLE_LOGS_PER_SECOND;
     const WINDOW = Temporal.Duration.from({ seconds: 1 });
 
     const signalToStopWatchingThisContainer = new Subject<void>();
 
-    const window = {
+    const windowBudget = {
       container: undefined as Container | undefined,
       logs: 0,
       bytes: 0,
-      folded: 0,
+      droppedLogs: 0,
     };
 
-    const allowedContainerEvents: Observable<
-      ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log
-    > = group.pipe(
+    const allowedContainerEvents: Observable<ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log> = group.pipe(
       mergeMap((event) => {
-        window.container = event.container;
+        windowBudget.container = event.container;
         switch (event.type) {
           case ContainerEvent.Type.start:
           case ContainerEvent.Type.stop: {
             return of(event);
           }
           case ContainerEvent.Type.log: {
-            window.logs += 1;
-            window.bytes += Buffer.byteLength(event.line);
-            if (window.logs > RATE_LIMIT) {
-              window.folded += 1;
+            windowBudget.logs += 1;
+            windowBudget.bytes += Buffer.byteLength(event.line);
+            if (windowBudget.logs > RATE_LIMIT) {
+              windowBudget.droppedLogs += 1;
               return EMPTY;
             }
             return of(event);
@@ -109,10 +98,10 @@ export class ThrottleService {
     const throttleEvents: Observable<ContainerEvent.LogThrottle> = interval(WINDOW.total("milliseconds")).pipe(
       takeUntil(signalToStopWatchingThisContainer),
       mergeMap(() => {
-        const { container, logs, bytes, folded } = window;
-        window.logs = 0;
-        window.bytes = 0;
-        window.folded = 0;
+        const { container, logs, bytes, droppedLogs } = windowBudget;
+        windowBudget.logs = 0;
+        windowBudget.bytes = 0;
+        windowBudget.droppedLogs = 0;
         if (!container) {
           return EMPTY;
         }
@@ -121,13 +110,13 @@ export class ThrottleService {
         this.throughputOverview.set(container.id, {
           object: "throughput",
           container,
-          throttling: folded > 0,
+          throttling: droppedLogs > 0,
           logsPerSecond: logs,
           bytesPerSecond: bytes,
           timestamp: now,
         });
         this.throughputs.next([...this.throughputOverview.values()]);
-        if (folded === 0) {
+        if (droppedLogs === 0) {
           return EMPTY;
         }
 
@@ -137,7 +126,7 @@ export class ThrottleService {
           type: ContainerEvent.Type.log_throttle,
           timestamp: now,
           container,
-          foldCount: folded,
+          dropCount: droppedLogs,
         });
       }),
       /**
@@ -146,8 +135,8 @@ export class ThrottleService {
        * `takeUntil` above.
        */
       finalize(() => {
-        if (window.container) {
-          this.throughputOverview.delete(window.container.id);
+        if (windowBudget.container) {
+          this.throughputOverview.delete(windowBudget.container.id);
           this.throughputs.next([...this.throughputOverview.values()]);
         }
       }),

@@ -2,8 +2,8 @@ import { ZodParser } from "@/helpers/ZodParser";
 import { Temporal } from "@js-temporal/polyfill";
 import z from "zod/v4";
 import { Container } from "./Container";
-import { StreamVariant } from "./StreamVariant";
 import { Direction } from "./Direction";
+import { StreamVariant } from "./StreamVariant";
 
 export type ContainerEvent = ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log | ContainerEvent.LogThrottle;
 
@@ -38,7 +38,7 @@ export namespace ContainerEvent {
 
   export type LogThrottle = Common & {
     type: Type.log_throttle;
-    foldCount: number;
+    dropCount: number;
   };
 
   const common = {
@@ -81,7 +81,7 @@ export namespace ContainerEvent {
         z.object({
           ...common,
           type: z.literal(Type.log_throttle),
-          foldCount: z.number(),
+          dropCount: z.number(),
         }),
       ]),
     )

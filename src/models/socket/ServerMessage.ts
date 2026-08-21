@@ -1,6 +1,6 @@
 import { ZodParser } from "@/helpers/ZodParser";
-import { ContainerRM } from "@/models/ContainerRM";
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { ContainerRM } from "@/models/ContainerRM";
 import z from "zod/v4";
 
 export type ServerMessage = ServerMessage.Containers | ServerMessage.Log;
@@ -8,7 +8,7 @@ export type ServerMessage = ServerMessage.Containers | ServerMessage.Log;
 export namespace ServerMessage {
   export enum Type {
     containers = "containers",
-    log = "log",
+    event = "event",
   }
 
   export type Containers = {
@@ -17,7 +17,7 @@ export namespace ServerMessage {
   };
 
   export type Log = {
-    type: Type.log;
+    type: Type.event;
     data: ContainerEvent;
   };
 
@@ -29,7 +29,7 @@ export namespace ServerMessage {
           containers: z.array(ContainerRM.parse.SCHEMA),
         }),
         z.object({
-          type: z.literal(Type.log),
+          type: z.literal(Type.event),
           data: ContainerEvent.parse.SCHEMA,
         }),
       ]);

@@ -5,7 +5,7 @@ create table container_event (
     type text not null,
     stream_variant text,
     line text,
-    fold_count integer
+    drop_count integer
 )
 without rowid;
 --> statement-breakpoint

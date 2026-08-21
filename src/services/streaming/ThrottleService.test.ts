@@ -57,7 +57,7 @@ describe(ThrottleService.name, () => {
           object: "container_event",
           type: ContainerEvent.Type.log_throttle,
           container,
-          foldCount: 2,
+          dropCount: 2,
         } satisfies Partial<ContainerEvent>) as ContainerEvent.LogThrottle,
       });
     });
@@ -83,7 +83,7 @@ describe(ThrottleService.name, () => {
       // then (the start survives, only the sixth log is folded)
       expectObservable(throttled, "^ 1500ms !").toBe("(sabcde) 992ms t", {
         ...events,
-        t: expect.objectContaining({ foldCount: 1 } satisfies Partial<ContainerEvent>) as ContainerEvent,
+        t: expect.objectContaining({ dropCount: 1 } satisfies Partial<ContainerEvent>) as ContainerEvent,
       });
     });
   });

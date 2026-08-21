@@ -99,12 +99,13 @@ export function containerLogsPage() {
                   <Row.Event
                     key={line.id}
                     line={line}
+                    filter={filterResult.filter}
                     toggleAnchor={() => anchorResult.toggle(line.event.id)}
                     match={
                       line.event.id === searchResult.matching.currentId
-                        ? "main_character"
+                        ? "main_match"
                         : searchResult.matching.ids.has(line.event.id)
-                          ? "side_character"
+                          ? "side_match"
                           : undefined
                     }
                   />

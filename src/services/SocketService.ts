@@ -3,11 +3,11 @@ import { Logger } from "@/Logger";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { ContainerRM } from "@/models/ContainerRM";
 import { Connection } from "@/models/socket/Connection";
+import { PredicateFactory } from "@/repositories/PredicateFactory";
 import { Temporal } from "@js-temporal/polyfill";
 import { ClientMessage } from "../models/socket/ClientMessage";
 import { ServerMessage } from "../models/socket/ServerMessage";
 import { Socket } from "../models/socket/Socket";
-import { PredicateFactory } from "@/repositories/PredicateFactory";
 
 export class SocketService {
   private readonly log = new Logger(__filename);
@@ -18,6 +18,7 @@ export class SocketService {
     this.connections.set(socket.data.clientId, {
       socket,
       lastHeardBack: Temporal.Now.instant(),
+      filterDropThrottleEvents: false,
     });
   };
 
@@ -33,6 +34,7 @@ export class SocketService {
     const SILENCE_BEFORE_DROP = Temporal.Duration.from({ seconds: 50 });
 
     setInterval(() => {
+      this.log.debug(`Socket connection count: ${this.connections.size}`);
       this.connections.forEach((connection, clientId) => {
         const silentFor = Temporal.Now.instant().since(connection.lastHeardBack);
         if (Temporal.Duration.compare(silentFor, SILENCE_BEFORE_DROP) > 0) {
@@ -47,12 +49,21 @@ export class SocketService {
 
   public broadcastEventStream = (event: ContainerEvent) => {
     const message: ServerMessage = {
-      type: ServerMessage.Type.log,
+      type: ServerMessage.Type.event,
       data: event,
     };
     [...this.connections.values()]
       .filter((connection) => connection.watchedContainerId === event.container.id)
-      .filter((connection) => !connection.filterPredicate || (event.type === ContainerEvent.Type.log && connection.filterPredicate(event)))
+      .filter((connection): boolean => {
+        switch (event.type) {
+          case ContainerEvent.Type.start:
+          case ContainerEvent.Type.stop:
+          case ContainerEvent.Type.log_throttle:
+            return true;
+          case ContainerEvent.Type.log:
+            return !connection.filterPredicate || connection.filterPredicate(event);
+        }
+      })
       .forEach((connection) => connection.socket.send(JSON.stringify(message)));
   };
 

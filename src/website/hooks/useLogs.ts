@@ -29,15 +29,18 @@ export function useLogs({ containerId, parentNode, filter, anchor }: useLogs.Opt
   const hasMissedDataWhilePaused = useRef(false);
   useEffect(() => {
     const subscription = socketClient.subscribe({
-      type: ServerMessage.Type.log,
-      callback: ({ data }) => {
-        if (data.container.id !== containerId) {
+      type: ServerMessage.Type.event,
+      callback: ({ data: event }) => {
+        if (event.type === ContainerEvent.Type.stop) {
+          console.log(`Browser STOP; ${event.id}; ${JSON.stringify(event.container, null, 2)}`);
+        }
+        if (event.container.id !== containerId) {
           return;
         }
         // Live lines are _only_ appended while the reader is tailing the end of the logs ...
         // ... otherwise they're noted as missed, and caught up on when they return. The window can
         // turn one down as well, mid-load, which counts as missed for the same reason
-        if (!isFollowingStreamRef.current || !appendEvent(data)) {
+        if (!isFollowingStreamRef.current || !appendEvent(event)) {
           hasMissedDataWhilePaused.current = true;
         }
       },

@@ -1,13 +1,13 @@
-import { Uuid } from "@/models/Uuid";
 import { Container } from "@/models/Container";
-import { Temporal } from "@js-temporal/polyfill";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";
 import { Filter } from "@/models/Filter";
 import { Pattern } from "@/models/Pattern";
 import { StreamVariant } from "@/models/StreamVariant";
+import { Uuid } from "@/models/Uuid";
 import { TestEnvironment } from "@/testing/TestEnvironment.test";
 import { TestFixture } from "@/testing/TestFixture.test";
+import { Temporal } from "@js-temporal/polyfill";
 import { beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { firstValueFrom } from "rxjs";
 import { EventRepository } from "./EventRepository";
@@ -29,7 +29,7 @@ describe(EventRepository.name, () => {
       TestFixture.startEvent({ container }),
       TestFixture.logEvent({ container, line: "GET / 200", streamVariant: StreamVariant.stdout }),
       TestFixture.logEvent({ container, line: "boom", streamVariant: StreamVariant.stderr }),
-      TestFixture.logThrottleEvent({ container, foldCount: 12 }),
+      TestFixture.logThrottleEvent({ container, dropCount: 12 }),
       TestFixture.stopEvent({ container }),
     ];
 
@@ -48,7 +48,7 @@ describe(EventRepository.name, () => {
       expect.objectContaining({ line: "GET / 200", streamVariant: StreamVariant.stdout } satisfies Partial<ContainerEvent>),
     );
     expect(data.at(2)).toEqual(expect.objectContaining({ streamVariant: StreamVariant.stderr } satisfies Partial<ContainerEvent>));
-    expect(data.at(3)).toEqual(expect.objectContaining({ foldCount: 12 } satisfies Partial<ContainerEvent>));
+    expect(data.at(3)).toEqual(expect.objectContaining({ dropCount: 12 } satisfies Partial<ContainerEvent>));
     expect(data.at(1)?.container).toEqual(container);
   });
 

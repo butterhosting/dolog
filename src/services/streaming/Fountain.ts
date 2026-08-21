@@ -8,7 +8,7 @@ import { DockerSocket } from "./DockerSocket";
 import { ThrottleService } from "./ThrottleService";
 
 /**
- * Our single source of continuous events.
+ * Our single (shared) source of continuous events
  *
  * Once this fountain is turned on, it emits for the lifetime of the process:
  * containers that come online start producing logs, containers that die stop, and a dead socket is
@@ -50,13 +50,12 @@ export class Fountain {
 
     const isStopped = (containerId: string): Observable<ContainerEvent.Stop> => {
       return lifecycle.pipe(
-        filter((event): event is ContainerEvent.Stop => {
-          return event.type === ContainerEvent.Type.stop && event.container.id === containerId;
-        }),
+        filter((event) => event.container.id === containerId),
+        filter((event): event is ContainerEvent.Stop => event.type === ContainerEvent.Type.stop),
       );
     };
 
-    const follow = (container: Container): Observable<ContainerEvent.Log> => {
+    const followLogs = (container: Container): Observable<ContainerEvent.Log> => {
       if (containersBeingFollowed.has(container.id)) {
         return EMPTY;
       }
@@ -65,15 +64,16 @@ export class Fountain {
     };
 
     return merge(
-      this.alreadyRunning().pipe(mergeMap(follow)),
+      this.alreadyRunning().pipe(mergeMap(followLogs)),
       lifecycle.pipe(
         mergeMap((event) => {
           switch (event.type) {
             case ContainerEvent.Type.start: {
-              return merge(of(event), follow(event.container));
+              return merge(of(event), followLogs(event.container));
             }
             case ContainerEvent.Type.stop: {
               containersBeingFollowed.delete(event.container.id);
+              console.log(`Server STOP; ${event.id}; ${JSON.stringify(event.container, null, 2)}`);
               return of(event);
             }
           }
