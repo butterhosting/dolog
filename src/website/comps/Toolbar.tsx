@@ -2,6 +2,7 @@ import { RangeDisplay } from "@/helpers/RangeDisplay";
 import { Pattern } from "@/models/Pattern";
 import { useFilter } from "../hooks/useFilter";
 import { LogControls } from "./LogControls";
+import { Button } from "./basics/Button";
 
 type Props = {
   filter: useFilter.Result;
@@ -14,34 +15,28 @@ export function Toolbar({ filter, onApply, onJump }: Props) {
   const period = RangeDisplay.label(form.range);
   return (
     <div className="flex items-end gap-7 bg-c-dark-deep px-4 pb-3 pt-2">
-      <LogControls.Group label="Navigate">
-        <LogControls.Action onClick={onJump}>Jump</LogControls.Action>
-      </LogControls.Group>
+      <Button onClick={onJump}>Jump</Button>
 
-      <LogControls.Group label="Filter">
-        <LogControls.Field>
-          <LogControls.RegexToggle on={form.patternType === Pattern.Type.regex} onClick={form.togglePatternType} />
-          <input
-            value={form.pattern}
-            onChange={(event) => form.setPattern(event.target.value)}
-            onKeyDown={(event) => event.key === "Enter" && formState.dirty && onApply()}
-            placeholder="type to filter"
-            className="w-72 bg-transparent font-mono text-xs text-c-dark-full outline-none placeholder:text-c-dark-half"
-          />
-        </LogControls.Field>
-        <LogControls.Action onClick={onApply} disabled={!formState.dirty}>
-          Apply
-        </LogControls.Action>
-      </LogControls.Group>
+      <LogControls.Field>
+        <LogControls.RegexToggle on={form.patternType === Pattern.Type.regex} onClick={form.togglePatternType} />
+        <input
+          value={form.pattern}
+          onChange={(event) => form.setPattern(event.target.value)}
+          onKeyDown={(event) => event.key === "Enter" && formState.dirty && onApply()}
+          placeholder="type to filter"
+          className="w-72 bg-transparent font-mono text-xs text-c-dark-full outline-none placeholder:text-c-dark-half"
+        />
+      </LogControls.Field>
+      <Button onClick={onApply} disabled={!formState.dirty}>
+        Apply
+      </Button>
 
       <div className="flex-1" />
 
-      <LogControls.Group label="Period">
-        {/* the whole span is one control: it says what is covered, and opens the picker */}
-        <LogControls.Readout onClick={() => void form.promptRangeDialog()} title="choose the time span this filter covers">
-          {period}
-        </LogControls.Readout>
-      </LogControls.Group>
+      {/* the whole span is one control: it says what is covered, and opens the picker */}
+      <LogControls.Readout onClick={() => void form.promptRangeDialog()} title="choose the time span this filter covers">
+        {period}
+      </LogControls.Readout>
     </div>
   );
 }

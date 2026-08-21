@@ -8,11 +8,6 @@ type Props = {
   search: useSearch.Result;
 };
 
-/**
- * Find rides over the log rather than sitting in the toolbar: it is a thing you reach for mid-read
- * and dismiss, not a setting the view is configured with. The filter is the opposite, which is why
- * only one of them is up there.
- */
 export function SearchBox({ search }: Props) {
   return (
     <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-xl bg-c-dark-deep p-2 shadow-2xl">

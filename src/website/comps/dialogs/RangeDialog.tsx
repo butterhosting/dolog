@@ -55,7 +55,7 @@ export function RangeDialog({ current, close, done }: Props) {
         >
           <div className="flex flex-col gap-1">
             <h2 className="text-lg font-bold">Custom range</h2>
-            <p className="text-sm text-c-dark-half">In UTC. Leave either side empty for an open end.</p>
+            <p className="text-sm text-c-dark-half">In UTC. Leave either side empty for an open end.</p> {/* TODO: timezone aware */}
           </div>
           <div className="flex gap-3">
             {(
