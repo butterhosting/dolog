@@ -22,7 +22,7 @@ export function useFilter(): useFilter.Result {
   const [patternType, setPatternType] = useState<Pattern.Type>(filter.pattern?.type ?? Pattern.Type.substr);
   const [range, setRange] = useState<Range>(filter.range);
 
-  const underConstruction: ClientFilter = {
+  const staged: ClientFilter = {
     pattern: pattern.trim()
       ? {
           type: patternType,
@@ -32,7 +32,7 @@ export function useFilter(): useFilter.Result {
     range,
   };
 
-  function apply(target = underConstruction) {
+  function commit(target = staged) {
     setFilter(target);
   }
 
@@ -55,16 +55,18 @@ export function useFilter(): useFilter.Result {
       },
       range,
       async promptRangeDialog() {
-        const result = await dialogClient.promptRangeDialog(range);
-        if (result !== "cancel") {
-          setRange(result);
-          apply({ ...underConstruction, range: result }); // immediately apply
+        const newRange = await dialogClient.promptRangeDialog(range);
+        if (newRange !== "cancel") {
+          setRange(newRange);
+          commit({ ...staged, range: newRange });
         }
       },
     },
     formState: {
-      dirty: !Internal.equals(filter, underConstruction),
-      apply,
+      dirty: !Internal.equals(filter, staged),
+      apply() {
+        commit();
+      },
     },
   };
 }

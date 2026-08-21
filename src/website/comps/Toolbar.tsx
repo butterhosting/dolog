@@ -1,4 +1,5 @@
 import { RangeDisplay } from "@/helpers/RangeDisplay";
+import { Pattern } from "@/models/Pattern";
 import { useFilter } from "../hooks/useFilter";
 import { LogControls } from "./LogControls";
 
@@ -19,7 +20,7 @@ export function Toolbar({ filter, onApply, onJump }: Props) {
 
       <LogControls.Group label="Filter">
         <LogControls.Field>
-          {/*<LogControls.RegexToggle on={form.patternVariant === LogPattern.Variant.regex} onClick={form.togglePatternVariant} />*/}
+          <LogControls.RegexToggle on={form.patternType === Pattern.Type.regex} onClick={form.togglePatternType} />
           <input
             value={form.pattern}
             onChange={(event) => form.setPattern(event.target.value)}
