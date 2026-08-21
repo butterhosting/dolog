@@ -56,15 +56,15 @@ export function useLogsContainerNode(): useLogsContainerNode.Result {
           }
           const shown = Internal.findAll(container).filter((line) => Internal.overlaps(line, container));
           return {
-            topOfScreenId: shown.at(0)?.dataset.event,
-            bottomOfScreenId: shown.at(-1)?.dataset.event,
+            uppermostId: shown.at(0)?.dataset.event,
+            bottommostId: shown.at(-1)?.dataset.event,
           };
         },
       },
       move: {
-        toEvent(eventId: string) {
+        toEvent(eventId: string, method?: "minimize_distance") {
           const element = Internal.findEventElement(containerRef.current, eventId);
-          element?.scrollIntoView({ block: "center", behavior: "instant" });
+          element?.scrollIntoView({ block: method === "minimize_distance" ? "nearest" : "center", behavior: "instant" });
         },
         toAnchor() {
           const element = Internal.findAnchorElement(containerRef.current);

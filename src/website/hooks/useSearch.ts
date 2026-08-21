@@ -1,9 +1,9 @@
+import { AnimationKit } from "@/helpers/AnimationKit";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";
 import { Pattern } from "@/models/Pattern";
 import { RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { LogClient } from "../clients/LogClient";
-import { LogControls } from "../comps/LogControls";
 import { useRegistry } from "./basics/useRegistry";
 import { ClientFilter } from "./objects/ClientFilter";
 import { LogsContainerNode } from "./objects/LogsContainerNode";
@@ -14,6 +14,7 @@ export function useSearch({
   logsContainerNode,
   filter,
   events,
+  isFollowingStream,
   navigateToUnloadedMatchResult,
 }: useSearch.Options): useSearch.Result {
   const logClient = useRegistry(LogClient);
@@ -84,12 +85,21 @@ export function useSearch({
 
     let cursor: string | undefined;
 
-    const isCurrentMatchVisible = Boolean(currentMatchId && logsContainerNode.events.isVisible(currentMatchId));
+    const isCurrentMatchVisible = currentMatchId && logsContainerNode.events.isVisible(currentMatchId);
     if (isCurrentMatchVisible) {
-      cursor = currentMatchId!;
+      cursor = currentMatchId;
     } else {
-      const { topOfScreenId, bottomOfScreenId } = logsContainerNode.events.outermostVisibleIds();
-      cursor = direction === Direction.forwards_in_time ? topOfScreenId : bottomOfScreenId;
+      // this branch covers the scenario where the user has scrolled (far) away from their previous match,
+      // so it no longer makes sense to anchor the next match around that earlier one, which is why we'll re-anchor
+      // here to the currently visible window
+      if (currentMatchId && isFollowingStream) {
+        // the only exception is when we're still following the livestream, in which case we DO want to follow a match
+        // that (just) went offscreen, or we could never escape our current window prison
+        cursor = currentMatchId;
+      } else {
+        const { uppermostId, bottommostId } = logsContainerNode.events.outermostVisibleIds();
+        cursor = direction === Direction.forwards_in_time ? uppermostId : bottommostId;
+      }
     }
 
     setSearchingRightNow(direction);
@@ -102,16 +112,15 @@ export function useSearch({
         ...useFilter.serializeForServer(filter),
       });
 
-      if (!nextMatchId) {
-        LogControls.nudge(chevrons[direction].current);
+      if (nextMatchId) {
+        setCurrentMatchId(nextMatchId);
+      } else {
+        AnimationKit.wiggle(chevrons[direction].current);
         return;
       }
-      setCurrentMatchId(nextMatchId);
 
       if (logsContainerNode.events.exists(nextMatchId)) {
-        if (!logsContainerNode.events.isVisible(nextMatchId)) {
-          logsContainerNode.move.toEvent(nextMatchId);
-        }
+        logsContainerNode.move.toEvent(nextMatchId, "minimize_distance");
       } else {
         navigateToUnloadedMatchResult(nextMatchId);
       }
@@ -147,37 +156,6 @@ export function useSearch({
   };
 }
 
-export namespace useSearch {
-  export type Options = {
-    containerId: string;
-    logsContainerNode: LogsContainerNode;
-    filter: ClientFilter;
-    events: ContainerEvent[];
-    navigateToUnloadedMatchResult: (eventId: string) => void;
-  };
-
-  export type Result = {
-    activated: boolean;
-    activate: () => void;
-    deactivate: () => void;
-    form: {
-      textField: RefObject<HTMLInputElement | null>;
-      needle: string;
-      setNeedle: (value: string) => void;
-      needleType: Pattern.Type;
-      toggleNeedleType: () => void;
-      isRegexInvalid: boolean;
-    };
-    matching: {
-      ids: Set<string>;
-      currentId?: string;
-      isSearchingRightNow?: Direction;
-      chevrons: Record<Direction, RefObject<HTMLButtonElement | null>>;
-      step: (direction: Direction) => Promise<void>;
-    };
-  };
-}
-
 namespace Internal {
   export function match(events: ContainerEvent[], pattern: Pattern): { matchedIds: Set<string>; isRegexInvalid: boolean } {
     if (!pattern.value) {
@@ -202,4 +180,36 @@ namespace Internal {
       };
     }
   }
+}
+
+export namespace useSearch {
+  export type Options = {
+    containerId: string;
+    logsContainerNode: LogsContainerNode;
+    filter: ClientFilter;
+    events: ContainerEvent[];
+    isFollowingStream: boolean;
+    navigateToUnloadedMatchResult: (eventId: string) => void;
+  };
+
+  export type Result = {
+    activated: boolean;
+    activate: () => void;
+    deactivate: () => void;
+    form: {
+      textField: RefObject<HTMLInputElement | null>;
+      needle: string;
+      setNeedle: (value: string) => void;
+      needleType: Pattern.Type;
+      toggleNeedleType: () => void;
+      isRegexInvalid: boolean;
+    };
+    matching: {
+      ids: Set<string>;
+      currentId?: string;
+      isSearchingRightNow?: Direction;
+      chevrons: Record<Direction, RefObject<HTMLButtonElement | null>>;
+      step: (direction: Direction) => Promise<void>;
+    };
+  };
 }

@@ -8,12 +8,12 @@ export type LogsContainerNode = {
     exists(eventId: string): boolean;
     isVisible(eventId: string): boolean;
     outermostVisibleIds(): {
-      topOfScreenId?: string;
-      bottomOfScreenId?: string;
+      uppermostId?: string;
+      bottommostId?: string;
     };
   };
   move: {
-    toEvent(eventId: string): unknown;
+    toEvent(eventId: string, method?: "minimize_distance"): unknown;
     toAnchor(): unknown;
     toTheBottom(): unknown;
   };

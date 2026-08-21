@@ -31,6 +31,7 @@ export function containerLogsPage() {
     logsContainerNode,
     filter: filterResult.filter,
     events: logsResult.events,
+    isFollowingStream: logsResult.isFollowingStream,
     navigateToUnloadedMatchResult: logsResult.navigateTo,
   });
 

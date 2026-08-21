@@ -73,18 +73,6 @@ export namespace LogControls {
     );
   }
 
-  /**
-   * A shake, driven from the element rather than from a class. A class would already be applied by
-   * the time the second fruitless press arrived, and a css animation that is already running does
-   * not restart -- so the reply to "still nothing?" would be silence.
-   */
-  export function nudge(element: HTMLElement | null): void {
-    element?.animate(
-      [{ transform: "translateX(0)" }, { transform: "translateX(-2px)" }, { transform: "translateX(2px)" }, { transform: "translateX(0)" }],
-      { duration: 75, iterations: 2, easing: "ease-in-out" },
-    );
-  }
-
   export function Step({
     ref,
     direction,
