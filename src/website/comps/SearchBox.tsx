@@ -11,7 +11,7 @@ type Props = {
 export function SearchBox({ search }: Props) {
   return (
     <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-xl bg-c-dark-deep p-2 shadow-2xl">
-      <div>
+      <div className="bg-white">
         <RegexToggle active={search.form.needleType === Pattern.Type.regex} onClick={search.form.toggleNeedleType} />
         <input
           ref={search.form.textField}

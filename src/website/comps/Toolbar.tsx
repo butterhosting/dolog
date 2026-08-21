@@ -17,7 +17,7 @@ export function Toolbar({ filter, onApply, onJump }: Props) {
     <div className="flex items-end gap-7 bg-c-dark-deep px-4 pb-3 pt-2">
       <Button onClick={onJump}>Jump</Button>
 
-      <div>
+      <div className="bg-white">
         <RegexToggle active={form.patternType === Pattern.Type.regex} onClick={form.togglePatternType} />
         <input
           value={form.pattern}
