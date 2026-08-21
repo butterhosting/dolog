@@ -17,37 +17,37 @@ export function SearchBox({ search }: Props) {
   return (
     <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-xl bg-c-dark-deep p-2 shadow-2xl">
       <LogControls.Field>
-        <LogControls.RegexToggle on={search.needleType === Pattern.Type.regex} onClick={search.toggleNeedleType} />
+        <LogControls.RegexToggle on={search.form.needleType === Pattern.Type.regex} onClick={search.form.toggleNeedleType} />
         <input
-          ref={search.textField}
+          ref={search.form.textField}
           autoFocus
-          value={search.needle}
-          onChange={(event) => search.setNeedle(event.target.value)}
+          value={search.form.needle}
+          onChange={(event) => search.form.setNeedle(event.target.value)}
           onKeyDown={(event) =>
-            event.key === "Enter" && void search.step(event.shiftKey ? Direction.backwards_in_time : Direction.forwards_in_time)
+            event.key === "Enter" && void search.matching.step(event.shiftKey ? Direction.backwards_in_time : Direction.forwards_in_time)
           }
           placeholder="type to search"
           className={clsx(
             "w-56 bg-transparent font-mono text-xs outline-none placeholder:text-c-dark-half",
-            search.isRegexInvalid ? "text-c-error" : "text-c-dark-full",
+            search.form.isRegexInvalid ? "text-c-error" : "text-c-dark-full",
           )}
         />
       </LogControls.Field>
       {/* never disabled by a verdict: without all of history in hand, "no more" is only ever
           true of the search we last ran, not of the one about to be run */}
       <LogControls.Step
-        ref={search.chevrons[Direction.backwards_in_time]}
+        ref={search.matching.chevrons[Direction.backwards_in_time]}
         direction={Direction.backwards_in_time}
-        onClick={() => void search.step(Direction.backwards_in_time)}
-        disabled={!search.needle.trim()}
-        busy={search.searchDirection === Direction.backwards_in_time}
+        onClick={() => void search.matching.step(Direction.backwards_in_time)}
+        disabled={!search.form.needle.trim()}
+        busy={search.matching.isSearchingRightNow === Direction.backwards_in_time}
       />
       <LogControls.Step
-        ref={search.chevrons[Direction.forwards_in_time]}
+        ref={search.matching.chevrons[Direction.forwards_in_time]}
         direction={Direction.forwards_in_time}
-        onClick={() => void search.step(Direction.forwards_in_time)}
-        disabled={!search.needle.trim()}
-        busy={search.searchDirection === Direction.forwards_in_time}
+        onClick={() => void search.matching.step(Direction.forwards_in_time)}
+        disabled={!search.form.needle.trim()}
+        busy={search.matching.isSearchingRightNow === Direction.forwards_in_time}
       />
       <button
         onClick={search.deactivate}

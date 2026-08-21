@@ -83,8 +83,8 @@ export function containerLogsPage() {
                     key={line.id}
                     line={line}
                     toggleAnchor={() => anchorResult.toggle(line.event.id)}
-                    matched={searchResult.matchedIds.has(line.event.id)}
-                    current={line.event.id === searchResult.currentMatchId}
+                    matched={searchResult.matching.ids.has(line.event.id)}
+                    current={line.event.id === searchResult.matching.currentId}
                   />
                 );
             }
