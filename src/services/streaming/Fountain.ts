@@ -26,15 +26,16 @@ export class Fountain {
   ) {}
 
   public streamEvents(): Observable<ContainerEvent> {
-    this.events ??= defer(() => this.rawSocketStream()).pipe(
-      this.throttleService.groupAndThrottleByContainer(),
-      share({
-        // `resetOnRefCountZero: false` keeps the socket connections open even when no one is listening.
-        // Without it, a momentary gap between subscribers would re-run the `defer`: every container
-        // re-listed and re-attached, and both this class's and the throttler's state rebuilt.
-        resetOnRefCountZero: false,
-      }),
-    );
+    this.events ??= defer(() => this.rawSocketStream()) //
+      .pipe(
+        this.throttleService.groupAndThrottleByContainer(),
+        share({
+          // `resetOnRefCountZero: false` keeps the socket connections open even when no one is listening.
+          // Without it, a momentary gap between subscribers would re-run the `defer`: every container
+          // re-listed and re-attached, and both this class's and the throttler's state rebuilt.
+          resetOnRefCountZero: false,
+        }),
+      );
     return this.events;
   }
 
