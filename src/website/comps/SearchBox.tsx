@@ -2,17 +2,17 @@ import { Direction } from "@/models/Direction";
 import { Pattern } from "@/models/Pattern";
 import clsx from "clsx";
 import { useSearch } from "../hooks/useSearch";
-import { LogControls } from "./LogControls";
+import { ChevronButton } from "./ChevronButton";
+import { RegexToggle } from "./RegexToggle";
 
 type Props = {
   search: useSearch.Result;
 };
-
 export function SearchBox({ search }: Props) {
   return (
     <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-xl bg-c-dark-deep p-2 shadow-2xl">
-      <LogControls.Field>
-        <LogControls.RegexToggle on={search.form.needleType === Pattern.Type.regex} onClick={search.form.toggleNeedleType} />
+      <div>
+        <RegexToggle active={search.form.needleType === Pattern.Type.regex} onClick={search.form.toggleNeedleType} />
         <input
           ref={search.form.textField}
           autoFocus
@@ -27,21 +27,19 @@ export function SearchBox({ search }: Props) {
             search.form.isRegexInvalid ? "text-c-error" : "text-c-dark-full",
           )}
         />
-      </LogControls.Field>
-      {/* never disabled by a verdict: without all of history in hand, "no more" is only ever
-          true of the search we last ran, not of the one about to be run */}
-      <LogControls.Step
+      </div>
+      <ChevronButton
         ref={search.matching.chevrons[Direction.backwards_in_time]}
         direction={Direction.backwards_in_time}
         onClick={() => void search.matching.step(Direction.backwards_in_time)}
-        disabled={!search.form.needle.trim()}
+        disabled={!search.form.needle}
         busy={search.matching.isSearchingRightNow === Direction.backwards_in_time}
       />
-      <LogControls.Step
+      <ChevronButton
         ref={search.matching.chevrons[Direction.forwards_in_time]}
         direction={Direction.forwards_in_time}
         onClick={() => void search.matching.step(Direction.forwards_in_time)}
-        disabled={!search.form.needle.trim()}
+        disabled={!search.form.needle}
         busy={search.matching.isSearchingRightNow === Direction.forwards_in_time}
       />
       <button
