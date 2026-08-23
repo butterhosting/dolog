@@ -7,7 +7,7 @@
 
 ## 2) Invent history for the slow "trickle" container
 
-- So that on `bun dev`, it automatically invents history for the last 3 days up until now
+- So that on `bun dev`, it automatically invents history for the last 3 days up until now (the automatic retention cleanup might bite, tho)
 - This will give a nice combination of all sorts of events (started, container started / stopped, throttle, day transitions, etc.)
 - I'll use this to manually finetune the layout, to see what makes sense
 - Finalize the logs page
@@ -16,6 +16,7 @@
 
 - The homepage listing should show all running containers instead, and any stopped containers should be hidden by default
 - Design a configuration page, with sections for "global conf" (alert endpoints, default alert pattern, default alert volume throughput-values, throttle value, retention) and "per-container-conf" (alert regexes/throughput-values and endpoint refs, individual throttle values, individual retention values)
+- CHALLENGE: per-container labels only exists while the containers are running ... what if the labels change from 1 container to the next? Latest wins? What if we're in the Swarm/Stack future and multiple replicas are running in the same chain? what if their labels disagree?
 
 #### 4) Build the configuration framework
 
@@ -29,6 +30,8 @@
 
 ###### 6) Finish up
 
+- Write unit and E2E tests
+- Fix TODOs (timezone considerations, etc.)
 - Setup a pipeline to release a Dolog docker image
 - Add a new entry on the main website
 - Begin using it myself
