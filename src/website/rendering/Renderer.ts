@@ -1,8 +1,8 @@
-import { ContainerEvent } from "@/models/ContainerEvent";
 import { Anchor } from "@/models/Anchor";
-import { Line } from "./Line";
-import { Temporal } from "@js-temporal/polyfill";
+import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";
+import { Temporal } from "@js-temporal/polyfill";
+import { Line } from "./Line";
 
 export class LineRenderer {
   public render({ events, hasOlder, hasNewer, anchor }: LineRenderer.Options): Line[] {
@@ -10,34 +10,26 @@ export class LineRenderer {
       return [];
     }
 
-    const anchorId = anchor?.type === "id" ? anchor.value : undefined;
-    const anchorInstant = anchor?.type === "timestamp" ? anchor.value : undefined;
+    let timestampAnchor: { line: Line.TimestampAnchor; predecessorEventId?: string } | undefined;
 
-    //
-    // Where a moment falls is a fact about the lines on screen, so it is read off them rather than
-    // carried over from the request that fetched them: lines arrive on the stream and leave when the
-    // window pages, and the answer has to move with them.
-    //
-    let boxedEventId: string | undefined;
-    let mark: Line.TimestampAnchor | undefined;
-    let markBeforeEventId: string | undefined;
-    if (anchorInstant !== undefined) {
-      const landedOn = events.find((event) => Temporal.Instant.compare(event.timestamp, anchorInstant) >= 0);
-      if (landedOn !== undefined && Temporal.Instant.compare(landedOn.timestamp, anchorInstant) === 0) {
-        // an instant that is exactly when a line was logged *is* that line, so it is boxed rather
-        // than drawn above it: a mark between two lines claims a gap, and here there is none
-        boxedEventId = landedOn.id;
-      } else {
-        mark = this.timestampAnchor(anchorInstant);
-        markBeforeEventId = landedOn?.id; // nothing at or after it means it belongs past every line
-      }
+    if (anchor?.type === "timestamp") {
+      timestampAnchor = {
+        line: this.timestampAnchor(anchor.value),
+        predecessorEventId: events.find((event) => Temporal.Instant.compare(event.timestamp, anchor.value) >= 0)?.id,
+      };
+    } else {
+      timestampAnchor = undefined;
     }
 
     const result: Line[] = [];
     if (hasOlder) {
       const type = Line.Type.scroll_teaser;
       const direction = Direction.backwards_in_time;
-      result.push({ id: `${type}:${direction}`, type, direction });
+      result.push({
+        id: `${type}:${direction}`,
+        type,
+        direction,
+      });
     } else {
       result.push({
         id: Line.Type.beginning_of_time,
@@ -50,20 +42,20 @@ export class LineRenderer {
 
       let firstOfDay: Temporal.PlainDate | undefined;
       if (previousEvent) {
-        // compared by value: two `PlainDate`s for the same day are still two different objects
         firstOfDay = this.day(previousEvent).equals(this.day(event)) ? undefined : this.day(event);
       } else {
         firstOfDay = hasOlder ? undefined : this.day(event);
       }
 
-      const markHere = markBeforeEventId === event.id ? mark : undefined;
-      const markedBeforeTheDayBegan =
-        anchorInstant !== undefined && //
-        firstOfDay !== undefined &&
-        Temporal.Instant.compare(anchorInstant, this.midnight(firstOfDay)) <= 0;
+      const shouldInsertTimestampAnchor = timestampAnchor?.predecessorEventId === event.id;
+      const shouldInsertTimestampAnchorBeforeDayTransition = Boolean(
+        firstOfDay && //
+        anchor?.type === "timestamp" &&
+        Temporal.Instant.compare(anchor.value, this.midnight(firstOfDay)) <= 0,
+      );
 
-      if (markHere && markedBeforeTheDayBegan) {
-        result.push(markHere);
+      if (timestampAnchor && shouldInsertTimestampAnchor && shouldInsertTimestampAnchorBeforeDayTransition) {
+        result.push(timestampAnchor.line);
       }
       if (firstOfDay) {
         result.push({
@@ -72,25 +64,28 @@ export class LineRenderer {
           day: firstOfDay,
         });
       }
-      if (markHere && !markedBeforeTheDayBegan) {
-        result.push(markHere);
+      if (timestampAnchor && shouldInsertTimestampAnchor && !shouldInsertTimestampAnchorBeforeDayTransition) {
+        result.push(timestampAnchor.line);
       }
+
       result.push({
         id: event.id,
         type: Line.Type.event,
         event,
-        isAnchored: event.id === anchorId || event.id === boxedEventId,
+        isAnchored: anchor?.type === "id" && event.id === anchor.value,
       });
     });
 
-    if (mark && markBeforeEventId === undefined) {
-      result.push(mark);
+    if (timestampAnchor && !timestampAnchor.predecessorEventId) {
+      result.push(timestampAnchor.line); // no predecessor event, so it must be the last line
     }
+
     if (hasNewer) {
       const type = Line.Type.scroll_teaser;
       const direction = Direction.forwards_in_time;
       result.push({ id: `${type}:${direction}`, type, direction });
     }
+
     return result;
   }
 
