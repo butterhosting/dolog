@@ -2,11 +2,16 @@
 # viewer has to get right: a log slow enough to read, and one fast enough to be throttled.
 #
 # `$` is doubled throughout because compose expands it before the shell ever sees it.
+#
+# Both carry `attach: false`: the daemon still records every line, so dolog reads them off the
+# socket as usual, compose just stops mirroring them into the terminal running `bun dev`.
+# `docker compose logs gateway` still prints them on demand.
 services:
   gateway:
     image: alpine
-    container_name: dolog-gateway
+    container_name: trickle
     restart: unless-stopped
+    attach: false
     # a line a second, deterministic rather than random so a run reads the same twice
     command:
       - sh
@@ -36,8 +41,9 @@ services:
 
   firehose:
     image: alpine
-    container_name: dolog-firehose
+    container_name: firehose
     restart: unless-stopped
+    attach: false
     # ~400 lines a second, comfortably over the default budget of 100 so the throttler has to fold
     # it -- bursty rather than a flat-out spin loop, which would pin a core for no extra coverage
     command:
