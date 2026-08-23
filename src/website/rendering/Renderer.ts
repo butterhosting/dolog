@@ -13,7 +13,11 @@ export class LineRenderer {
     let timestampAnchor: { line: Line.TimestampAnchor; successorEventId?: string } | undefined;
     if (anchor?.type === "timestamp") {
       timestampAnchor = {
-        line: this.timestampAnchor(anchor.value),
+        line: {
+          id: anchor.value.toString(),
+          type: Line.Type.timestamp_anchor,
+          timestamp: anchor.value,
+        },
         successorEventId: events.find((event) => Temporal.Instant.compare(event.timestamp, anchor.value) >= 0)?.id,
       };
     }
@@ -74,7 +78,7 @@ export class LineRenderer {
     });
 
     if (timestampAnchor && !timestampAnchor.successorEventId) {
-      result.push(timestampAnchor.line); // no predecessor event, so it must be the last line
+      result.push(timestampAnchor.line); // no successor, so this has to be last
     }
 
     if (hasNewer) {
@@ -86,16 +90,12 @@ export class LineRenderer {
     return result;
   }
 
-  private timestampAnchor(timestamp: Temporal.Instant): Line.TimestampAnchor {
-    return { id: timestamp.toString(), type: Line.Type.timestamp_anchor, timestamp };
-  }
-
   private day(event: ContainerEvent): Temporal.PlainDate {
-    return event.timestamp.toZonedDateTimeISO("UTC").toPlainDate();
+    return event.timestamp.toZonedDateTimeISO("UTC").toPlainDate(); // TODO: timezone?
   }
 
   private midnight(date: Temporal.PlainDate): Temporal.Instant {
-    return date.toZonedDateTime("UTC").toInstant();
+    return date.toZonedDateTime("UTC").toInstant(); // TODO: timezone?
   }
 }
 
