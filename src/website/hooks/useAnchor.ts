@@ -15,13 +15,16 @@ export function useAnchor(): useAnchor.Result {
 
   // Read the URL once (above) and keep it in sync, going forward
   useEffect(() => {
-    setParameters((previous) => {
-      if (anchor) {
-        return Internal.setUrlParam(previous, anchor.serialize());
-      } else {
-        return Internal.clearUrlParam(previous);
-      }
-    });
+    setParameters(
+      (previous) => {
+        if (anchor) {
+          return Internal.setUrlParam(previous, anchor.serialize());
+        } else {
+          return Internal.clearUrlParam(previous);
+        }
+      },
+      { replace: true },
+    );
   }, [anchor]);
 
   const isDialogOpen = useRef(false);

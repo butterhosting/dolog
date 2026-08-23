@@ -10,11 +10,11 @@ import { ClientFilter } from "./objects/ClientFilter";
 
 export function useFilter(): useFilter.Result {
   const dialogClient = useRegistry(DialogClient);
-  const [parameters, setParametersx] = useSearchParams();
+  const [parameters, setParameters] = useSearchParams();
 
   const [filter, setFilter] = useState(Internal.parseClientUrl(parameters));
   useEffect(() => {
-    setParametersx((previous) => Internal.mergeClientUrl(previous, filter));
+    setParameters((previous) => Internal.mergeClientUrl(previous, filter), { replace: true });
   }, [filter]);
 
   // Form (initial values based on the URL, see above)
