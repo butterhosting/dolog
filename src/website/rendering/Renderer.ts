@@ -10,15 +10,12 @@ export class LineRenderer {
       return [];
     }
 
-    let timestampAnchor: { line: Line.TimestampAnchor; predecessorEventId?: string } | undefined;
-
+    let timestampAnchor: { line: Line.TimestampAnchor; successorEventId?: string } | undefined;
     if (anchor?.type === "timestamp") {
       timestampAnchor = {
         line: this.timestampAnchor(anchor.value),
-        predecessorEventId: events.find((event) => Temporal.Instant.compare(event.timestamp, anchor.value) >= 0)?.id,
+        successorEventId: events.find((event) => Temporal.Instant.compare(event.timestamp, anchor.value) >= 0)?.id,
       };
-    } else {
-      timestampAnchor = undefined;
     }
 
     const result: Line[] = [];
@@ -47,7 +44,7 @@ export class LineRenderer {
         firstOfDay = hasOlder ? undefined : this.day(event);
       }
 
-      const shouldInsertTimestampAnchor = timestampAnchor?.predecessorEventId === event.id;
+      const shouldInsertTimestampAnchor = timestampAnchor?.successorEventId === event.id;
       const shouldInsertTimestampAnchorBeforeDayTransition = Boolean(
         firstOfDay && //
         anchor?.type === "timestamp" &&
@@ -76,7 +73,7 @@ export class LineRenderer {
       });
     });
 
-    if (timestampAnchor && !timestampAnchor.predecessorEventId) {
+    if (timestampAnchor && !timestampAnchor.successorEventId) {
       result.push(timestampAnchor.line); // no predecessor event, so it must be the last line
     }
 

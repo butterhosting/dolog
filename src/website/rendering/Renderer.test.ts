@@ -132,6 +132,19 @@ describe(Renderer.name, () => {
       expect(body(rows)).toEqual(["line:2026-03-01T09:00:00Z", "pin", "line:2026-03-01T10:00:00Z"]);
     });
 
+    it("sits above a line it lands exactly on", () => {
+      // given -- an instant with no gap to claim, which the navigate dialog can only reach on a
+      // lifecycle event: those carry whole-second stamps, where log lines carry nanoseconds
+      const events = [at("2026-03-01T09:00:00Z"), at("2026-03-01T10:00:00Z")];
+      // when
+      const rows = build({
+        events,
+        anchor: Anchor.parse("2026-03-01T10:00:00Z"),
+      });
+      // then -- "at or after" includes "at", so it draws above that line like any other
+      expect(body(rows)).toEqual(["line:2026-03-01T09:00:00Z", "pin", "line:2026-03-01T10:00:00Z"]);
+    });
+
     it("comes before the date when the instant precedes the day", () => {
       // given -- nothing was logged between 23:30 and the next midnight, so the server lands on the
       // first line of the following day, which is also the line that date heads
@@ -202,17 +215,13 @@ describe(Renderer.name, () => {
       expect(body(rows)).toEqual(["line:2026-03-01T09:00:00Z", "line:2026-03-01T10:00:00Z"]);
     });
 
-    it("is boxed where it sits, with no pin of its own", () => {
-      // given -- the server reports a landing for a pinned line too: an id anchor reads inclusively,
-      // so what it lands on is that very line
-      const events = [at("2026-03-01T09:00:00Z"), at("2026-03-01T10:00:00Z")];
+    it("boxes the line it names", () => {
+      // given
+      const events = [at("2026-03-01T09:00:00Z", "019fe578-e38b-7000-971e-04858335d7ff"), at("2026-03-01T10:00:00Z")];
       // when
-      const rows = build({
-        events,
-        anchor: Anchor.parse("2026-03-01T10:00:00Z"),
-      });
-      // then -- the mark is about the message, not about a moment falling between two of them
-      expect(body(rows)).toEqual(["line:2026-03-01T09:00:00Z", "line:2026-03-01T10:00:00Z:pinned"]);
+      const rows = build({ events, anchor: Anchor.parse("019fe578-e38b-7000-971e-04858335d7ff") });
+      // then -- an id names one message, so it is boxed rather than drawn above
+      expect(body(rows)).toEqual(["line:019fe578-e38b-7000-971e-04858335d7ff:pinned", "line:2026-03-01T10:00:00Z"]);
     });
 
     it("marks nothing when the pinned line is not in this window", () => {
