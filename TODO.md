@@ -15,7 +15,7 @@
 ### 3) UI/UX (re)design the other 2 pages
 
 - The homepage listing should show all running containers instead, and any stopped containers should be hidden by default
-- Design a configuration page, with sections for "global conf" (alert endpoints, default alert pattern, default alert volume throughput-values, throttle value, retention) and "per-container-conf" (alert regexes/throughput-values and endpoint refs, individual throttle values)
+- Design a configuration page, with sections for "global conf" (alert endpoints, default alert pattern, default alert volume throughput-values, throttle value, retention) and "per-container-conf" (alert regexes/throughput-values and endpoint refs, individual throttle values, individual retention values)
 
 #### 4) Build the configuration framework
 
