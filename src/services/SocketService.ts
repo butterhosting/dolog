@@ -53,7 +53,7 @@ export class SocketService {
       data: event,
     };
     [...this.connections.values()]
-      .filter((connection) => connection.watchedContainerId === event.container.id)
+      .filter((connection) => connection.watchedContainerId === event.container.did)
       .filter((connection): boolean => {
         switch (event.type) {
           case ContainerEvent.Type.start:

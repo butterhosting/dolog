@@ -90,8 +90,8 @@ describe(ThrottleService.name, () => {
 
   it("should budget each container separately", () => {
     // given (two containers, each within its own budget)
-    const web = TestFixture.container({ name: "web" });
-    const worker = TestFixture.container({ name: "worker" });
+    const web = TestFixture.container({ dname: "web" });
+    const worker = TestFixture.container({ dname: "worker" });
     const events = {
       a: log(web, "1"),
       b: log(web, "2"),

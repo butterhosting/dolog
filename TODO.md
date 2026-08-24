@@ -7,7 +7,7 @@
 
 ## 2) Invent history for the slow "trickle" container
 
-- So that on `bun dev`, it automatically invents history for the last 3 days up until now (the automatic retention cleanup might bite, tho)
+- So that on `bun dev`, it automatically invents history for the last 3 days up until now (the automatic retention cleanup might bite tho, with max lines 100k)
 - This will give a nice combination of all sorts of events (started, container started / stopped, throttle, day transitions, etc.)
 - I'll use this to manually finetune the layout, to see what makes sense
 - Finalize the logs page

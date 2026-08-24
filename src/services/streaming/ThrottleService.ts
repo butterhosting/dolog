@@ -38,7 +38,7 @@ export class ThrottleService {
     const IDLE_EVICTION = Temporal.Duration.from({ minutes: 1 });
 
     return pipe(
-      groupBy((event: ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log) => event.container.id, {
+      groupBy((event: ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log) => event.container.did, {
         // we set a `duration`, otherwise every container creates its own group
         // and every created group stays alive forever ... thats a bit expensive
         // because each group has a periodic timer for calculating throughputs,
@@ -107,7 +107,7 @@ export class ThrottleService {
         }
 
         const now = Temporal.Now.instant();
-        this.throughputOverview.set(container.id, {
+        this.throughputOverview.set(container.did, {
           object: "throughput",
           container,
           throttling: droppedLogs > 0,
@@ -136,7 +136,7 @@ export class ThrottleService {
        */
       finalize(() => {
         if (windowBudget.container) {
-          this.throughputOverview.delete(windowBudget.container.id);
+          this.throughputOverview.delete(windowBudget.container.did);
           this.throughputs.next([...this.throughputOverview.values()]);
         }
       }),

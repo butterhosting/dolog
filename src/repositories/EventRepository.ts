@@ -10,7 +10,7 @@ import { Direction } from "@/models/Direction";
 import { Filter } from "@/models/Filter";
 import { Pattern } from "@/models/Pattern";
 import { Temporal } from "@js-temporal/polyfill";
-import { and, asc, desc, eq, gt, lt, lte, notExists, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, InferInsertModel, lt, lte, notExists, sql } from "drizzle-orm";
 import { BehaviorSubject, catchError, concatMap, defer, EMPTY, interval, Observable } from "rxjs";
 import { PredicateFactory } from "./PredicateFactory";
 
@@ -48,14 +48,14 @@ export class EventRepository {
    */
   @Initialize
   public publishContainers(): void {
-    const rows = this.sqlite.select().from($container).orderBy(asc($container.name)).all();
+    const rows = this.sqlite.select().from($container).orderBy(asc($container.dname)).all();
     const containers = rows.map((row) => ContainerEventConverter.containerFromDatabase(row));
     const previous = this.containers.value;
     const unchanged =
       previous.length === containers.length &&
       previous.every((was, index) => {
         const now = containers[index]!;
-        return was.id === now.id && was.name === now.name && was.group === now.group;
+        return was.did === now.did && was.dname === now.dname && was.dgroup === now.dgroup;
       });
     if (!unchanged) {
       this.containers.next(containers);
@@ -67,7 +67,7 @@ export class EventRepository {
     this.enforcePendingCeiling();
   }
 
-  public async findEvent(dockerId: string, search: EventRepository.Search, filter: Filter): Promise<{ id: string | undefined }> {
+  public async findEvent(did: string, search: EventRepository.Search, filter: Filter): Promise<{ id: string | undefined }> {
     const searchPredicate = {
       fullObjectTest: PredicateFactory.forSearch("full_object_test", search),
       partialDatabaseTest: PredicateFactory.forSearch("partial_database_test", search),
@@ -81,7 +81,7 @@ export class EventRepository {
     // Part A: search the buffer for a candidate
     //
     const bufferMatchesBeyondSearchAnchor = this.pending
-      .filter((event): event is ContainerEvent.Log => event.container.id === dockerId && event.type === ContainerEvent.Type.log)
+      .filter((event): event is ContainerEvent.Log => event.container.did === did && event.type === ContainerEvent.Type.log)
       .filter((event) => searchPredicate.fullObjectTest(event)) // only logs matching the specific search constraints...
       .filter((event) => filterPredicate.fullObjectTest(event)) // ...but only if they match the general filter window as well
       .sort(ContainerEvent.sort(search.direction)); // sorted the way the search runs, so the nearest match is simply the first
@@ -91,7 +91,7 @@ export class EventRepository {
     // Part B: search the database for a candidate
     //
     const CHUNK = 1_000;
-    const container = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
+    const container = this.sqlite.select().from($container).where(eq($container.did, did)).get();
     if (!container) {
       return { id: bufferMatch }; // nothing was ever flushed, so the buffer contains all history
     }
@@ -149,12 +149,7 @@ export class EventRepository {
     return { id: bufferMatch };
   }
 
-  public async listEvents(
-    dockerId: string,
-    limit: number,
-    cursor: EventRepository.Cursor,
-    filter: Filter,
-  ): Promise<EventRepository.ListResult> {
+  public async listEvents(did: string, limit: number, cursor: EventRepository.Cursor, filter: Filter): Promise<EventRepository.ListResult> {
     // If we didn't get any cursor, we default to showing the latest logs, and walking backwards_in_time
     const direction = cursor.after !== undefined ? Direction.forwards_in_time : Direction.backwards_in_time;
 
@@ -168,7 +163,7 @@ export class EventRepository {
     };
 
     let dbEvents: ContainerEvent[] = [];
-    const dbContainer = this.sqlite.select().from($container).where(eq($container.dockerId, dockerId)).get();
+    const dbContainer = this.sqlite.select().from($container).where(eq($container.did, did)).get();
 
     //
     // Part A: list the database
@@ -191,7 +186,7 @@ export class EventRepository {
     // Part B: list the buffer
     //
     const bufferEvents = this.pending
-      .filter((event): event is ContainerEvent.Log => event.container.id === dockerId && event.type === ContainerEvent.Type.log)
+      .filter((event): event is ContainerEvent.Log => event.container.did === did && event.type === ContainerEvent.Type.log)
       .filter((event) => cursorPredicate.fullObjectTest(event)) // only logs matching the specific cursor constraints...
       .filter((event) => filterPredicate.fullObjectTest(event)); // ...but only if they match the general filter window as well
     //
@@ -290,13 +285,13 @@ export class EventRepository {
     this.sqlite.transaction((tx) => {
       const distinct = new Map<string, { container: Container; seen: string }>();
       for (const { container, timestamp } of events) {
-        distinct.set(container.id, { container, seen: timestamp.toString() });
+        distinct.set(container.did, { container, seen: timestamp.toString() });
       }
       const ids = new Map<string, number>();
-      const containerRows = [...distinct.values()].map(({ container, seen }) => ({
-        dockerId: container.id,
-        name: container.name,
-        groupName: container.group ?? null,
+      const containerRows = [...distinct.values()].map<InferInsertModel<typeof $container>>(({ container, seen }) => ({
+        did: container.did,
+        dname: container.dname,
+        dgroup: container.dgroup ?? null,
         firstSeen: seen,
         lastSeen: seen,
       }));
@@ -306,19 +301,19 @@ export class EventRepository {
           // `excluded` is the row we tried to insert, so one statement carries a different name and
           // timestamp for every container. `firstSeen` is left alone: it is only true of the insert
           .onConflictDoUpdate({
-            target: $container.dockerId,
-            set: { name: sql`excluded.name`, groupName: sql`excluded.group_name`, lastSeen: sql`excluded.last_seen` },
+            target: $container.did,
+            set: { dname: sql`excluded.dname`, dgroup: sql`excluded.dgroup`, lastSeen: sql`excluded.last_seen` },
           })
           // returned in no guaranteed order, so the docker id comes back too rather than being positional
-          .returning({ id: $container.id, dockerId: $container.dockerId })
+          .returning({ id: $container.id, did: $container.did })
           .all()
-          .forEach((row) => ids.set(row.dockerId, row.id));
+          .forEach((row) => ids.set(row.did, row.id));
       }
 
       // Split across statements, because SQLite caps how many values one statement may bind and a
       // single insert of the whole batch would blow past it. Still one transaction, so the batch
       // remains all-or-nothing.
-      const rows = events.map((event) => ContainerEventConverter.toDatabase(event, ids.get(event.container.id)!));
+      const rows = events.map((event) => ContainerEventConverter.toDatabase(event, ids.get(event.container.did)!));
       for (let offset = 0; offset < rows.length; offset += INSERT_CHUNK) {
         tx.insert($containerEvent)
           .values(rows.slice(offset, offset + INSERT_CHUNK))

@@ -80,12 +80,12 @@ describe(Fountain.name, () => {
 
   it("should keep going when one container's logs fail", async () => {
     // given
-    const broken = TestFixture.container({ name: "broken" });
-    const healthy = TestFixture.container({ name: "healthy" });
+    const broken = TestFixture.container({ dname: "broken" });
+    const healthy = TestFixture.container({ dname: "healthy" });
     context.dockerSocketMock.listRunningContainers.mockResolvedValue([broken, healthy]);
     let brokenAttempts = 0;
     context.dockerSocketMock.streamLogLines.mockImplementation(async function* (id: string) {
-      if (id === broken.id) {
+      if (id === broken.did) {
         // fails once and then simply says nothing, rather than failing forever: a stream that is
         // permanently broken is now permanently *retried*, which would spin for the rest of the suite
         if (++brokenAttempts === 1) {

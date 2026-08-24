@@ -32,7 +32,7 @@ describe(LogService.name, () => {
     await Bun.sleep(0);
 
     // when (exactly what the page sends on mount: a limit, a filter, no position)
-    const page = await service.list(container.id, { limit: "300", filterSince: "2020-01-01T00:00:00Z" });
+    const page = await service.list(container.did, { limit: "300", filterSince: "2020-01-01T00:00:00Z" });
 
     // then (the newest lines, and a window that reaches the feed)
     expect(page.data.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["older", "newer"]);
@@ -63,7 +63,7 @@ describe(LogService.name, () => {
       const { container } = await twoLines();
 
       // when (an instant older than everything logged)
-      const page = await service.list(container.id, { at: "2020-01-01T00:00:00Z" });
+      const page = await service.list(container.did, { at: "2020-01-01T00:00:00Z" });
 
       // then (nothing sits before it to fill the near half, so the window is all of what follows)
       expect(page.data.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["older", "newer"]);
@@ -74,7 +74,7 @@ describe(LogService.name, () => {
       const { container, all } = await twoLines();
 
       // when (an instant in the future, so reading forwards from it finds nothing)
-      const page = await service.list(container.id, { at: "2030-01-01T00:00:00Z" });
+      const page = await service.list(container.did, { at: "2030-01-01T00:00:00Z" });
 
       // then (the tail of history, and nothing claimed to lie beyond it -- which is how the client
       // works out that the instant sits past every line it was given)
@@ -90,11 +90,11 @@ describe(LogService.name, () => {
        */
       const { container } = await twoLines();
 
-      const open = await service.list(container.id, { at: "2030-01-01T00:00:00Z" });
+      const open = await service.list(container.did, { at: "2030-01-01T00:00:00Z" });
       expect(open.hasNewer).toBe(false);
 
       // and a corpus closed in the past runs out in exactly the same way
-      const closed = await service.list(container.id, { at: "2030-01-01T00:00:00Z", filterUntil: "2026-06-01T00:00:00Z" });
+      const closed = await service.list(container.did, { at: "2030-01-01T00:00:00Z", filterUntil: "2026-06-01T00:00:00Z" });
       expect(closed.hasNewer).toBe(false);
     });
   });
@@ -117,7 +117,7 @@ describe(LogService.name, () => {
       const { container, all } = await lines(40);
 
       // when (a line in the middle, with plenty either side of it)
-      const page = await service.list(container.id, { at: all[20]!.id, limit: "10" });
+      const page = await service.list(container.did, { at: all[20]!.id, limit: "10" });
 
       // then (half the limit before it, and the line itself heading the other half)
       expect(shown(page)).toEqual(["line 15", "line 16", "line 17", "line 18", "line 19", "line 20", "line 21", "line 22", "line 23", "line 24"]);
@@ -129,7 +129,7 @@ describe(LogService.name, () => {
       const { container, all } = await lines(40);
 
       // when (only two lines exist above it, so it cannot have its half)
-      const page = await service.list(container.id, { at: all[2]!.id, limit: "10" });
+      const page = await service.list(container.did, { at: all[2]!.id, limit: "10" });
 
       // then (a full screen all the same, taken further forwards instead)
       expect(shown(page)).toEqual(["line 0", "line 1", "line 2", "line 3", "line 4", "line 5", "line 6", "line 7", "line 8", "line 9"]);
@@ -141,7 +141,7 @@ describe(LogService.name, () => {
       const { container, all } = await lines(40);
 
       // when (only two lines from here to the end)
-      const page = await service.list(container.id, { at: all[38]!.id, limit: "10" });
+      const page = await service.list(container.did, { at: all[38]!.id, limit: "10" });
 
       // then (the shortfall taken backwards, and the far edge reported honestly)
       expect(shown(page)).toEqual(["line 30", "line 31", "line 32", "line 33", "line 34", "line 35", "line 36", "line 37", "line 38", "line 39"]);
@@ -159,7 +159,7 @@ describe(LogService.name, () => {
       await Bun.sleep(0);
 
       // when (the pinned line is one the filter hides)
-      const page = await service.list(container.id, { at: all[3]!.id, limit: "10", filterPattern: "keep", filterPatternType: "substr" });
+      const page = await service.list(container.did, { at: all[3]!.id, limit: "10", filterPattern: "keep", filterPatternType: "substr" });
 
       // then (the window opens around where the pin would have been, made of lines the filter allows,
       // with the pin itself absent -- which is the client's answer too, since it marks a line by id
@@ -174,7 +174,7 @@ describe(LogService.name, () => {
 
     // then (two different answers to "where do I open", so neither is assumed)
     expect(
-      service.list(container.id, { at: "2026-01-01T00:00:00Z", beforeExclusive: "019fe10e-4a9f-700d-8f7c-f6ec636e67dc" }),
+      service.list(container.did, { at: "2026-01-01T00:00:00Z", beforeExclusive: "019fe10e-4a9f-700d-8f7c-f6ec636e67dc" }),
     ).rejects.toThrow(/conflicting_position/);
   });
 
@@ -185,7 +185,7 @@ describe(LogService.name, () => {
     // Asked of the service rather than of `ListQuery`, because the rule is a refinement the service
     // adds -- the bare schema describes the shape of a query, not whether it makes sense.
     expect(
-      service.list(container.id, {
+      service.list(container.did, {
         afterExclusive: "019fe10e-4a9f-700d-8f7c-f6ec636e67dc",
         afterInclusive: "019fe10e-4ad6-7061-9172-2c3ecf40c00d",
       }),

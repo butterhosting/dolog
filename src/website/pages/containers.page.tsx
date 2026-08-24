@@ -53,7 +53,7 @@ export function containersPage() {
       )}
       <div className="grid grid-cols-3 lg:grid-cols-2 sm:grid-cols-1 gap-4">
         {data.map((container) => (
-          <ContainerCard key={container.id} container={container} />
+          <ContainerCard key={container.did} container={container} />
         ))}
       </div>
     </Frame>

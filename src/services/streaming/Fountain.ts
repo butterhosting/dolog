@@ -48,19 +48,19 @@ export class Fountain {
 
     const lifecycle = this.lifecycle().pipe(share());
 
-    const isStopped = (containerId: string): Observable<ContainerEvent.Stop> => {
+    const isStopped = (did: string): Observable<ContainerEvent.Stop> => {
       return lifecycle.pipe(
-        filter((event) => event.container.id === containerId),
+        filter((event) => event.container.did === did),
         filter((event): event is ContainerEvent.Stop => event.type === ContainerEvent.Type.stop),
       );
     };
 
     const followLogs = (container: Container): Observable<ContainerEvent.Log> => {
-      if (containersBeingFollowed.has(container.id)) {
+      if (containersBeingFollowed.has(container.did)) {
         return EMPTY;
       }
-      containersBeingFollowed.add(container.id);
-      return this.logs(container).pipe(takeUntil(isStopped(container.id)));
+      containersBeingFollowed.add(container.did);
+      return this.logs(container).pipe(takeUntil(isStopped(container.did)));
     };
 
     return merge(
@@ -72,8 +72,7 @@ export class Fountain {
               return merge(of(event), followLogs(event.container));
             }
             case ContainerEvent.Type.stop: {
-              containersBeingFollowed.delete(event.container.id);
-              console.log(`Server STOP; ${event.id}; ${JSON.stringify(event.container, null, 2)}`);
+              containersBeingFollowed.delete(event.container.did);
               return of(event);
             }
           }
@@ -125,7 +124,7 @@ export class Fountain {
   }
 
   private logs(container: Container): Observable<ContainerEvent.Log> {
-    return this.toObservable((signal) => this.dockerSocket.streamLogLines(container.id, signal)) //
+    return this.toObservable((signal) => this.dockerSocket.streamLogLines(container.did, signal)) //
       .pipe(
         map(({ streamVariant, timestamp, line }): ContainerEvent.Log => ({
           object: "container_event",
@@ -138,12 +137,12 @@ export class Fountain {
         })),
         retry({
           // retry indefinitely when the stream closes with an error
-          delay: (error, retryCount) => this.exponentialBackoff(retryCount, `Log stream failed for ${container.name}`, error),
+          delay: (error, retryCount) => this.exponentialBackoff(retryCount, `Log stream failed for ${container.dname}`, error),
           resetOnSuccess: true, // a stream that ran fine for hours starts its next trouble from scratch
         }),
         repeat({
           // retry indefinitely when the stream closes cleanly
-          delay: (retryCount) => this.exponentialBackoff(retryCount, `Log stream closed for ${container.name}`),
+          delay: (retryCount) => this.exponentialBackoff(retryCount, `Log stream closed for ${container.dname}`),
         }),
       );
   }

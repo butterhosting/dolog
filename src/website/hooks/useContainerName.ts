@@ -13,16 +13,16 @@ export function useContainerName(id: string, events: ContainerEvent[]): string {
   // approach 1
   useEffect(() => {
     void containerClient.list().then((containers) => {
-      const mine = containers.find((container) => container.id === id);
+      const mine = containers.find((container) => container.did === id);
       if (mine) {
-        setName(mine.name);
+        setName(mine.dname);
       }
     });
   }, [containerClient, id]);
 
   // approach 2
   useEffect(() => {
-    const found = events.at(-1)?.container.name ?? events.at(0)?.container.name;
+    const found = events.at(-1)?.container.dname ?? events.at(0)?.container.dname;
     if (found) {
       setName(found);
     }

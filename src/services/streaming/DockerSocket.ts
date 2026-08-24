@@ -18,10 +18,10 @@ export class DockerSocket {
     const response = await this.request("/containers/json");
     return Internal.Summaries.parse(await response.json()).map((summary) =>
       Container.parse({
-        id: summary.Id,
+        did: summary.Id,
         object: "container",
-        name: this.readName(summary.Names.at(0) ?? summary.Id),
-        group: this.readGroup(summary.Labels),
+        dname: this.readName(summary.Names.at(0) ?? summary.Id),
+        dgroup: this.readGroup(summary.Labels),
       }),
     );
   }
@@ -38,10 +38,10 @@ export class DockerSocket {
         status: (lifecycleEvent.Action ?? lifecycleEvent.status)!,
         timestamp: Temporal.Instant.fromEpochMilliseconds(lifecycleEvent.time * 1000),
         container: Container.parse({
-          id: lifecycleEvent.Actor.ID,
+          did: lifecycleEvent.Actor.ID,
           object: "container",
-          name: this.readName(lifecycleEvent.Actor.Attributes.name),
-          group: this.readGroup(lifecycleEvent.Actor.Attributes),
+          dname: this.readName(lifecycleEvent.Actor.Attributes.name),
+          dgroup: this.readGroup(lifecycleEvent.Actor.Attributes),
         }),
       };
     }

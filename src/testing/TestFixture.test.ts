@@ -8,10 +8,10 @@ type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } 
 export namespace TestFixture {
   export function container(overrides: DeepPartial<Container> = {}): Container {
     const defaults: Container = {
-      id: Bun.randomUUIDv7(),
+      did: Bun.randomUUIDv7(),
       object: "container",
-      name: "web",
-      group: "shop",
+      dname: "web",
+      dgroup: "shop",
     };
     return deepMerge(defaults, overrides);
   }

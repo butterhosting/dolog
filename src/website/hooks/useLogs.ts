@@ -34,7 +34,7 @@ export function useLogs({ containerId, parentNode, filter, anchor }: useLogs.Opt
         if (event.type === ContainerEvent.Type.stop) {
           console.log(`Browser STOP; ${event.id}; ${JSON.stringify(event.container, null, 2)}`);
         }
-        if (event.container.id !== containerId) {
+        if (event.container.did !== containerId) {
           return;
         }
         // Live lines are _only_ appended while the reader is tailing the end of the logs ...

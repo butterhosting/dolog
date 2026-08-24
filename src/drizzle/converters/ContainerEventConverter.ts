@@ -49,10 +49,10 @@ export namespace ContainerEventConverter {
 
   export function containerFromDatabase(db: $Container): Container {
     return Container.parse({
-      id: db.dockerId,
       object: "container",
-      name: db.name,
-      group: db.groupName ?? undefined,
+      did: db.did,
+      dname: db.dname,
+      dgroup: db.dgroup ?? undefined,
     });
   }
 }

@@ -184,7 +184,7 @@ describe(DockerSocket.name, () => {
       // when
       const containers = await socket.listRunningContainers();
       // then
-      expect(containers).toEqual([{ id: "abc", object: "container", name: "web", group: "stack" }]);
+      expect(containers).toEqual([{ did: "abc", object: "container", dname: "web", dgroup: "stack" }]);
     });
 
     it("should fall back to the compose project, and leave an unlabelled container ungrouped", async () => {
@@ -198,7 +198,7 @@ describe(DockerSocket.name, () => {
       // when
       const containers = await socket.listRunningContainers();
       // then
-      expect(containers.map(({ name, group }) => ({ name, group }))).toEqual([
+      expect(containers.map(({ dname: name, dgroup: group }) => ({ name, group }))).toEqual([
         { name: "one", group: "shop" },
         { name: "two", group: undefined },
       ]);
@@ -213,7 +213,7 @@ describe(DockerSocket.name, () => {
       const events = await collect(socket.streamLifecycles(new AbortController().signal));
       // then
       expect(events.map(({ status }) => status)).toEqual(["start", "die"]);
-      expect(events.at(0)?.container).toEqual({ id: "abc", object: "container", name: "web", group: "shop" });
+      expect(events.at(0)?.container).toEqual({ did: "abc", object: "container", dname: "web", dgroup: "shop" });
     });
 
     it("should still read a legacy daemon's `status` field", async () => {
@@ -243,7 +243,9 @@ describe(DockerSocket.name, () => {
       // given
       spyOn(globalThis, "fetch").mockRejectedValue(new Error("ECONNREFUSED"));
       // then
-      expect(socket.listRunningContainers()).rejects.toEqual(expect.objectContaining({ problem: "DockerError::socket_unreachable" } satisfies Partial<Yexception>));
+      expect(socket.listRunningContainers()).rejects.toEqual(
+        expect.objectContaining({ problem: "DockerError::socket_unreachable" } satisfies Partial<Yexception>),
+      );
     });
   });
 

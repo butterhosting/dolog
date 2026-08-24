@@ -56,8 +56,8 @@ export class ContainerService {
     ]);
     return databaseContainers
       .map(({ container, firstSeen, lastSeen }): ContainerRM => {
-        const running = runningContainers.some(({ id }) => id === container.id);
-        const { throttling, logsPerSecond } = throughputsPerContainer.filter(({ container: { id } }) => id === container.id).at(0) || {
+        const running = runningContainers.some(({ did }) => did === container.did);
+        const { throttling, logsPerSecond } = throughputsPerContainer.filter(({ container: { did } }) => did === container.did).at(0) || {
           throttling: false,
           logsPerSecond: 0,
         };
@@ -70,6 +70,6 @@ export class ContainerService {
           logsPerSecond,
         };
       })
-      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+      .sort((a, b) => a.dname.localeCompare(b.dname) || a.did.localeCompare(b.did));
   }
 }

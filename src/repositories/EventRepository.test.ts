@@ -24,7 +24,7 @@ describe(EventRepository.name, () => {
 
   it("should round-trip every kind of event", async () => {
     // given
-    const container = TestFixture.container({ name: "web", group: "shop" });
+    const container = TestFixture.container({ dname: "web", dgroup: "shop" });
     const events: ContainerEvent[] = [
       TestFixture.startEvent({ container }),
       TestFixture.logEvent({ container, line: "GET / 200", streamVariant: StreamVariant.stdout }),
@@ -36,7 +36,7 @@ describe(EventRepository.name, () => {
     // when
     await write(events);
     // then
-    const { data } = await repository.listEvents(container.id, 100, {}, {});
+    const { data } = await repository.listEvents(container.did, 100, {}, {});
     expect(data.map(({ type }) => type)).toEqual([
       ContainerEvent.Type.start,
       ContainerEvent.Type.log,
@@ -58,13 +58,13 @@ describe(EventRepository.name, () => {
     repository.saveEvent(TestFixture.logEvent({ container, line: "not on disk yet" }));
 
     // when
-    const { data } = await repository.listEvents(container.id, 100, {}, {});
+    const { data } = await repository.listEvents(container.did, 100, {}, {});
     // then
     expect(data.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["not on disk yet"]);
 
     // and the same events are not served twice once they do land
     await flush();
-    const { data: afterFlush } = await repository.listEvents(container.id, 100, {}, {});
+    const { data: afterFlush } = await repository.listEvents(container.did, 100, {}, {});
     expect(afterFlush).toHaveLength(1);
   });
 
@@ -73,7 +73,7 @@ describe(EventRepository.name, () => {
     const { container, all } = await tenLinesHalfBuffered();
 
     // when
-    const { data } = await repository.listEvents(container.id, 100, {}, {});
+    const { data } = await repository.listEvents(container.did, 100, {}, {});
     // then
     expect(data.map((event) => event.id)).toEqual(all.map((event) => event.id));
   });
@@ -105,7 +105,7 @@ describe(EventRepository.name, () => {
       // given
       const { container, all } = await tenLinesHalfBuffered();
       // when
-      const { data } = await repository.listEvents(container.id, 100, cursor(all), {});
+      const { data } = await repository.listEvents(container.did, 100, cursor(all), {});
       // then (nothing at the cursor itself, and nothing beyond it in the other direction)
       expect(data.map((event) => event.id)).toEqual(expected(all).map((event) => event.id));
     });
@@ -157,7 +157,7 @@ describe(EventRepository.name, () => {
       // given
       const { container, all } = await tenWrittenLines();
       // when
-      const page = await repository.listEvents(container.id, limit, { after: all[fromIndex]!.id, afterInclusivity: "exclusive" }, {});
+      const page = await repository.listEvents(container.did, limit, { after: all[fromIndex]!.id, afterInclusivity: "exclusive" }, {});
       // then
       expect(page.data.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(expectedLines);
       expect(page.hasNewer).toBe(hasNewer);
@@ -207,7 +207,7 @@ describe(EventRepository.name, () => {
       // given
       const { container, all } = await tenWrittenLines();
       // when
-      const page = await repository.listEvents(container.id, limit ?? 100, cursor?.(all) ?? {}, filter?.() ?? {});
+      const page = await repository.listEvents(container.did, limit ?? 100, cursor?.(all) ?? {}, filter?.() ?? {});
       // then
       expect(page.hasNewer).toBe(hasNewer);
       if (hasOlder !== undefined) {
@@ -222,7 +222,7 @@ describe(EventRepository.name, () => {
 
     // when (arriving by time, at an instant older than every line there is)
     const beforeEverything = Uuid.fromBytes(Uuid.lowerBoundAt(Temporal.Instant.from("2000-01-01T00:00:00Z")));
-    const page = await repository.listEvents(container.id, 100, { after: beforeEverything, afterInclusivity: "exclusive" }, {});
+    const page = await repository.listEvents(container.did, 100, { after: beforeEverything, afterInclusivity: "exclusive" }, {});
 
     // then (the whole history, and no pretending there is more above it)
     expect(page.data).toHaveLength(10);
@@ -288,7 +288,7 @@ describe(EventRepository.name, () => {
           const { container, all } = await haystack();
           // when
           const found = await repository.findEvent(
-            container.id,
+            container.did,
             {
               pattern: { type: Pattern.Type.substr, value: "needle" },
               anchorId: anchorIndex === undefined ? undefined : all[anchorIndex]!.id,
@@ -309,7 +309,7 @@ describe(EventRepository.name, () => {
       const { container } = await haystack();
       // when
       const found = await repository.findEvent(
-        container.id,
+        container.did,
         {
           pattern: { type: Pattern.Type.substr, value: "haystack" },
           direction: Direction.forwards_in_time,
@@ -328,12 +328,12 @@ describe(EventRepository.name, () => {
 
       // when / then
       const literal = { pattern: { type: Pattern.Type.substr, value: "shouting" }, direction: Direction.forwards_in_time } as const;
-      expect((await repository.findEvent(container.id, literal, {})).id).toBe(all[0]!.id);
+      expect((await repository.findEvent(container.did, literal, {})).id).toBe(all[0]!.id);
       expect(
-        (await repository.findEvent(container.id, { ...literal, pattern: { type: Pattern.Type.regex, value: "shout.ng" } }, {})).id,
+        (await repository.findEvent(container.did, { ...literal, pattern: { type: Pattern.Type.regex, value: "shout.ng" } }, {})).id,
       ).toBeUndefined();
       expect(
-        (await repository.findEvent(container.id, { ...literal, pattern: { type: Pattern.Type.regex, value: "SHOUT.NG" } }, {})).id,
+        (await repository.findEvent(container.did, { ...literal, pattern: { type: Pattern.Type.regex, value: "SHOUT.NG" } }, {})).id,
       ).toBe(all[0]!.id);
     });
 
@@ -345,7 +345,7 @@ describe(EventRepository.name, () => {
 
       // when
       const found = await repository.findEvent(
-        container.id,
+        container.did,
         {
           pattern: { type: Pattern.Type.substr, value: "100%" },
           direction: Direction.forwards_in_time,
@@ -365,7 +365,7 @@ describe(EventRepository.name, () => {
 
       // when
       const found = await repository.findEvent(
-        container.id,
+        container.did,
         {
           pattern: { type: Pattern.Type.substr, value: "needle" },
           direction: Direction.forwards_in_time,
@@ -393,7 +393,7 @@ describe(EventRepository.name, () => {
 
       // when (stepping back from the end)
       const found = await repository.findEvent(
-        container.id,
+        container.did,
         {
           pattern: { type: Pattern.Type.substr, value: "needle" },
           direction: Direction.backwards_in_time,
@@ -418,7 +418,7 @@ describe(EventRepository.name, () => {
 
       // when (anchored on the very first line, and inclusive of it)
       const found = await repository.findEvent(
-        container.id,
+        container.did,
         {
           pattern: { type: Pattern.Type.regex, value: "nothing-matches-this" },
           anchorId: all[0]!.id,
@@ -456,15 +456,15 @@ describe(EventRepository.name, () => {
 
     it.each(PAIRS)("should agree on $needle against $line, on disk and in the buffer", async ({ line, needle, matches }) => {
       // given (the same line written to one container and left buffered in another)
-      const written = TestFixture.container({ name: "written" });
-      const buffered = TestFixture.container({ name: "buffered" });
+      const written = TestFixture.container({ dname: "written" });
+      const buffered = TestFixture.container({ dname: "buffered" });
       await write([TestFixture.logEvent({ container: written, line })]);
       repository.saveEvent(TestFixture.logEvent({ container: buffered, line }));
       const pattern: Pattern = { type: Pattern.Type.substr, value: needle };
 
       // when (sqlite answers for the first, the predicate for the second)
-      const fromDisk = await repository.listEvents(written.id, 100, {}, { pattern });
-      const fromBuffer = await repository.listEvents(buffered.id, 100, {}, { pattern });
+      const fromDisk = await repository.listEvents(written.did, 100, {}, { pattern });
+      const fromBuffer = await repository.listEvents(buffered.did, 100, {}, { pattern });
 
       // then (one verdict, whichever half is asked)
       expect(fromDisk.data.length).toBe(matches ? 1 : 0);
@@ -484,10 +484,10 @@ describe(EventRepository.name, () => {
     // when (a flush that fails)
     await flush();
     // then (still readable, and the next flush still writes them)
-    expect((await repository.listEvents(container.id, 100, {}, {})).data).toHaveLength(1);
+    expect((await repository.listEvents(container.did, 100, {}, {})).data).toHaveLength(1);
     transaction.mockRestore();
     await flush();
-    expect((await repository.listEvents(container.id, 100, {}, {})).data).toHaveLength(1);
+    expect((await repository.listEvents(container.did, 100, {}, {})).data).toHaveLength(1);
   });
 
   it("should give up on a batch the database will never accept, rather than wedging every write behind it", async () => {
@@ -507,14 +507,14 @@ describe(EventRepository.name, () => {
     // then (the bad batch is gone, and events queued after it are written normally)
     repository.saveEvent(TestFixture.logEvent({ container, line: "written after the bad batch" }));
     await flush();
-    const { data: events } = await repository.listEvents(container.id, 100, {}, {});
+    const { data: events } = await repository.listEvents(container.did, 100, {}, {});
     expect(events.map((event) => (event.type === ContainerEvent.Type.log ? event.line : ""))).toEqual(["written after the bad batch"]);
   });
 
   it("should record one container row however many events it produces", async () => {
     // given
-    const web = TestFixture.container({ name: "web" });
-    const worker = TestFixture.container({ name: "worker" });
+    const web = TestFixture.container({ dname: "web" });
+    const worker = TestFixture.container({ dname: "worker" });
 
     // when
     await write([
@@ -523,8 +523,8 @@ describe(EventRepository.name, () => {
     ]);
     // then
     expect(await containers()).toEqual([web, worker]);
-    expect((await repository.listEvents(web.id, 1_000, {}, {})).data).toHaveLength(50);
-    expect((await repository.listEvents(worker.id, 1_000, {}, {})).data).toHaveLength(50);
+    expect((await repository.listEvents(web.did, 1_000, {}, {})).data).toHaveLength(50);
+    expect((await repository.listEvents(worker.did, 1_000, {}, {})).data).toHaveLength(50);
   });
 
   it("should record the newest timestamp in a batch as when a container was last seen", async () => {
@@ -541,8 +541,8 @@ describe(EventRepository.name, () => {
 
   it("should keep a container's identity current across batches", async () => {
     // given (a container is renamed, or joins a compose project, between batches)
-    const before = TestFixture.container({ name: "old-name" });
-    const after = { ...before, name: "new-name", group: "shop" };
+    const before = TestFixture.container({ dname: "old-name" });
+    const after = { ...before, dname: "new-name", dgroup: "shop" };
 
     // when
     await write([TestFixture.logEvent({ container: before })]);
@@ -553,8 +553,8 @@ describe(EventRepository.name, () => {
 
   it("should keep only the newest events per container, independently of each other", async () => {
     // given (one chatty container and one quiet one)
-    const chatty = TestFixture.container({ name: "chatty" });
-    const quiet = TestFixture.container({ name: "quiet" });
+    const chatty = TestFixture.container({ dname: "chatty" });
+    const quiet = TestFixture.container({ dname: "quiet" });
     await write([
       ...Array.from({ length: 100 }, (_, i) => TestFixture.logEvent({ container: chatty, line: `chatty ${i}` })),
       ...Array.from({ length: 3 }, (_, i) => TestFixture.logEvent({ container: quiet, line: `quiet ${i}` })),
@@ -564,8 +564,8 @@ describe(EventRepository.name, () => {
     const pruned = await repository.pruneEventsPerContainer(10);
     // then (the quiet one is untouched -- its own history is not the chatty one's to spend)
     expect(pruned.eventDeleteCount).toEqual(90);
-    expect((await repository.listEvents(quiet.id, 1_000, {}, {})).data).toHaveLength(3);
-    const { data: remaining } = await repository.listEvents(chatty.id, 1_000, {}, {});
+    expect((await repository.listEvents(quiet.did, 1_000, {}, {})).data).toHaveLength(3);
+    const { data: remaining } = await repository.listEvents(chatty.did, 1_000, {}, {});
     expect(remaining).toHaveLength(10);
     expect(remaining.at(0)).toEqual(expect.objectContaining({ line: "chatty 90" } satisfies Partial<ContainerEvent>));
     expect(remaining.at(-1)).toEqual(expect.objectContaining({ line: "chatty 99" } satisfies Partial<ContainerEvent>));
@@ -580,7 +580,7 @@ describe(EventRepository.name, () => {
     const pruned = await repository.pruneEventsPerContainer(10);
     // then
     expect(pruned.eventDeleteCount).toEqual(0);
-    expect((await repository.listEvents(container.id, 1_000, {}, {})).data).toHaveLength(5);
+    expect((await repository.listEvents(container.did, 1_000, {}, {})).data).toHaveLength(5);
   });
 
   it("should do nothing while everything is inside the window", async () => {
@@ -592,13 +592,13 @@ describe(EventRepository.name, () => {
     const pruned = await repository.pruneEventsOlderThan(Temporal.Now.instant().subtract({ hours: 24 }));
     // then
     expect(pruned).toEqual({ eventDeleteCount: 0, containerDeleteCount: 0 });
-    expect((await repository.listEvents(container.id, 1_000, {}, {})).data).toHaveLength(10);
+    expect((await repository.listEvents(container.did, 1_000, {}, {})).data).toHaveLength(10);
   });
 
   it("should forget events past the window, and containers left with none", async () => {
     // given (`gone` last said anything a year ago; `staying` has old lines and recent ones)
-    const gone = TestFixture.container({ name: "gone" });
-    const staying = TestFixture.container({ name: "staying" });
+    const gone = TestFixture.container({ dname: "gone" });
+    const staying = TestFixture.container({ dname: "staying" });
     const longAgo = Temporal.Now.instant().subtract({ hours: 24 * 365 });
     const yesterday = Temporal.Now.instant().subtract({ hours: 24 });
 
@@ -616,7 +616,7 @@ describe(EventRepository.name, () => {
     expect(pruned.containerDeleteCount).toEqual(1);
     expect(await containers()).toEqual([staying]);
     // only what fell inside the window survived
-    const { data: remaining } = await repository.listEvents(staying.id, 100_000, {}, {});
+    const { data: remaining } = await repository.listEvents(staying.did, 100_000, {}, {});
     expect(remaining).toHaveLength(10);
     expect(remaining.at(0)).toEqual(expect.objectContaining({ line: "recent 0" } satisfies Partial<ContainerEvent>));
   });
