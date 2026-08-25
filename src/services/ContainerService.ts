@@ -55,7 +55,7 @@ export class ContainerService {
       firstValueFrom(this.throughputs),
     ]);
     return databaseContainers
-      .map(({ container, firstSeen, lastSeen }): ContainerRM => {
+      .map((container): ContainerRM => {
         const running = runningContainers.some(({ did }) => did === container.did);
         const { throttling, logsPerSecond } = throughputsPerContainer.filter(({ container: { did } }) => did === container.did).at(0) || {
           throttling: false,
@@ -63,8 +63,6 @@ export class ContainerService {
         };
         return {
           ...container,
-          firstSeen,
-          lastSeen,
           running,
           throttling,
           logsPerSecond,

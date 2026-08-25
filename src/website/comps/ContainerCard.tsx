@@ -1,4 +1,3 @@
-import { Prettify } from "@/helpers/Prettify";
 import { ContainerRM } from "@/models/ContainerRM";
 import clsx from "clsx";
 import { Link } from "react-router";
@@ -8,7 +7,7 @@ import { Paper } from "./basics/Paper";
 type Props = {
   container: ContainerRM;
 };
-export function ContainerCard({ container: { did, dname: name, dgroup: group, running, logsPerSecond, throttling, lastSeen } }: Props) {
+export function ContainerCard({ container: { did, dname: name, dgroup: group, running, logsPerSecond, throttling } }: Props) {
   return (
     <Link to={Route.containerLogs(did)}>
       <Paper className="flex h-full flex-col gap-1 px-5 py-4 transition-colors hover:border-c-accent">
@@ -22,7 +21,7 @@ export function ContainerCard({ container: { did, dname: name, dgroup: group, ru
           <span className="text-xs text-c-rule">logs/s</span>
           {throttling && <span className="text-xs text-c-error">THROTTLED</span>}
         </div>
-        <span className="text-xs text-c-rule">{Prettify.describeLastSeenLogs(lastSeen)}</span>
+        <span className="text-xs text-c-rule">[Last seen property removed]</span>
       </Paper>
     </Link>
   );

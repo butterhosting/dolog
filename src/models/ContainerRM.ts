@@ -1,5 +1,4 @@
 import { ZodParser } from "@/helpers/ZodParser";
-import { Temporal } from "@js-temporal/polyfill";
 import z from "zod/v4";
 import { Container } from "./Container";
 
@@ -8,8 +7,6 @@ export type ContainerRM = Container & {
   running: boolean;
   throttling: boolean;
   logsPerSecond: number;
-  firstSeen: Temporal.Instant;
-  lastSeen: Temporal.Instant;
 };
 
 export namespace ContainerRM {
@@ -18,8 +15,6 @@ export namespace ContainerRM {
       Container.parse.SCHEMA.and(
         z.object({
           running: z.boolean(),
-          firstSeen: z.string().transform(ZodParser.instant),
-          lastSeen: z.string().transform(ZodParser.instant),
           logsPerSecond: z.number(),
           throttling: z.boolean(),
         }),

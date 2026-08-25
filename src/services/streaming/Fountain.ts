@@ -95,21 +95,24 @@ export class Fountain {
     return this.toObservable((signal) => this.dockerSocket.streamLifecycles(signal)) //
       .pipe(
         map(({ status, timestamp, container }): ContainerEvent.Start | ContainerEvent.Stop => {
-          return status === "start"
-            ? {
+          switch (status) {
+            case "start":
+              return {
                 type: ContainerEvent.Type.start,
                 object: "container_event",
                 id: Bun.randomUUIDv7(),
                 timestamp,
                 container,
-              }
-            : {
+              };
+            case "die":
+              return {
                 type: ContainerEvent.Type.stop,
                 object: "container_event",
                 id: Bun.randomUUIDv7(),
                 timestamp,
                 container,
               };
+          }
         }),
         retry({
           // retry indefinitely when the stream closes with an error

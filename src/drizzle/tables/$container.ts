@@ -5,6 +5,5 @@ export const $container = sqliteTable("container", {
   did: text().notNull(), // "Docker ID"
   dname: text().notNull(), // "Docker name"
   dgroup: text(), // "Docker group"
-  firstSeen: text().notNull(),
-  lastSeen: text().notNull(),
+  online: integer({ mode: "boolean" }).notNull(),
 });

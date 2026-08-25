@@ -6,6 +6,7 @@ export type Container = {
   did: string; // "Docker ID"
   dname: string; // "Docker name"
   dgroup?: string; // "Docker group"
+  online: boolean;
 };
 
 export namespace Container {
@@ -16,6 +17,7 @@ export namespace Container {
         did: z.string(),
         dname: z.string(),
         dgroup: z.string().optional(),
+        online: z.boolean(),
       }),
     )
     .ensureTypeMatchesSchema();

@@ -34,13 +34,13 @@ export class EventRepository {
     return this.containers;
   }
 
-  public async listContainers(): Promise<{ container: Container; firstSeen: Temporal.Instant; lastSeen: Temporal.Instant }[]> {
-    const rows = this.sqlite.select().from($container).orderBy(desc($container.lastSeen)).all();
-    return rows.map((row) => ({
-      container: ContainerEventConverter.containerFromDatabase(row),
-      firstSeen: Temporal.Instant.from(row.firstSeen),
-      lastSeen: Temporal.Instant.from(row.lastSeen),
-    }));
+  public async listContainers(): Promise<Container[]> {
+    return this.sqlite
+      .select()
+      .from($container)
+      .orderBy(desc($container.dgroup), desc($container.dname))
+      .all()
+      .map(ContainerEventConverter.containerFromDatabase);
   }
 
   /**
@@ -55,7 +55,7 @@ export class EventRepository {
       previous.length === containers.length &&
       previous.every((was, index) => {
         const now = containers[index]!;
-        return was.did === now.did && was.dname === now.dname && was.dgroup === now.dgroup;
+        return was.did === now.did && was.dname === now.dname && was.dgroup === now.dgroup && was.online === now.online;
       });
     if (!unchanged) {
       this.containers.next(containers);
@@ -283,17 +283,17 @@ export class EventRepository {
       return;
     }
     this.sqlite.transaction((tx) => {
-      const distinct = new Map<string, { container: Container; seen: string }>();
-      for (const { container, timestamp } of events) {
-        distinct.set(container.did, { container, seen: timestamp.toString() });
+      const distinctContainers = new Map<string, Container>();
+      for (const { container } of events) {
+        distinctContainers.set(container.did, container);
       }
-      const ids = new Map<string, number>();
-      const containerRows = [...distinct.values()].map<InferInsertModel<typeof $container>>(({ container, seen }) => ({
+
+      const containerIds = new Map<string, number>(); // `did` -> `id`
+      const containerRows = [...distinctContainers.values()].map<InferInsertModel<typeof $container>>((container) => ({
         did: container.did,
         dname: container.dname,
         dgroup: container.dgroup ?? null,
-        firstSeen: seen,
-        lastSeen: seen,
+        online: container.online,
       }));
       for (let offset = 0; offset < containerRows.length; offset += INSERT_CHUNK) {
         tx.insert($container)
@@ -302,18 +302,22 @@ export class EventRepository {
           // timestamp for every container. `firstSeen` is left alone: it is only true of the insert
           .onConflictDoUpdate({
             target: $container.did,
-            set: { dname: sql`excluded.dname`, dgroup: sql`excluded.dgroup`, lastSeen: sql`excluded.last_seen` },
+            set: {
+              dname: sql`excluded.dname`,
+              dgroup: sql`excluded.dgroup`,
+              online: sql`excluded.online`,
+            },
           })
           // returned in no guaranteed order, so the docker id comes back too rather than being positional
           .returning({ id: $container.id, did: $container.did })
           .all()
-          .forEach((row) => ids.set(row.did, row.id));
+          .forEach((row) => containerIds.set(row.did, row.id));
       }
 
       // Split across statements, because SQLite caps how many values one statement may bind and a
       // single insert of the whole batch would blow past it. Still one transaction, so the batch
       // remains all-or-nothing.
-      const rows = events.map((event) => ContainerEventConverter.toDatabase(event, ids.get(event.container.did)!));
+      const rows = events.map((event) => ContainerEventConverter.toDatabase(event, containerIds.get(event.container.did)!));
       for (let offset = 0; offset < rows.length; offset += INSERT_CHUNK) {
         tx.insert($containerEvent)
           .values(rows.slice(offset, offset + INSERT_CHUNK))

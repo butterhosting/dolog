@@ -527,18 +527,6 @@ describe(EventRepository.name, () => {
     expect((await repository.listEvents(worker.did, 1_000, {}, {})).data).toHaveLength(50);
   });
 
-  it("should record the newest timestamp in a batch as when a container was last seen", async () => {
-    // given (one batch spanning a minute -- upserting once per container must not keep the first)
-    const container = TestFixture.container();
-    const at = (iso: string) => ({ ...TestFixture.logEvent({ container }), timestamp: Temporal.Instant.from(iso) });
-
-    // when
-    await write([at("2026-08-03T12:00:00Z"), at("2026-08-03T12:00:30Z"), at("2026-08-03T12:01:00Z")]);
-    // then
-    const [recorded] = await repository.listContainers();
-    expect(recorded?.lastSeen.toString()).toEqual("2026-08-03T12:01:00Z");
-  });
-
   it("should keep a container's identity current across batches", async () => {
     // given (a container is renamed, or joins a compose project, between batches)
     const before = TestFixture.container({ dname: "old-name" });
@@ -549,6 +537,20 @@ describe(EventRepository.name, () => {
     await write([TestFixture.logEvent({ container: after })]);
     // then (still one row, carrying the latest identity)
     expect(await containers()).toEqual([after]);
+  });
+
+  it("should keep a container's liveness current across batches", async () => {
+    // given (alive when it logged, seen to have died afterwards)
+    const alive = TestFixture.container({ dname: "postgres-1", online: true });
+    const dead = { ...alive, online: false };
+
+    // when
+    await write([TestFixture.logEvent({ container: alive })]);
+    await write([TestFixture.stopEvent({ container: dead })]);
+
+    // then (one row, flipped -- a stored liveness that never updates is worse than none, because
+    // the overview would go on insisting a dead container is up)
+    expect(await containers()).toEqual([dead]);
   });
 
   it("should keep only the newest events per container, independently of each other", async () => {

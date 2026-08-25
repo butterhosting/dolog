@@ -48,11 +48,12 @@ export namespace ContainerEventConverter {
   }
 
   export function containerFromDatabase(db: $Container): Container {
-    return Container.parse({
+    return {
       object: "container",
       did: db.did,
       dname: db.dname,
       dgroup: db.dgroup ?? undefined,
-    });
+      online: db.online,
+    };
   }
 }

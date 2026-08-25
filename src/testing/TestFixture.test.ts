@@ -12,6 +12,7 @@ export namespace TestFixture {
       object: "container",
       dname: "web",
       dgroup: "shop",
+      online: true,
     };
     return deepMerge(defaults, overrides);
   }

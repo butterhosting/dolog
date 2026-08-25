@@ -16,14 +16,13 @@ export class DockerSocket {
 
   public async listRunningContainers(): Promise<Container[]> {
     const response = await this.request("/containers/json");
-    return Internal.Summaries.parse(await response.json()).map((summary) =>
-      Container.parse({
-        did: summary.Id,
-        object: "container",
-        dname: this.readName(summary.Names.at(0) ?? summary.Id),
-        dgroup: this.readGroup(summary.Labels),
-      }),
-    );
+    return Internal.Summaries.parse(await response.json()).map<Container>((summary) => ({
+      object: "container",
+      did: summary.Id,
+      dname: this.readName(summary.Names.at(0) ?? summary.Id),
+      dgroup: this.readGroup(summary.Labels),
+      online: true,
+    }));
   }
 
   public async *streamLifecycles(signal: AbortSignal): AsyncGenerator<DockerSocket.Lifecycle> {
@@ -34,15 +33,24 @@ export class DockerSocket {
     const response = await this.request(`/events?filters=${encodeURIComponent(filters)}`, signal);
     for await (const line of this.readLines(this.readBody(response, "/events"))) {
       const lifecycleEvent = Internal.LifecycleEvent.parse(JSON.parse(line));
+      const status = (lifecycleEvent.Action ?? lifecycleEvent.status)!;
       yield {
-        status: (lifecycleEvent.Action ?? lifecycleEvent.status)!,
+        status,
         timestamp: Temporal.Instant.fromEpochMilliseconds(lifecycleEvent.time * 1000),
-        container: Container.parse({
-          did: lifecycleEvent.Actor.ID,
+        container: {
           object: "container",
+          did: lifecycleEvent.Actor.ID,
           dname: this.readName(lifecycleEvent.Actor.Attributes.name),
           dgroup: this.readGroup(lifecycleEvent.Actor.Attributes),
-        }),
+          online: ((): boolean => {
+            switch (status) {
+              case "start":
+                return true;
+              case "die":
+                return false;
+            }
+          })(),
+        },
       };
     }
   }
@@ -277,8 +285,7 @@ export namespace DockerSocket {
 }
 
 /**
- * Docker's wire formats: the shapes coming off the socket, and the schemas that validate them.
- * None of it escapes this module.
+ * Docker's wire formats: the shapes coming off the socket, and the schemas that validate them
  */
 namespace Internal {
   export type Frame = {
@@ -313,5 +320,7 @@ namespace Internal {
         Attributes: z.record(z.string(), z.string()),
       }),
     })
-    .refine((event) => Boolean(event.Action ?? event.status), { error: "missing_action" });
+    .refine((event) => Boolean(event.Action ?? event.status), {
+      error: "missing_action",
+    });
 }

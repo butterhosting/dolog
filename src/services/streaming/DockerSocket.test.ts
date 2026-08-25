@@ -184,7 +184,7 @@ describe(DockerSocket.name, () => {
       // when
       const containers = await socket.listRunningContainers();
       // then
-      expect(containers).toEqual([{ did: "abc", object: "container", dname: "web", dgroup: "stack" }]);
+      expect(containers).toEqual([{ did: "abc", object: "container", dname: "web", dgroup: "stack", online: true }]);
     });
 
     it("should fall back to the compose project, and leave an unlabelled container ungrouped", async () => {
@@ -213,7 +213,9 @@ describe(DockerSocket.name, () => {
       const events = await collect(socket.streamLifecycles(new AbortController().signal));
       // then
       expect(events.map(({ status }) => status)).toEqual(["start", "die"]);
-      expect(events.at(0)?.container).toEqual({ did: "abc", object: "container", dname: "web", dgroup: "shop" });
+      expect(events.at(0)?.container).toEqual({ did: "abc", object: "container", dname: "web", dgroup: "shop", online: true });
+      // the container carries the liveness the lifecycle event implies, so a `die` lands as offline
+      expect(events.map(({ container }) => container.online)).toEqual([true, false]);
     });
 
     it("should still read a legacy daemon's `status` field", async () => {
@@ -221,8 +223,9 @@ describe(DockerSocket.name, () => {
       respondWith(streamOf(encode(`${lifecycle({ status: "die" })}\n`)));
       // when
       const events = await collect(socket.streamLifecycles(new AbortController().signal));
-      // then
+      // then (liveness reads off whichever field the daemon sent, not `Action` alone)
       expect(events.map(({ status }) => status)).toEqual(["die"]);
+      expect(events.at(0)?.container.online).toBe(false);
     });
   });
 
