@@ -7,7 +7,7 @@
 # socket as usual, compose just stops mirroring them into the terminal running `bun dev`.
 # `docker compose logs gateway` still prints them on demand.
 services:
-  gateway:
+  trickle:
     image: alpine
     container_name: trickle
     restart: unless-stopped

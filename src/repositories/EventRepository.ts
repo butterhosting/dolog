@@ -3,12 +3,12 @@ import { Logger } from "@/Logger";
 import { ContainerEventConverter } from "@/drizzle/converters/ContainerEventConverter";
 import { $container, $containerEvent } from "@/drizzle/schema";
 import { Sqlite } from "@/drizzle/sqlite";
-import { Uuid } from "@/models/Uuid";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";
 import { Filter } from "@/models/Filter";
 import { Pattern } from "@/models/Pattern";
+import { Uuid } from "@/models/Uuid";
 import { Temporal } from "@js-temporal/polyfill";
 import { and, asc, desc, eq, gt, InferInsertModel, lt, lte, notExists, sql } from "drizzle-orm";
 import { BehaviorSubject, catchError, concatMap, defer, EMPTY, interval, Observable } from "rxjs";
@@ -44,10 +44,10 @@ export class EventRepository {
   }
 
   /**
-   * Also manually invoked after every write, so the overview reflects containers that have only just appeared
+   * Also manually invoked after every write, so the overview reflects containers that have only just (dis)appeared
    */
   @Initialize
-  public publishContainers(): void {
+  public publishUpdatedContainers(): void {
     const rows = this.sqlite.select().from($container).orderBy(asc($container.dname)).all();
     const containers = rows.map((row) => ContainerEventConverter.containerFromDatabase(row));
     const previous = this.containers.value;
@@ -303,9 +303,9 @@ export class EventRepository {
           .onConflictDoUpdate({
             target: $container.did,
             set: {
-              dname: sql`excluded.dname`,
-              dgroup: sql`excluded.dgroup`,
-              online: sql`excluded.online`,
+              dname: sql`excluded.${$container.dname.name}`,
+              dgroup: sql`excluded.${$container.dgroup.name}`,
+              online: sql`excluded.${$container.online.name}`,
             },
           })
           // returned in no guaranteed order, so the docker id comes back too rather than being positional
@@ -325,7 +325,7 @@ export class EventRepository {
       }
     });
     // a write may have introduced a container, or renamed one
-    this.publishContainers();
+    this.publishUpdatedContainers();
   }
 
   private queryEventsUpToLimitWithPredicate<T = typeof $containerEvent.$inferSelect>({
@@ -477,7 +477,7 @@ export class EventRepository {
       .returning({ one: sql<number>`1` })
       .all().length;
     // pruning may have purged a container entirely
-    this.publishContainers();
+    this.publishUpdatedContainers();
     return deleted;
   }
 }
