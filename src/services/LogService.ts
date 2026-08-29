@@ -1,15 +1,16 @@
 import { LogError } from "@/errors/LogError";
 import { ServerError } from "@/errors/ServerError";
-import { Uuid } from "@/models/Uuid";
 import { ZodProblem } from "@/helpers/ZodIssues";
 import { ZodParser } from "@/helpers/ZodParser";
 import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
+import { Anchor } from "@/models/Anchor";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";
 import { Filter } from "@/models/Filter";
-import { Anchor } from "@/models/Anchor";
 import { Pattern } from "@/models/Pattern";
+import { Svc } from "@/models/Svc";
+import { Uuid } from "@/models/Uuid";
 import { EventRepository } from "@/repositories/EventRepository";
 import { SocketService } from "@/services/SocketService";
 import { Observable } from "rxjs";
@@ -36,12 +37,12 @@ export class LogService {
     });
   }
 
-  public async find(containerId: string, unknown: unknown): Promise<LogService.FindResult> {
+  public async find(svcId: Svc.Id, unknown: unknown): Promise<LogService.FindResult> {
     const findQuery = this.parseAndValidateFindQuery(unknown);
-    return await this.eventRepository.findEvent(containerId, findQuery.search, findQuery.filter);
+    return await this.eventRepository.findEvent(svcId, findQuery.search, findQuery.filter);
   }
 
-  public async list(containerId: string, unknown: unknown): Promise<LogService.ListResult> {
+  public async list(svcId: Svc.Id, unknown: unknown): Promise<LogService.ListResult> {
     const listQuery = this.parseAndValidateListQuery(unknown);
 
     if (listQuery.at && listQuery.cursor) {
@@ -53,23 +54,23 @@ export class LogService {
 
     // cursor-based listing
     if (listQuery.cursor) {
-      return await this.eventRepository.listEvents(containerId, listQuery.limit, listQuery.cursor, listQuery.filter);
+      return await this.eventRepository.listEvents(svcId, listQuery.limit, listQuery.cursor, listQuery.filter);
     }
     // anchor-based listing (a window around the anchor)
     if (listQuery.at) {
-      return await this.listAround(containerId, listQuery.at, listQuery.limit, listQuery.filter);
+      return await this.listAround(svcId, listQuery.at, listQuery.limit, listQuery.filter);
     }
     // most recent listing (just get the latest logs)
-    return await this.eventRepository.listEvents(containerId, listQuery.limit, {}, listQuery.filter);
+    return await this.eventRepository.listEvents(svcId, listQuery.limit, {}, listQuery.filter);
   }
 
-  private async listAround(containerId: string, anchor: Anchor, limit: number, filter: Filter): Promise<LogService.ListResult> {
+  private async listAround(svcId: Svc.Id, anchor: Anchor, limit: number, filter: Filter): Promise<LogService.ListResult> {
     const anchorBoundary = anchor.type === "id" ? anchor.value : Uuid.fromBytes(Uuid.lowerBoundAt(anchor.value));
 
     const [before, after] = await Promise.all([
-      this.eventRepository.listEvents(containerId, limit, { before: anchorBoundary, beforeInclusivity: "exclusive" }, filter),
+      this.eventRepository.listEvents(svcId, limit, { before: anchorBoundary, beforeInclusivity: "exclusive" }, filter),
       this.eventRepository.listEvents(
-        containerId,
+        svcId,
         limit,
         { after: anchorBoundary, afterInclusivity: anchor.type === "id" ? "inclusive" : "exclusive" },
         filter,

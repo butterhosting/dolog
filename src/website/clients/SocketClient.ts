@@ -15,10 +15,10 @@ export class SocketClient {
 
   private interest?: ClientMessage.DeclareStreamInterest;
 
-  public declareStreamInterest(containerId: string, filter?: Filter) {
+  public declareStreamInterest(svcId: string, filter?: Filter) {
     this.interest = {
       type: ClientMessage.Type.declare_stream_interest,
-      containerId,
+      svcId,
       filter,
     };
     this.send(this.interest);
@@ -27,7 +27,7 @@ export class SocketClient {
   public undeclareStreamInterest() {
     this.interest = {
       type: ClientMessage.Type.declare_stream_interest,
-      containerId: undefined,
+      svcId: undefined,
       filter: undefined,
     };
     this.send(this.interest);

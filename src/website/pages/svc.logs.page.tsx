@@ -11,7 +11,7 @@ import { Overlay } from "../comps/basics/Overlay";
 import { Spinner } from "../comps/basics/Spinner";
 import { useDocumentTitle } from "../hooks/basics/useDocumentTitle";
 import { useAnchor } from "../hooks/useAnchor";
-import { useContainerName } from "../hooks/useContainerName";
+import { useSvcName } from "../hooks/useSvcName";
 import { useFilter } from "../hooks/useFilter";
 import { useLogs } from "../hooks/useLogs";
 import { useParentNode } from "../hooks/useParentNode";
@@ -19,21 +19,21 @@ import { useSearch } from "../hooks/useSearch";
 import { useTextSize } from "../hooks/useTextSize";
 import { Line } from "../rendering/Line";
 
-export function containerLogsPage() {
-  const { id: containerId = "" } = useParams();
+export function svcLogsPage() {
+  const { id: svcId = "" } = useParams();
   const { registerParentNode, parentNode } = useParentNode();
 
   const anchorResult = useAnchor();
   const filterResult = useFilter();
   const textSize = useTextSize();
   const logsResult = useLogs({
-    containerId,
+    svcId,
     parentNode,
     anchor: anchorResult.anchor,
     filter: filterResult.filter,
   });
   const searchResult = useSearch({
-    containerId,
+    svcId,
     parentNode,
     filter: filterResult.filter,
     events: logsResult.events,
@@ -41,13 +41,13 @@ export function containerLogsPage() {
     navigateToUnloadedMatchResult: logsResult.navigateTo,
   });
 
-  const name = useContainerName(containerId, logsResult.events);
+  const name = useSvcName(svcId, logsResult.events);
   useDocumentTitle(`${name} | Dolog`);
 
   return (
     <div className="full-bleed flex h-screen flex-col bg-c-shell">
       <header className="relative flex h-16 shrink-0 items-center justify-center border-b border-c-rule">
-        <Link to={Route.containers()} title="back to the containers" className="absolute left-5 text-white hover:text-c-accent">
+        <Link to={Route.svcs()} title="back to the containers" className="absolute left-5 text-white hover:text-c-accent">
           <Internal.BackArrow />
         </Link>
         <span className="text-base">{name}</span>

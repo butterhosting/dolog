@@ -21,7 +21,7 @@ namespace Internal {
     return (
       <nav className="mt-10 flex flex-wrap items-center gap-3 md:items-start">
         <Paper className="flex items-center transition-colors hover:border-c-accent">
-          <Link to={Route.containers()} className="p-4 text-lg transition-colors hover:text-c-accent">
+          <Link to={Route.svcs()} className="p-4 text-lg transition-colors hover:text-c-accent">
             Containers
           </Link>
         </Paper>

@@ -1,19 +1,19 @@
 import { Class } from "@/types/Class";
 import { Sqlite } from "./drizzle/sqlite";
-import { Initialize } from "./Initialize";
 import { Env } from "./Env";
+import { Initialize } from "./Initialize";
 import { LoggingMiddleware } from "./middleware/logging/LoggingMiddleware";
 import { Middleware } from "./middleware/Middleware";
 import { EventRepository } from "./repositories/EventRepository";
 import { Server } from "./Server";
 import { AlertingService } from "./services/AlertingService";
-import { ContainerService } from "./services/ContainerService";
 import { LogService } from "./services/LogService";
 import { RetentionService } from "./services/RetentionService";
+import { SocketService } from "./services/SocketService";
 import { DockerSocket } from "./services/streaming/DockerSocket";
 import { Fountain } from "./services/streaming/Fountain";
 import { ThrottleService } from "./services/streaming/ThrottleService";
-import { SocketService } from "./services/SocketService";
+import { SvcService } from "./services/SvcService";
 
 export class ServerRegistry {
   public static async bootstrap(env: Env.Private, sqlite: Sqlite): Promise<ServerRegistry> {
@@ -36,7 +36,7 @@ export class ServerRegistry {
     this.register({ RetentionService }, [fountain, env, eventRepository]);
     this.register({ AlertingService }, [fountain]);
     const { socketService } = this.register({ SocketService }, []);
-    const { containerService } = this.register({ ContainerService }, [fountain, dockerSocket, eventRepository, socketService]);
+    const { svcService } = this.register({ SvcService }, [fountain, eventRepository, socketService]);
     const { logService } = this.register({ LogService }, [fountain, eventRepository, socketService]);
 
     // Middleware
@@ -44,7 +44,7 @@ export class ServerRegistry {
     const { middleware } = this.register({ Middleware }, [loggingMiddleware]);
 
     // Server
-    this.register({ Server }, [env, containerService, logService, socketService, middleware]);
+    this.register({ Server }, [env, svcService, logService, socketService, middleware]);
   }
 
   /**

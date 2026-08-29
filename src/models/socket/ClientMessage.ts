@@ -11,7 +11,7 @@ export namespace ClientMessage {
 
   export type DeclareStreamInterest = {
     type: Type.declare_stream_interest;
-    containerId?: string;
+    svcId?: string;
     filter?: Filter;
   };
 
@@ -20,7 +20,7 @@ export namespace ClientMessage {
       z.union([
         z.object({
           type: z.literal(Type.declare_stream_interest),
-          containerId: z.string().optional(),
+          svcId: z.string().optional(),
           filter: Filter.parse.SCHEMA.optional(),
         }),
       ]),

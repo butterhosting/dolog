@@ -1,8 +1,8 @@
 export const Route = {
-  containers() {
-    return "/containers";
+  svcs() {
+    return "/services";
   },
-  containerLogs(containerId = ":id") {
-    return `/containers/${containerId}/logs`;
+  svcsLogs(svcId = ":id") {
+    return `/services/${svcId}/logs`;
   },
 };

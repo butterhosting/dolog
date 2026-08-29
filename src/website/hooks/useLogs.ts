@@ -9,13 +9,14 @@ import { useRegistry } from "./basics/useRegistry";
 import { ClientFilter } from "./objects/ClientFilter";
 import { ParentNode } from "./objects/ParentNode";
 import { useLoading } from "./useLoading";
+import { Svc } from "@/models/Svc";
 
-export function useLogs({ containerId, parentNode, filter, anchor }: useLogs.Options): useLogs.Result {
+export function useLogs({ svcId, parentNode, filter, anchor }: useLogs.Options): useLogs.Result {
   const socketClient = useRegistry(SocketClient);
   const renderer = useRegistry(LineRenderer);
 
   const { events, appendEvent, loadingRef, isLoading, hasNewer, hasOlder, requestLogs } = useLoading({
-    containerId,
+    svcId,
     filter,
   });
 
@@ -34,7 +35,7 @@ export function useLogs({ containerId, parentNode, filter, anchor }: useLogs.Opt
         if (event.type === ContainerEvent.Type.stop) {
           console.log(`Browser STOP; ${event.id}; ${JSON.stringify(event.container, null, 2)}`);
         }
-        if (event.container.did !== containerId) {
+        if (!Svc.matches(svcId, event.container)) {
           return;
         }
         // Live lines are _only_ appended while the reader is tailing the end of the logs ...
@@ -45,12 +46,12 @@ export function useLogs({ containerId, parentNode, filter, anchor }: useLogs.Opt
         }
       },
     });
-    socketClient.declareStreamInterest(containerId, filter);
+    socketClient.declareStreamInterest(svcId, filter);
     return () => {
       socketClient.undeclareStreamInterest();
       socketClient.unsubscribe(subscription);
     };
-  }, [containerId, filter]);
+  }, [svcId, filter]);
 
   //
   // Navigate to the end of stream
@@ -160,7 +161,7 @@ export function useLogs({ containerId, parentNode, filter, anchor }: useLogs.Opt
 
 export namespace useLogs {
   export type Options = {
-    containerId: string;
+    svcId: string;
     parentNode: ParentNode;
     filter: ClientFilter;
     anchor?: Anchor;

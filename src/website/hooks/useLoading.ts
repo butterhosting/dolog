@@ -3,14 +3,14 @@ import { LogService } from "@/services/LogService";
 import { Temporal } from "@js-temporal/polyfill";
 import { RefObject, useLayoutEffect, useRef, useState } from "react";
 import { LogClient } from "../clients/LogClient";
-import { useFilter } from "./useFilter";
 import { useRegistry } from "./basics/useRegistry";
 import { ClientFilter } from "./objects/ClientFilter";
+import { useFilter } from "./useFilter";
 
 /** How far the window may grow while tailing, before the oldest lines are let go of. */
 const MAX_WINDOW_SIZE = 300;
 
-export function useLoading({ containerId, filter }: useLoading.Options): useLoading.Result {
+export function useLoading({ svcId, filter }: useLoading.Options): useLoading.Result {
   const logClient = useRegistry(LogClient);
 
   const [events, setEvents] = useState<ContainerEvent[]>([]);
@@ -90,7 +90,7 @@ export function useLoading({ containerId, filter }: useLoading.Options): useLoad
       }
     }
     const { data, hasNewer, hasOlder } = await logClient
-      .list(containerId, {
+      .list(svcId, {
         ...requestOptions,
         ...useFilter.serializeForServer(filter),
       })
@@ -173,7 +173,7 @@ namespace Internal {
 export namespace useLoading {
   export type Variant = "latest" | "forwards" | "backwards" | "around";
   export type Options = {
-    containerId: string;
+    svcId: string;
     filter: ClientFilter;
   };
   export type Result = {

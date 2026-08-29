@@ -23,12 +23,16 @@ export namespace ContainerEventConverter {
     };
   }
 
-  export function fromDatabase(db: $ContainerEvent, container: Container): ContainerEvent {
+  export function eventFromDatabase(db: $ContainerEvent, containersCatalog: Array<InferSelectModel<typeof $container>>): ContainerEvent {
+    const container = containersCatalog.find((c) => c.id === db.containerId);
+    if (!container) {
+      throw new Error(`Illegal state; container should logically always be present in catalog`);
+    }
     const common = {
       object: "container_event",
       id: Uuid.fromBytes(db.id),
       timestamp: Temporal.Instant.from(db.timestamp),
-      container,
+      container: containerFromDatabase(container),
     } as const;
     switch (db.type as ContainerEvent.Type) {
       case ContainerEvent.Type.start:

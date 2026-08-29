@@ -1,19 +1,19 @@
 import { ZodParser } from "@/helpers/ZodParser";
 import { ContainerEvent } from "@/models/ContainerEvent";
-import { ContainerRM } from "@/models/ContainerRM";
 import z from "zod/v4";
+import { Svc } from "../Svc";
 
-export type ServerMessage = ServerMessage.Containers | ServerMessage.Log;
+export type ServerMessage = ServerMessage.Svcs | ServerMessage.Log;
 
 export namespace ServerMessage {
   export enum Type {
-    containers = "containers",
+    svcs = "svcs",
     event = "event",
   }
 
-  export type Containers = {
-    type: Type.containers;
-    containers: ContainerRM[];
+  export type Svcs = {
+    type: Type.svcs;
+    svcs: Svc[];
   };
 
   export type Log = {
@@ -25,8 +25,8 @@ export namespace ServerMessage {
     .ensureSchemaMatchesType(() => {
       return z.union([
         z.object({
-          type: z.literal(Type.containers),
-          containers: z.array(ContainerRM.parse.SCHEMA),
+          type: z.literal(Type.svcs),
+          svcs: z.array(Svc.parse.SCHEMA),
         }),
         z.object({
           type: z.literal(Type.event),

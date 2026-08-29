@@ -4,22 +4,22 @@ import { ClientRegistry } from "./ClientRegistry";
 import { DialogClient } from "./clients/DialogClient";
 import { SocketClient } from "./clients/SocketClient";
 import { DialogManager } from "./comps/basics/DialogManager";
-import { containerLogsPage } from "./pages/container.logs.page";
-import { containersPage } from "./pages/containers.page";
+import { svcLogsPage } from "./pages/svc.logs.page";
+import { svcsPage } from "./pages/svcs.page";
 import { Route } from "./Route";
 
 const router = createBrowserRouter([
   {
-    path: Route.containers(),
-    Component: containersPage,
+    path: Route.svcs(),
+    Component: svcsPage,
   },
   {
-    path: Route.containerLogs(),
-    Component: containerLogsPage,
+    path: Route.svcsLogs(),
+    Component: svcLogsPage,
   },
   {
     path: "*",
-    loader: () => replace(Route.containers()),
+    loader: () => replace(Route.svcs()),
   },
 ]);
 

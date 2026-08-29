@@ -8,18 +8,18 @@ import { randomUUID } from "crypto";
 import { Yexception } from "yexception";
 import { Logger } from "./Logger";
 import { Middleware } from "./middleware/Middleware";
-import { ContainerRM } from "./models/ContainerRM";
-import { ContainerService } from "./services/ContainerService";
-import { LogService } from "./services/LogService";
+import { Svc } from "./models/Svc";
 import { Socket } from "./models/socket/Socket";
+import { LogService } from "./services/LogService";
 import { SocketService } from "./services/SocketService";
+import { SvcService } from "./services/SvcService";
 
 export class Server {
   private readonly log = new Logger(__filename);
 
   public constructor(
     private readonly env: Env.Private,
-    private readonly containerService: ContainerService,
+    private readonly svcService: SvcService,
     private readonly logService: LogService,
     private readonly socketService: SocketService,
     private readonly middleware: Middleware,
@@ -98,25 +98,29 @@ export class Server {
         },
 
         /**
-         * Containers
+         * Services
          */
-        "/internal-api/containers": {
+        "/internal-api/svcs": {
           GET: this.handleRoute(async () => {
-            const overview: ContainerRM[] = await this.containerService.list();
+            const overview: Svc[] = await this.svcService.list();
             return Response.json(overview);
           }),
         },
-        "/internal-api/containers/:id/logs": {
+
+        /**
+         * Logs
+         */
+        "/internal-api/svcs/:id/logs": {
           GET: this.handleRoute(async ({ params, url }) => {
             const query = Object.fromEntries(new URL(url).searchParams);
-            return Response.json(await this.logService.list(params.id, query));
+            return Response.json(await this.logService.list(Svc.decodeId(params.id), query));
           }),
         },
         // a position, not a page: the caller usually holds the line already and only has to scroll
-        "/internal-api/containers/:id/logs/find": {
+        "/internal-api/svcs/:id/logs/find": {
           GET: this.handleRoute(async ({ params, url }) => {
             const query = Object.fromEntries(new URL(url).searchParams);
-            return Response.json(await this.logService.find(params.id, query));
+            return Response.json(await this.logService.find(Svc.decodeId(params.id), query));
           }),
         },
       },

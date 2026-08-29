@@ -3,7 +3,7 @@ import { ProblemDetails } from "@/models/internal/ProblemDetails";
 import { Class } from "@/types/Class";
 import { createContext } from "react";
 import { Yesttp } from "yesttp";
-import { ContainerClient } from "./clients/ContainerClient";
+import { SvcClient } from "./clients/SvcClient";
 import { DialogClient } from "./clients/DialogClient";
 import { LogClient } from "./clients/LogClient";
 import { SocketClient } from "./clients/SocketClient";
@@ -44,7 +44,7 @@ export class ClientRegistry {
     }));
     this.registry[SocketClient.name] = new SocketClient();
     this.registry[DialogClient.name] = new DialogClient();
-    this.registry[ContainerClient.name] = new ContainerClient(yesttp);
+    this.registry[SvcClient.name] = new SvcClient(yesttp);
     this.registry[LogClient.name] = new LogClient(yesttp);
     this.registry[LineRenderer.name] = new LineRenderer();
   }

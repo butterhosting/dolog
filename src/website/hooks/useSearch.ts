@@ -10,7 +10,7 @@ import { ParentNode } from "./objects/ParentNode";
 import { useFilter } from "./useFilter";
 
 export function useSearch({
-  containerId,
+  svcId,
   parentNode,
   filter,
   events,
@@ -104,7 +104,7 @@ export function useSearch({
 
     setSearchingRightNow(direction);
     try {
-      const nextMatchId = await logClient.find(containerId, {
+      const nextMatchId = await logClient.find(svcId, {
         searchPattern: pattern.value,
         searchPatternType: pattern.type,
         ...(isCurrentMatchVisible ? { anchorExclusive: cursor } : { anchorInclusive: cursor }),
@@ -184,7 +184,7 @@ namespace Internal {
 
 export namespace useSearch {
   export type Options = {
-    containerId: string;
+    svcId: string;
     parentNode: ParentNode;
     filter: ClientFilter;
     events: ContainerEvent[];

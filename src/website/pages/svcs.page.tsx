@@ -2,21 +2,21 @@ import { ServerMessage } from "@/models/socket/ServerMessage";
 import { Temporal } from "@js-temporal/polyfill";
 import { useEffect } from "react";
 import { useYesQuery } from "react-yesquery";
-import { ContainerClient } from "../clients/ContainerClient";
+import { SvcClient } from "../clients/SvcClient";
 import { SocketClient } from "../clients/SocketClient";
-import { ContainerCard } from "../comps/ContainerCard";
+import { SvcCard } from "../comps/SvcCard";
 import { Frame } from "../comps/basics/Frame";
 import { Paper } from "../comps/basics/Paper";
 import { Spinner } from "../comps/basics/Spinner";
 import { useDocumentTitle } from "../hooks/basics/useDocumentTitle";
 import { useRegistry } from "../hooks/basics/useRegistry";
 
-export function containersPage() {
+export function svcsPage() {
   useDocumentTitle("Containers | Dolog");
-  const containerClient = useRegistry(ContainerClient);
+  const svcClient = useRegistry(SvcClient);
   const socketClient = useRegistry(SocketClient);
   const { data, setData, reload } = useYesQuery({
-    queryFn: () => containerClient.list(),
+    queryFn: () => svcClient.list(),
   });
 
   useEffect(() => {
@@ -25,8 +25,8 @@ export function containersPage() {
 
     socketClient.undeclareStreamInterest();
     const subscription = socketClient.subscribe({
-      type: ServerMessage.Type.containers,
-      callback: ({ containers }) => setData(containers),
+      type: ServerMessage.Type.svcs,
+      callback: ({ svcs }) => setData(svcs),
     });
 
     return () => {
@@ -52,8 +52,8 @@ export function containersPage() {
         </Paper>
       )}
       <div className="grid grid-cols-3 lg:grid-cols-2 sm:grid-cols-1 gap-4">
-        {data.map((container) => (
-          <ContainerCard key={container.did} container={container} />
+        {data.map((svc) => (
+          <SvcCard key={svc.id} svc={svc} />
         ))}
       </div>
     </Frame>

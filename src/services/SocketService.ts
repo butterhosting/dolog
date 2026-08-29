@@ -1,8 +1,8 @@
 import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
 import { ContainerEvent } from "@/models/ContainerEvent";
-import { ContainerRM } from "@/models/ContainerRM";
 import { Connection } from "@/models/socket/Connection";
+import { Svc } from "@/models/Svc";
 import { PredicateFactory } from "@/repositories/PredicateFactory";
 import { Temporal } from "@js-temporal/polyfill";
 import { ClientMessage } from "../models/socket/ClientMessage";
@@ -53,7 +53,7 @@ export class SocketService {
       data: event,
     };
     [...this.connections.values()]
-      .filter((connection) => connection.watchedContainerId === event.container.did)
+      .filter((connection) => connection.watchedSvcId && Svc.matches(connection.watchedSvcId, event.container))
       .filter((connection): boolean => {
         switch (event.type) {
           case ContainerEvent.Type.start:
@@ -67,10 +67,10 @@ export class SocketService {
       .forEach((connection) => connection.socket.send(JSON.stringify(message)));
   };
 
-  public broadcastContainers = (containers: ContainerRM[]) => {
+  public broadcastSvcs = (svcs: Svc[]) => {
     const message: ServerMessage = {
-      type: ServerMessage.Type.containers,
-      containers,
+      type: ServerMessage.Type.svcs,
+      svcs,
     };
     this.connections.forEach(({ socket }) => socket.send(JSON.stringify(message)));
   };
@@ -85,7 +85,7 @@ export class SocketService {
       const message = ClientMessage.parse(JSON.parse(raw));
       switch (message.type) {
         case ClientMessage.Type.declare_stream_interest: {
-          connection.watchedContainerId = message.containerId;
+          connection.watchedSvcId = message.svcId ? Svc.decodeId(message.svcId) : undefined;
           connection.filterPredicate = PredicateFactory.forFilter("full_object_test", message.filter ?? {});
           break;
         }

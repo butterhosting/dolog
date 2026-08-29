@@ -8,9 +8,10 @@ import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";
 import { Filter } from "@/models/Filter";
 import { Pattern } from "@/models/Pattern";
+import { Svc } from "@/models/Svc";
 import { Uuid } from "@/models/Uuid";
 import { Temporal } from "@js-temporal/polyfill";
-import { and, asc, desc, eq, gt, InferInsertModel, lt, lte, notExists, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, InferInsertModel, isNull, lt, lte, notExists, SQL, sql } from "drizzle-orm";
 import { BehaviorSubject, catchError, concatMap, defer, EMPTY, interval, Observable } from "rxjs";
 import { PredicateFactory } from "./PredicateFactory";
 
@@ -34,22 +35,17 @@ export class EventRepository {
     return this.containers;
   }
 
-  public async listContainers(): Promise<Container[]> {
-    return this.sqlite
-      .select()
-      .from($container)
-      .orderBy(desc($container.dgroup), desc($container.dname))
-      .all()
-      .map(ContainerEventConverter.containerFromDatabase);
-  }
-
   /**
    * Also manually invoked after every write, so the overview reflects containers that have only just (dis)appeared
    */
   @Initialize
-  public publishUpdatedContainers(): void {
-    const rows = this.sqlite.select().from($container).orderBy(asc($container.dname)).all();
-    const containers = rows.map((row) => ContainerEventConverter.containerFromDatabase(row));
+  private publishUpdatedContainers(): void {
+    const containers = this.sqlite
+      .select()
+      .from($container)
+      .orderBy(asc($container.dname), asc($container.did))
+      .all()
+      .map(ContainerEventConverter.containerFromDatabase);
     const previous = this.containers.value;
     const unchanged =
       previous.length === containers.length &&
@@ -62,12 +58,20 @@ export class EventRepository {
     }
   }
 
+  private listContainersForService(svcId: Svc.Id) {
+    return this.sqlite
+      .select()
+      .from($container)
+      .where(and(eq($container.dname, svcId.dname), svcId.dgroup ? eq($container.dgroup, svcId.dgroup) : isNull($container.dgroup)))
+      .all();
+  }
+
   public saveEvent(event: ContainerEvent): void {
     this.pending.push(event);
     this.enforcePendingCeiling();
   }
 
-  public async findEvent(did: string, search: EventRepository.Search, filter: Filter): Promise<{ id: string | undefined }> {
+  public async findEvent(svcId: Svc.Id, search: EventRepository.Search, filter: Filter): Promise<{ id: string | undefined }> {
     const searchPredicate = {
       fullObjectTest: PredicateFactory.forSearch("full_object_test", search),
       partialDatabaseTest: PredicateFactory.forSearch("partial_database_test", search),
@@ -81,7 +85,7 @@ export class EventRepository {
     // Part A: search the buffer for a candidate
     //
     const bufferMatchesBeyondSearchAnchor = this.pending
-      .filter((event): event is ContainerEvent.Log => event.container.did === did && event.type === ContainerEvent.Type.log)
+      .filter((event): event is ContainerEvent.Log => event.type === ContainerEvent.Type.log && Svc.matches(svcId, event.container))
       .filter((event) => searchPredicate.fullObjectTest(event)) // only logs matching the specific search constraints...
       .filter((event) => filterPredicate.fullObjectTest(event)) // ...but only if they match the general filter window as well
       .sort(ContainerEvent.sort(search.direction)); // sorted the way the search runs, so the nearest match is simply the first
@@ -91,8 +95,8 @@ export class EventRepository {
     // Part B: search the database for a candidate
     //
     const CHUNK = 1_000;
-    const container = this.sqlite.select().from($container).where(eq($container.did, did)).get();
-    if (!container) {
+    const containers = this.listContainersForService(svcId);
+    if (containers.length === 0) {
       return { id: bufferMatch }; // nothing was ever flushed, so the buffer contains all history
     }
 
@@ -104,7 +108,10 @@ export class EventRepository {
         .from($containerEvent)
         .where(
           and(
-            eq($containerEvent.containerId, container.id),
+            inArray(
+              $containerEvent.containerId,
+              containers.map((c) => c.id),
+            ),
             ...searchPredicate.partialDatabaseTest(cursor), // only logs matching the specific search constraints...
             ...filterPredicate.partialDatabaseTest(), // ...but only if they match the general filter window as well
           ),
@@ -149,7 +156,12 @@ export class EventRepository {
     return { id: bufferMatch };
   }
 
-  public async listEvents(did: string, limit: number, cursor: EventRepository.Cursor, filter: Filter): Promise<EventRepository.ListResult> {
+  public async listEvents(
+    svcId: Svc.Id,
+    limit: number,
+    cursor: EventRepository.Cursor,
+    filter: Filter,
+  ): Promise<EventRepository.ListResult> {
     // If we didn't get any cursor, we default to showing the latest logs, and walking backwards_in_time
     const direction = cursor.after !== undefined ? Direction.forwards_in_time : Direction.backwards_in_time;
 
@@ -163,30 +175,30 @@ export class EventRepository {
     };
 
     let dbEvents: ContainerEvent[] = [];
-    const dbContainer = this.sqlite.select().from($container).where(eq($container.did, did)).get();
+    const dbContainers = this.listContainersForService(svcId);
 
     //
     // Part A: list the database
     //
-    if (dbContainer) {
-      const container = ContainerEventConverter.containerFromDatabase(dbContainer);
-      dbEvents = this.queryEventsUpToLimitWithPredicate({
-        limit: limit + 1, // +1 for `hasNewer/hasOlder`
-        direction,
-        where: and(
-          eq($containerEvent.containerId, dbContainer.id),
-          ...cursorPredicate.fullDatabaseTest(), // only logs matching the specific cursor constraints...
-          ...filterPredicate.partialDatabaseTest(), // ...but only if they match the general filter window as well
+    dbEvents = this.queryEventsUpToLimitWithPredicate({
+      limit: limit + 1, // +1 for `hasNewer/hasOlder`
+      direction,
+      where: and(
+        inArray(
+          $containerEvent.containerId,
+          dbContainers.map((c) => c.id),
         ),
-        predicate: filterPredicate.fullObjectTest,
-        mapper: (row) => ContainerEventConverter.fromDatabase(row, container),
-      });
-    }
+        ...cursorPredicate.fullDatabaseTest(), // only logs matching the specific cursor constraints...
+        ...filterPredicate.partialDatabaseTest(), // ...but only if they match the general filter window as well
+      ),
+      predicate: filterPredicate.fullObjectTest,
+      mapper: (row) => ContainerEventConverter.eventFromDatabase(row, dbContainers),
+    });
     //
     // Part B: list the buffer
     //
     const bufferEvents = this.pending
-      .filter((event): event is ContainerEvent.Log => event.container.did === did && event.type === ContainerEvent.Type.log)
+      .filter((event): event is ContainerEvent.Log => event.type === ContainerEvent.Type.log && Svc.matches(svcId, event.container))
       .filter((event) => cursorPredicate.fullObjectTest(event)) // only logs matching the specific cursor constraints...
       .filter((event) => filterPredicate.fullObjectTest(event)); // ...but only if they match the general filter window as well
     //
@@ -202,12 +214,19 @@ export class EventRepository {
         return {
           data: page,
           hasNewer,
-          hasOlder: this.hasAnythingOlderThan(dbContainer?.id, page.at(0)?.id, cursor.after, filter),
+          hasOlder: this.hasAnythingOlderThan(
+            dbContainers.map((c) => c.id),
+            page.at(0)?.id,
+            cursor.after,
+            filter,
+          ),
         };
       }
       case Direction.backwards_in_time: {
         // quick reminder that `cursor.before` is always "exclusive"
-        if (cursor.beforeInclusivity && cursor.beforeInclusivity !== "exclusive") cursor.beforeInclusivity satisfies never;
+        if (cursor.beforeInclusivity && cursor.beforeInclusivity !== "exclusive") {
+          cursor.beforeInclusivity satisfies never;
+        }
         const hasNewer = cursor.before !== undefined;
         return {
           data: events.slice(-limit),
@@ -317,7 +336,10 @@ export class EventRepository {
       // Split across statements, because SQLite caps how many values one statement may bind and a
       // single insert of the whole batch would blow past it. Still one transaction, so the batch
       // remains all-or-nothing.
-      const rows = events.map((event) => ContainerEventConverter.toDatabase(event, containerIds.get(event.container.did)!));
+      const rows = events.map((event) => {
+        const containerId = containerIds.get(event.container.did)!;
+        return ContainerEventConverter.toDatabase(event, containerId);
+      });
       for (let offset = 0; offset < rows.length; offset += INSERT_CHUNK) {
         tx.insert($containerEvent)
           .values(rows.slice(offset, offset + INSERT_CHUNK))
@@ -370,25 +392,23 @@ export class EventRepository {
   }
 
   private hasAnythingOlderThan(
-    container: number | undefined,
-    oldestShown: string | undefined,
+    containerIds: number[],
+    oldestShownEventId: string | undefined,
     cursor: string | undefined,
     filter: Filter,
   ): boolean {
-    const bound =
-      oldestShown !== undefined
-        ? lt($containerEvent.id, Uuid.toBytes(oldestShown))
-        : cursor !== undefined
-          ? lte($containerEvent.id, Uuid.toBytes(cursor))
-          : undefined;
-    // nothing is written for this container yet, so nothing can be older than the page
-    if (container === undefined || !bound) {
+    let sqlClause: SQL<unknown> | undefined;
+    if (oldestShownEventId !== undefined) {
+      sqlClause = lt($containerEvent.id, Uuid.toBytes(oldestShownEventId));
+    } else if (cursor !== undefined) {
+      sqlClause = lte($containerEvent.id, Uuid.toBytes(cursor));
+    }
+
+    // nothing is written for these containers yet, so nothing can be older than the page
+    if (containerIds.length === 0 || !sqlClause) {
       return false;
     }
-    /**
-     * Under a filter this stops being a free existence check: "is there anything above" becomes "is
-     * there another *match* above", which is the same walk the page does, stopped at one.
-     */
+
     const filterPredicate = {
       fullObjectTest: PredicateFactory.forFilter("full_object_test", filter),
       partialDatabaseTest: PredicateFactory.forFilter("partial_database_test", filter),
@@ -397,7 +417,7 @@ export class EventRepository {
       this.queryEventsUpToLimitWithPredicate({
         limit: 1,
         direction: Direction.backwards_in_time,
-        where: and(eq($containerEvent.containerId, container), bound, ...filterPredicate.partialDatabaseTest()),
+        where: and(inArray($containerEvent.containerId, containerIds), sqlClause, ...filterPredicate.partialDatabaseTest()),
         predicate: filterPredicate.fullObjectTest,
       }).length > 0
     );
@@ -483,9 +503,6 @@ export class EventRepository {
 }
 
 export namespace EventRepository {
-  /**
-   * The single specific line to search for
-   */
   export type Search = {
     pattern: Pattern;
     anchorId?: string;
@@ -493,9 +510,6 @@ export namespace EventRepository {
     direction: Direction;
   };
 
-  /**
-   * Where to read, using cursor-based navigation
-   */
   export type Cursor = {
     before?: string;
     beforeInclusivity?: "exclusive"; // only allowed variant
@@ -503,9 +517,6 @@ export namespace EventRepository {
     afterInclusivity?: "inclusive" | "exclusive";
   };
 
-  /**
-   * Return page
-   */
   export type ListResult = {
     data: ContainerEvent[];
     hasOlder: boolean;
