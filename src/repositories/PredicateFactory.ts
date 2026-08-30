@@ -20,7 +20,6 @@ export namespace PredicateFactory {
     switch (exhaustiveness) {
       case "full_object_test": {
         try {
-          // the model owns what "matches" means, so the frontend can light up exactly what we find
           return Pattern.createPredicate({ type, value });
         } catch (error) {
           if (error instanceof SyntaxError) {
@@ -60,8 +59,9 @@ export namespace PredicateFactory {
       }
       case "partial_database_test": {
         const clauses: Array<SQL<unknown>> = [];
-        if (pattern?.type === Pattern.Type.substr) {
-          clauses.push(sqlSubstring(pattern.value));
+        if (pattern) {
+          const patternClause = forPattern("partial_database_test", pattern);
+          clauses.push(...patternClause());
         }
         if (since) {
           clauses.push(gte($containerEvent.id, Uuid.lowerBoundAt(since)));
@@ -104,10 +104,10 @@ export namespace PredicateFactory {
         return (candidate: Candidate) => anchorPredicate(candidate) && (candidate.line ? patternPredicate(candidate.line) : false);
       }
       case "partial_database_test": {
-        const patternClause = pattern.type === Pattern.Type.substr ? [sqlSubstring(pattern.value)] : [];
+        const patternClause = forPattern("partial_database_test", pattern);
         return (cursor: string | undefined) => {
           if (cursor === undefined) {
-            return [...patternClause];
+            return [...patternClause()];
           }
           const $id = $containerEvent.id;
           const cursorBytes = Uuid.toBytes(cursor);
@@ -130,7 +130,7 @@ export namespace PredicateFactory {
               break;
             }
           }
-          return [anchorClause, ...patternClause];
+          return [anchorClause, ...patternClause()];
         };
       }
     }
