@@ -18,10 +18,9 @@ export function SvcCard({ svc: { id, dname, dgroup, online, logsPerSecond, throt
         {dgroup && <span className="truncate text-xs text-c-rule">{dgroup}</span>}
         <div className="mt-2 flex items-baseline gap-2">
           <span className="text-sm">{logsPerSecond}</span>
-          <span className="text-xs text-c-rule">logs/s</span>
+          <span className="text-xs text-c-rule">{logsPerSecond === 1 ? "log/s" : "logs/s"}</span>
           {throttling && <span className="text-xs text-c-error">THROTTLED</span>}
         </div>
-        <span className="text-xs text-c-rule">[Last seen property removed]</span>
       </Paper>
     </Link>
   );

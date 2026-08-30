@@ -18,10 +18,11 @@ export namespace Svc {
   export function encodeId({ dname, dgroup }: Id): string {
     const marker = dgroup ? "1" : "0";
     const len = dname.length.toString().padStart(3, "0"); // dname ≤ 999 chars
-    return `${marker}${len}${dname}${dgroup ?? ""}`;
+    return new TextEncoder().encode(`${marker}${len}${dname}${dgroup ?? ""}`).toHex();
   }
 
   export function decodeId(id: string): Id {
+    id = new TextDecoder().decode(Uint8Array.fromHex(id));
     const hasGroup = id[0] === "1";
     const len = Number(id.slice(1, 4));
     const dname = id.slice(4, 4 + len);

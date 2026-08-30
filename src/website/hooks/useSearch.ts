@@ -55,7 +55,11 @@ export function useSearch({
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "k") {
         event.preventDefault();
-        activate();
+        if (activated) {
+          deactivate();
+        } else {
+          activate();
+        }
       }
       if (event.key === "Escape") {
         deactivate();
@@ -63,7 +67,7 @@ export function useSearch({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [activated]);
 
   //
   // Effect for purging the current match when the pattern changes

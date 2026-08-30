@@ -6,19 +6,19 @@ import { useRegistry } from "./basics/useRegistry";
 /**
  * Gets the container name, either from the API, or by deriving it from the events
  */
-export function useSvcName(id: string, events: ContainerEvent[]): string {
+export function useSvcNameAndGroup(svcId: string, events: ContainerEvent[]): Svc.Id {
   const svcClient = useRegistry(SvcClient);
-  const [name, setName] = useState(id.slice(0, 12));
+  const [name, setName] = useState(svcId.slice(0, 12));
 
   // approach 1
   useEffect(() => {
     void svcClient.list().then((svcs) => {
-      const svc = svcs.find((svc) => svc.id === id);
+      const svc = svcs.find((svc) => svc.id === svcId);
       if (svc) {
         setName(svc.dgroup ? `${svc.dgroup} :: ${svc.dname}` : svc.dname);
       }
     });
-  }, [svcClient, id]);
+  }, [svcClient, svcId]);
 
   // approach 2
   useEffect(() => {

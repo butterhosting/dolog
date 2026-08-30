@@ -11,13 +11,15 @@ import { Overlay } from "../comps/basics/Overlay";
 import { Spinner } from "../comps/basics/Spinner";
 import { useDocumentTitle } from "../hooks/basics/useDocumentTitle";
 import { useAnchor } from "../hooks/useAnchor";
-import { useSvcName } from "../hooks/useSvcName";
+import { useSvcNameAndGroup } from "../hooks/useSvcName";
 import { useFilter } from "../hooks/useFilter";
 import { useLogs } from "../hooks/useLogs";
 import { useParentNode } from "../hooks/useParentNode";
 import { useSearch } from "../hooks/useSearch";
 import { useTextSize } from "../hooks/useTextSize";
 import { Line } from "../rendering/Line";
+import { useMemo } from "react";
+import { Svc } from "@/models/Svc";
 
 export function svcLogsPage() {
   const { id: svcId = "" } = useParams();
@@ -41,8 +43,8 @@ export function svcLogsPage() {
     navigateToUnloadedMatchResult: logsResult.navigateTo,
   });
 
-  const name = useSvcName(svcId, logsResult.events);
-  useDocumentTitle(`${name} | Dolog`);
+  const { dname, dgroup } = useMemo(() => Svc.decodeId(svcId), []);
+  useDocumentTitle(dgroup ? `${dname} : ${dgroup} | Dolog` : `${dname} | Dolog`);
 
   return (
     <div className="full-bleed flex h-screen flex-col bg-c-shell">
@@ -50,7 +52,10 @@ export function svcLogsPage() {
         <Link to={Route.svcs()} title="back to the containers" className="absolute left-5 text-white hover:text-c-accent">
           <Internal.BackArrow />
         </Link>
-        <span className="text-base">{name}</span>
+        <span>
+          <span className="text-base text-c-accent">{dname}</span>
+          {dgroup && <span className="text-base"> : {dgroup}</span>}
+        </span>
         <Button
           className="absolute right-4"
           onClick={() => void filterResult.form.promptRangeDialog()}
