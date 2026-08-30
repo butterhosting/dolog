@@ -5,6 +5,10 @@
 - I think this has a consequence that's already important to record: which specific container belongs to which specific log line (we already kind-of do that), but the current `Container` object becomes more of an intermediate object, wereas `ContainerChain` will be the user-facing model
 - In the (far) future, but not now, when adding better Docker Swarm/Stack support, we might want to interleave the log output of multiple Swarm replicas of the same service; filterable on a per-container basis, if wanted
 
+      UPDATE: this is done, and we base identity on `container name` + `group` ... since `container name` is globally unique,
+      that means we only view logs of 1 container at a time, which is much simpler ... using the `socket` we can always implement the "switch to new version" mechanism later,
+      specifically for Docker Swarm ... because ordinary containers will see their logs concatenated even if the new container's id has changed :-)
+
 ## 2) Invent history for the slow "trickle" container
 
 - So that on `bun dev`, it automatically invents history for the last 3 days up until now (the automatic retention cleanup might bite tho, with max lines 100k)
