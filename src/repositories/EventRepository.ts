@@ -318,13 +318,15 @@ export class EventRepository {
         tx.insert($container)
           .values(containerRows.slice(offset, offset + INSERT_CHUNK))
           // `excluded` is the row we tried to insert, so one statement carries a different name and
-          // timestamp for every container. `firstSeen` is left alone: it is only true of the insert
+          // timestamp for every container. `firstSeen` is left alone: it is only true of the insert.
+          // The column name goes through `identifier`: interpolated bare into a `sql` template it
+          // would bind as a `?` value, and `excluded.?` does not parse
           .onConflictDoUpdate({
             target: $container.did,
             set: {
-              dname: sql`excluded.${$container.dname.name}`,
-              dgroup: sql`excluded.${$container.dgroup.name}`,
-              online: sql`excluded.${$container.online.name}`,
+              dname: sql`excluded.${sql.identifier($container.dname.name)}`,
+              dgroup: sql`excluded.${sql.identifier($container.dgroup.name)}`,
+              online: sql`excluded.${sql.identifier($container.online.name)}`,
             },
           })
           // returned in no guaranteed order, so the docker id comes back too rather than being positional
