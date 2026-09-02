@@ -20,7 +20,7 @@ export namespace Row {
     line: Line.BeginningOfTime;
   };
   export function BeginningOfTime({ line: _ }: BeginningOfTimeProps) {
-    return <Internal.Aside>this is the beginning</Internal.Aside>;
+    return <Internal.CenterBox className="text-c-rule italic">this is the beginning</Internal.CenterBox>;
   }
 
   type ScrollTeaserProps = {
@@ -29,9 +29,9 @@ export namespace Row {
   export function ScrollTeaser({ line: { direction } }: ScrollTeaserProps): JSX.Element {
     switch (direction) {
       case Direction.backwards_in_time:
-        return <Internal.Aside>↑ scroll up for earlier records</Internal.Aside>;
+        return <Internal.CenterBox bordered>↑ scroll up for earlier records</Internal.CenterBox>;
       case Direction.forwards_in_time:
-        return <Internal.Aside>↓ scroll down for later records</Internal.Aside>;
+        return <Internal.CenterBox bordered>↓ scroll down for later records</Internal.CenterBox>;
     }
   }
 
@@ -39,7 +39,7 @@ export namespace Row {
     line: Line.DayTransition;
   };
   export function DayTransition({ line: { day } }: DayTransitionProps) {
-    return <Internal.Aside>{Prettify.day(day)}</Internal.Aside>;
+    return <Internal.CenterBox bordered>{Prettify.dayTransition(day)}</Internal.CenterBox>;
   }
 
   type TimestampAnchorProps = {
@@ -71,54 +71,66 @@ export namespace Row {
     match?: "main_match" | "side_match";
   };
   export function Event({ line: { event, isAnchored }, filter, toggleAnchor, match }: EventProps) {
-    if (event.type === ContainerEvent.Type.log) {
-      return (
-        <div
-          data-event={event.id} // TODO: use a shared constant for these custom DOM attributes
-          data-anchored={isAnchored} // TODO: use a shared constant for these custom DOM attributes
-          className={clsx(
-            "flex items-start",
-            match === "main_match" && "bg-c-accent/30",
-            match === "side_match" && "bg-c-accent/12",
-            isAnchored && "outline outline-c-accent",
-          )}
-        >
-          <button onClick={toggleAnchor} title="mark this line" className={clsx(TIMESTAMP, "cursor-pointer hover:text-white")}>
-            {Prettify.timestamp(event.timestamp)}
-          </button>
-          <div className={MESSAGE}>{event.line}</div>
-        </div>
-      );
-    }
-    switch (event.type) {
-      case ContainerEvent.Type.start:
-        return <Internal.Aside>🟢 Container started</Internal.Aside>;
-      case ContainerEvent.Type.stop:
-        return <Internal.Aside>🔴 Container stopped</Internal.Aside>;
-      case ContainerEvent.Type.log_throttle: {
-        if (filter.pattern) {
-          // Don't show the drop count if a filter pattern is currently active ...
-          // ... it would be misleading and confusing to show how many records just got dropped in the non-filtered stream
-          return <Internal.Aside>⚡️ Container throttled</Internal.Aside>;
-        }
-        return <Internal.Aside>⚡️ Container throttled; {event.dropCount} messages dropped</Internal.Aside>;
-      }
-      default:
-        event satisfies never;
-    }
+    return (
+      <div
+        data-event={event.id} // TODO: use a shared constant for these custom DOM attributes
+        data-anchored={isAnchored} // TODO: use a shared constant for these custom DOM attributes
+        className={clsx(
+          "flex items-start border-y border-transparent",
+          match === "main_match" && "bg-c-accent/30",
+          match === "side_match" && "bg-c-accent/12",
+          isAnchored && "border-c-accent!",
+          event.type !== ContainerEvent.Type.log && "my-2 py-2",
+          event.type === ContainerEvent.Type.start && "bg-linear-to-r from-green-950 via-gray-950 to-black",
+          event.type === ContainerEvent.Type.stop && "bg-linear-to-r from-red-950 via-gray-950 to-black",
+          event.type === ContainerEvent.Type.log_throttle && "bg-linear-to-r from-yellow-950 via-gray-950 to-black",
+        )}
+      >
+        <button onClick={toggleAnchor} title="mark this line" className={clsx(TIMESTAMP, "cursor-pointer hover:text-white")}>
+          {Prettify.timestamp(event.timestamp)}
+        </button>
+        {(() => {
+          const id = <span className="underline underline-offset-2">{event.container.did.slice(0, 7)}</span>;
+          switch (event.type) {
+            case ContainerEvent.Type.start:
+              return <div className={MESSAGE}>🟢 Container {id} has started</div>;
+            case ContainerEvent.Type.stop:
+              return <div className={MESSAGE}>🔴 Container {id} has stopped</div>;
+            case ContainerEvent.Type.log_throttle: {
+              if (filter.pattern) {
+                // Don't show the drop count if a filter pattern is currently active ...
+                // ... it would be misleading and confusing to show how many records just got dropped in the non-filtered stream
+                return <div className={MESSAGE}>⚡️ Container {id} was throttled</div>;
+              }
+              return (
+                <div className={MESSAGE}>
+                  ⚡️ Container {id} was throttled; {event.dropCount} messages dropped
+                </div>
+              );
+            }
+            case ContainerEvent.Type.log:
+              return <div className={MESSAGE}>{event.line}</div>;
+            default:
+              event satisfies never;
+          }
+        })()}
+      </div>
+    );
   }
 }
 
 namespace Internal {
-  type AsideProps = {
+  type CenterBoxProps = {
     children: ReactNode;
+    bordered?: boolean;
+    className?: string;
   };
-  export function Aside({ children }: AsideProps) {
+  export function CenterBox({ children, bordered = false, className }: CenterBoxProps) {
     return (
       <div className="my-3">
-        <div aria-hidden className="h-px bg-c-rule/30" />
-        <div className="text-center py-3 text-white">{children}</div>
-        <div aria-hidden className="h-px bg-c-rule/30" />
+        {bordered && <div className="h-px bg-c-rule/30" />}
+        <div className={clsx("text-center py-3", className)}>{children}</div>
+        {bordered && <div className="h-px bg-c-rule/30" />}
       </div>
     );
   }

@@ -8,6 +8,7 @@ import { EventRepository } from "./repositories/EventRepository";
 import { Server } from "./Server";
 import { AlertingService } from "./services/AlertingService";
 import { LogService } from "./services/LogService";
+import { RestrictedService } from "./services/RestrictedService";
 import { RetentionService } from "./services/RetentionService";
 import { SocketService } from "./services/SocketService";
 import { DockerSocket } from "./services/streaming/DockerSocket";
@@ -38,6 +39,7 @@ export class ServerRegistry {
     const { socketService } = this.register({ SocketService }, []);
     const { svcService } = this.register({ SvcService }, [fountain, eventRepository, socketService]);
     const { logService } = this.register({ LogService }, [fountain, eventRepository, socketService]);
+    this.register({ RestrictedService }, [env, sqlite]);
 
     // Middleware
     const { loggingMiddleware } = this.register({ LoggingMiddleware }, []);

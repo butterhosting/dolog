@@ -1,5 +1,7 @@
 import { RangeDisplay } from "@/helpers/RangeDisplay";
+import { Svc } from "@/models/Svc";
 import clsx from "clsx";
+import { useMemo } from "react";
 import { Link, useParams } from "react-router";
 import { Route } from "../Route";
 import { Row } from "../comps/Row";
@@ -11,15 +13,12 @@ import { Overlay } from "../comps/basics/Overlay";
 import { Spinner } from "../comps/basics/Spinner";
 import { useDocumentTitle } from "../hooks/basics/useDocumentTitle";
 import { useAnchor } from "../hooks/useAnchor";
-import { useSvcNameAndGroup } from "../hooks/useSvcName";
 import { useFilter } from "../hooks/useFilter";
 import { useLogs } from "../hooks/useLogs";
 import { useParentNode } from "../hooks/useParentNode";
 import { useSearch } from "../hooks/useSearch";
 import { useTextSize } from "../hooks/useTextSize";
 import { Line } from "../rendering/Line";
-import { useMemo } from "react";
-import { Svc } from "@/models/Svc";
 
 export function svcLogsPage() {
   const { id: svcId = "" } = useParams();
@@ -124,7 +123,6 @@ export function svcLogsPage() {
         {!logsResult.isFollowingStream && (
           <Overlay className="right-4">
             <Button onClick={() => logsResult.followStream()} title="new lines are not being added while you read back">
-              Follow livestream
               <Caret down />
             </Button>
           </Overlay>
