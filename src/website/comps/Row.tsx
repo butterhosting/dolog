@@ -49,16 +49,14 @@ export namespace Row {
 
   export function TimestampAnchor({ line: { timestamp }, dismiss }: TimestampAnchorProps) {
     return (
-      <div data-anchored className="relative flex items-center gap-[2ch]">
+      <div data-anchored className="relative flex justify-center my-5">
         <span aria-hidden className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-c-accent" />
-        <span className={clsx(TIMESTAMP, "relative bg-c-surface pr-[1ch] text-c-accent")}>{Prettify.timestamp(timestamp)}</span>
-        {/* the moment asked for, which the lines either side of the seam will not say themselves */}
         <button
           onClick={dismiss}
           title="dismiss this marker"
           className="relative bg-c-surface px-[1ch] text-c-accent cursor-pointer hover:brightness-125"
         >
-          ×
+          ({Prettify.timestamp(timestamp)})
         </button>
       </div>
     );

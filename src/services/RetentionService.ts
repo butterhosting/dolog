@@ -3,9 +3,9 @@ import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { EventRepository } from "@/repositories/EventRepository";
+import { Temporal } from "@js-temporal/polyfill";
 import { catchError, concatMap, defer, EMPTY, interval, Observable, startWith } from "rxjs";
 import { Fountain } from "./streaming/Fountain";
-import { Temporal } from "@js-temporal/polyfill";
 
 export class RetentionService {
   private readonly log = new Logger(__filename);

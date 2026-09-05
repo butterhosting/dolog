@@ -2,6 +2,5 @@ create table container (
     id integer primary key,
     did text not null unique,
     dname text not null,
-    dgroup text,
-    online integer not null
+    dgroup text
 );

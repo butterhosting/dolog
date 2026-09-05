@@ -1,4 +1,5 @@
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { Container } from "@/models/Container";
 import { TestEnvironment } from "@/testing/TestEnvironment.test";
 import { TestFixture } from "@/testing/TestFixture.test";
 import { Temporal } from "@js-temporal/polyfill";
@@ -18,6 +19,7 @@ describe(Fountain.name, () => {
     context.dockerSocketMock.listRunningContainers.mockResolvedValue([]);
     context.dockerSocketMock.streamLifecycles.mockImplementation(silent);
     context.dockerSocketMock.streamLogLines.mockImplementation(silent);
+    context.dockerSocketMock.streamStats.mockImplementation(silent);
   });
 
   it("should follow the logs of containers that were already running, without inventing a start", async () => {
@@ -174,6 +176,110 @@ describe(Fountain.name, () => {
   it("should hand out the same stream every time it is initialized", () => {
     // then
     expect(fountain.streamEvents()).toBe(fountain.streamEvents());
+    expect(fountain.streamContainers()).toBe(fountain.streamContainers());
+  });
+
+  describe("streamContainers", () => {
+    const SAMPLE = { cpuUsage: 0.5, cpuTotal: 4, memoryUsage: 1_000, memoryTotal: 8_000 };
+
+    /** a container as the fountain first announces it: running, with nothing measured yet */
+    function live(container: Container, liveStats: Partial<Container.LiveStats> = {}): Container.Live {
+      return {
+        ...container,
+        liveStats: { throttling: false, logsPerSecond: 0, memoryTotal: 0, memoryUsage: 0, cpuTotal: 0, cpuUsage: 0, ...liveStats },
+      };
+    }
+
+    it("should introduce the containers already running in one go, and then annotate them with docker's samples", async () => {
+      // given
+      const web = TestFixture.container({ dname: "web" });
+      const db = TestFixture.container({ dname: "db" });
+      context.dockerSocketMock.listRunningContainers.mockResolvedValue([web, db]);
+      context.dockerSocketMock.streamStats.mockImplementation(async function* (id: string) {
+        if (id === web.did) {
+          yield SAMPLE;
+        }
+        await never();
+      });
+
+      // when
+      const snapshots = await firstValueFrom(fountain.streamContainers().pipe(take(2), toArray()));
+      // then (first the bare fact that both exist, then what one of them is up to)
+      expect(snapshots).toEqual([
+        [live(web), live(db)],
+        [live(web, SAMPLE), live(db)],
+      ]);
+      expect(context.dockerSocketMock.streamStats).toHaveBeenCalledTimes(2);
+    });
+
+    it("should introduce a container on start, drop it on stop, and stop sampling it", async () => {
+      // given
+      const container = TestFixture.container();
+      context.dockerSocketMock.streamLifecycles.mockImplementation(async function* () {
+        yield { status: "start", timestamp: Temporal.Now.instant(), container };
+        yield { status: "die", timestamp: Temporal.Now.instant(), container };
+        await never();
+      });
+      context.dockerSocketMock.streamStats.mockImplementation(async function* () {
+        await Bun.sleep(100); // arrives after the container has already died
+        yield SAMPLE;
+        await never();
+      });
+
+      // when
+      const snapshots = await firstValueFrom(fountain.streamContainers().pipe(take(2), toArray()));
+      await Bun.sleep(200);
+      // then (the late sample is not attributed to a container that no longer exists)
+      expect(snapshots).toEqual([[live(container)], []]);
+      expect(await firstValueFrom(fountain.streamContainers())).toEqual([]);
+    });
+
+    it("should not introduce a container twice when it is both listed and announced", async () => {
+      // given
+      const container = TestFixture.container();
+      context.dockerSocketMock.listRunningContainers.mockResolvedValue([container]);
+      context.dockerSocketMock.streamLifecycles.mockImplementation(async function* () {
+        yield { status: "start", timestamp: Temporal.Now.instant(), container };
+        await never();
+      });
+
+      // when
+      const snapshots: Container.Live[][] = [];
+      fountain.streamContainers().subscribe((snapshot) => snapshots.push(snapshot));
+      await Bun.sleep(50);
+      // then (an introduction that changes nothing is silent, and docker is asked for stats once)
+      expect(snapshots).toEqual([[live(container)]]);
+      expect(context.dockerSocketMock.streamStats).toHaveBeenCalledTimes(1);
+    });
+
+    it("should start a late subscriber from the latest snapshot", async () => {
+      // given
+      const container = TestFixture.container();
+      context.dockerSocketMock.listRunningContainers.mockResolvedValue([container]);
+      await firstValueFrom(fountain.streamContainers());
+
+      // when
+      const snapshots: Container.Live[][] = [];
+      fountain.streamContainers().subscribe((snapshot) => snapshots.push(snapshot));
+      // then (synchronously, rather than waiting for the next change)
+      expect(snapshots).toEqual([[live(container)]]);
+    });
+
+    it("should fold the throttler's throughput into a container's stats", async () => {
+      // given
+      const container = TestFixture.container();
+      context.dockerSocketMock.listRunningContainers.mockResolvedValue([container]);
+      context.dockerSocketMock.streamLogLines.mockImplementation(async function* () {
+        yield { streamVariant: StreamVariant.stdout, timestamp: Temporal.Now.instant(), line: "one" };
+        yield { streamVariant: StreamVariant.stdout, timestamp: Temporal.Now.instant(), line: "two" };
+        await never();
+      });
+
+      // when (the throttler measures once a second)
+      const snapshots = await firstValueFrom(fountain.streamContainers().pipe(take(2), toArray()));
+      // then
+      expect(snapshots.at(1)).toEqual([live(container, { logsPerSecond: 2 })]);
+    });
   });
 });
 

@@ -42,8 +42,8 @@ export class RestrictedService {
   private upsertFixtureContainer(): number {
     return this.sqlite
       .insert($container)
-      .values({ did: this.DID, dname: this.DNAME, online: false })
-      .onConflictDoUpdate({ target: $container.did, set: { dname: this.DNAME, online: false } })
+      .values({ did: this.DID, dname: this.DNAME })
+      .onConflictDoUpdate({ target: $container.did, set: { dname: this.DNAME } })
       .returning({ id: $container.id })
       .all()
       .at(0)!.id;

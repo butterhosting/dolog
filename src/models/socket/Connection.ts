@@ -8,5 +8,4 @@ export type Connection = {
   lastHeardBack: Temporal.Instant;
   watchedSvcId?: Svc.Id;
   filterPredicate?: (candidate: PredicateFactory.Candidate) => boolean;
-  filterDropThrottleEvents: boolean;
 };

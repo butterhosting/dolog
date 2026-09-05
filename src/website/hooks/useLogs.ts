@@ -46,7 +46,7 @@ export function useLogs({ svcId, parentNode, filter, anchor }: useLogs.Options):
         }
       },
     });
-    socketClient.declareStreamInterest(svcId, filter);
+    socketClient.declareStreamInterest(svcId, filter); // TODO: why is this websocket sent every second on the overview page ???
     return () => {
       socketClient.undeclareStreamInterest();
       socketClient.unsubscribe(subscription);

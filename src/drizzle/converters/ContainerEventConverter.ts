@@ -57,7 +57,6 @@ export namespace ContainerEventConverter {
       did: db.did,
       dname: db.dname,
       dgroup: db.dgroup ?? undefined,
-      online: db.online,
     };
   }
 }

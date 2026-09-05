@@ -5,20 +5,20 @@ import { Throughput } from "@/models/Throughput";
 import { Temporal } from "@js-temporal/polyfill";
 import { Buffer } from "buffer";
 import {
-    BehaviorSubject,
-    debounceTime,
-    EMPTY,
-    finalize,
-    groupBy,
-    GroupedObservable,
-    interval,
-    merge,
-    mergeMap,
-    Observable,
-    of,
-    pipe,
-    Subject,
-    takeUntil,
+  BehaviorSubject,
+  debounceTime,
+  EMPTY,
+  finalize,
+  groupBy,
+  GroupedObservable,
+  interval,
+  merge,
+  mergeMap,
+  Observable,
+  of,
+  pipe,
+  Subject,
+  takeUntil,
 } from "rxjs";
 
 export class ThrottleService {
@@ -113,7 +113,6 @@ export class ThrottleService {
           throttling: droppedLogs > 0,
           logsPerSecond: logs,
           bytesPerSecond: bytes,
-          timestamp: now,
         });
         this.throughputs.next([...this.throughputOverview.values()]);
         if (droppedLogs === 0) {

@@ -33,7 +33,7 @@ export function svcsPage() {
       clearInterval(reloadId);
       socketClient.unsubscribe(subscription);
     };
-  }, [reload, socketClient]);
+  }, []);
 
   if (!data) {
     return (

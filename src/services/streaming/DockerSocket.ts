@@ -21,7 +21,6 @@ export class DockerSocket {
       did: summary.Id,
       dname: this.readName(summary.Names.at(0) ?? summary.Id),
       dgroup: this.readGroup(summary.Labels),
-      online: true,
     }));
   }
 
@@ -42,14 +41,6 @@ export class DockerSocket {
           did: lifecycleEvent.Actor.ID,
           dname: this.readName(lifecycleEvent.Actor.Attributes.name),
           dgroup: this.readGroup(lifecycleEvent.Actor.Attributes),
-          online: ((): boolean => {
-            switch (status) {
-              case "start":
-                return true;
-              case "die":
-                return false;
-            }
-          })(),
         },
       };
     }
@@ -107,6 +98,40 @@ export class DockerSocket {
           line: this.dropCarriageReturn(rest),
         };
       }
+    }
+  }
+
+  /**
+   * Docker samples a running container about once a second; the maths below is the docker CLI's.
+   */
+  public async *streamStats(id: string, signal: AbortSignal): AsyncGenerator<DockerSocket.Stats> {
+    const path = `/containers/${id}/stats?stream=1`;
+    const response = await this.request(path, signal);
+    for await (const line of this.readLines(this.readBody(response, path))) {
+      const { cpu_stats, precpu_stats, memory_stats } = Internal.Stats.parse(JSON.parse(line));
+
+      // CPU is the container's share of the host's cpu time since the previous sample. The very
+      // first sample has no previous one (docker sends zeros), so it cannot say anything about CPU yet.
+      if (!precpu_stats.system_cpu_usage || !cpu_stats.system_cpu_usage) {
+        continue;
+      }
+      if (memory_stats.usage === undefined || memory_stats.limit === undefined) {
+        continue;
+      }
+      const cpuDelta = cpu_stats.cpu_usage.total_usage - (precpu_stats.cpu_usage?.total_usage ?? 0);
+      const systemDelta = Math.max(1, cpu_stats.system_cpu_usage - precpu_stats.system_cpu_usage);
+      const cpuTotal = cpu_stats.online_cpus ?? cpu_stats.cpu_usage.percpu_usage?.length ?? 1;
+
+      // Docker counts the page cache as usage, which is really the kernel's memory, not the container's.
+      // cgroup v1 reports it as `total_inactive_file`, v2 as `inactive_file`.
+      const cache = memory_stats.stats?.total_inactive_file ?? memory_stats.stats?.inactive_file ?? 0;
+
+      yield {
+        cpuUsage: Math.max(0, cpuDelta / systemDelta) * cpuTotal,
+        cpuTotal,
+        memoryUsage: cache < memory_stats.usage ? memory_stats.usage - cache : memory_stats.usage,
+        memoryTotal: memory_stats.limit,
+      };
     }
   }
 
@@ -282,6 +307,13 @@ export namespace DockerSocket {
     timestamp: Temporal.Instant;
     container: Container;
   };
+
+  export type Stats = {
+    cpuUsage: number; // cores
+    cpuTotal: number; // cores
+    memoryUsage: number; // bytes
+    memoryTotal: number; // bytes
+  };
 }
 
 /**
@@ -306,14 +338,33 @@ namespace Internal {
   });
 
   /**
-   * Recent API versions dropped the legacy `status` field in favour of `Action`; older daemons
-   * only send `status`. The request is filtered down to start/die, so whichever arrives is one
-   * of the two.
+   * Mostly optional, because the first sample of a stream carries no `precpu_stats` to speak of,
+   * and a container that is not running answers with empty objects.
    */
+  export const Stats = z.object({
+    cpu_stats: z.object({
+      cpu_usage: z.object({
+        total_usage: z.number(),
+        percpu_usage: z.array(z.number()).nullish(),
+      }),
+      system_cpu_usage: z.number().optional(),
+      online_cpus: z.number().optional(),
+    }),
+    precpu_stats: z.object({
+      cpu_usage: z.object({ total_usage: z.number().optional() }).optional(),
+      system_cpu_usage: z.number().optional(),
+    }),
+    memory_stats: z.object({
+      usage: z.number().optional(),
+      limit: z.number().optional(),
+      stats: z.record(z.string(), z.number()).optional(),
+    }),
+  });
+
   export const LifecycleEvent = z
     .object({
       Action: z.enum(["start", "die"]).optional(),
-      status: z.enum(["start", "die"]).optional(),
+      status: z.enum(["start", "die"]).optional(), // legacy; replaced by Action
       time: z.number(),
       Actor: z.object({
         ID: z.string(),

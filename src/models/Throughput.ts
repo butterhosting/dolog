@@ -1,5 +1,4 @@
 import { ZodParser } from "@/helpers/ZodParser";
-import { Temporal } from "@js-temporal/polyfill";
 import z from "zod/v4";
 import { Container } from "./Container";
 
@@ -9,7 +8,6 @@ export type Throughput = {
   throttling: boolean;
   logsPerSecond: number;
   bytesPerSecond: number;
-  timestamp: Temporal.Instant;
 };
 
 export namespace Throughput {
@@ -21,7 +19,6 @@ export namespace Throughput {
         throttling: z.boolean(),
         logsPerSecond: z.number(),
         bytesPerSecond: z.number(),
-        timestamp: z.string().transform(ZodParser.instant),
       }),
     )
     .ensureTypeMatchesSchema();

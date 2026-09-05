@@ -100,6 +100,7 @@ export namespace TestEnvironment {
       listRunningContainers: mock(),
       streamLifecycles: mock(),
       streamLogLines: mock(),
+      streamStats: mock(),
     });
 
     /** Stands in for the clock the repository would otherwise flush on, so tests decide when. */

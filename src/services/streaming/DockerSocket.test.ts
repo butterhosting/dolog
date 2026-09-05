@@ -184,7 +184,7 @@ describe(DockerSocket.name, () => {
       // when
       const containers = await socket.listRunningContainers();
       // then
-      expect(containers).toEqual([{ did: "abc", object: "container", dname: "web", dgroup: "stack", online: true }]);
+      expect(containers).toEqual([{ did: "abc", object: "container", dname: "web", dgroup: "stack" }]);
     });
 
     it("should fall back to the compose project, and leave an unlabelled container ungrouped", async () => {
@@ -213,9 +213,7 @@ describe(DockerSocket.name, () => {
       const events = await collect(socket.streamLifecycles(new AbortController().signal));
       // then
       expect(events.map(({ status }) => status)).toEqual(["start", "die"]);
-      expect(events.at(0)?.container).toEqual({ did: "abc", object: "container", dname: "web", dgroup: "shop", online: true });
-      // the container carries the liveness the lifecycle event implies, so a `die` lands as offline
-      expect(events.map(({ container }) => container.online)).toEqual([true, false]);
+      expect(events.at(0)?.container).toEqual({ did: "abc", object: "container", dname: "web", dgroup: "shop" });
     });
 
     it("should still read a legacy daemon's `status` field", async () => {
@@ -223,9 +221,30 @@ describe(DockerSocket.name, () => {
       respondWith(streamOf(encode(`${lifecycle({ status: "die" })}\n`)));
       // when
       const events = await collect(socket.streamLifecycles(new AbortController().signal));
-      // then (liveness reads off whichever field the daemon sent, not `Action` alone)
+      // then
       expect(events.map(({ status }) => status)).toEqual(["die"]);
-      expect(events.at(0)?.container.online).toBe(false);
+    });
+  });
+
+  describe("streamStats", () => {
+    it("should skip the first sample, and read cores and bytes off the second the way the docker cli does", async () => {
+      // given (a container using half of one core, and 1000 bytes of which 200 is page cache)
+      const first = stats({ precpu_stats: { cpu_usage: { total_usage: 0 } } });
+      const second = stats({});
+      respondWith(streamOf(encode(`${first}\n${second}\n`)));
+      // when
+      const samples = await collect(socket.streamStats("abc", new AbortController().signal));
+      // then
+      expect(samples).toEqual([{ cpuUsage: 0.5, cpuTotal: 4, memoryUsage: 800, memoryTotal: 8_000 }]);
+    });
+
+    it("should say nothing for a container that is not running", async () => {
+      // given (docker answers with empty objects for a stopped container)
+      respondWith(streamOf(encode(`${stats({ memory_stats: {} })}\n`)));
+      // when
+      const samples = await collect(socket.streamStats("abc", new AbortController().signal));
+      // then
+      expect(samples).toEqual([]);
     });
   });
 
@@ -280,6 +299,19 @@ function lifecycle(overrides: Record<string, string>): string {
     Type: "container",
     time: 1785592390,
     Actor: { ID: "abc", Attributes: { name: "/web", "com.docker.compose.project": "shop" } },
+    ...overrides,
+  });
+}
+
+/**
+ * Docker's cpu counters are cumulative nanoseconds: between these two samples the container burned
+ * 200 of the 1600 the whole system did, on a host with 4 cores, which is half a core
+ */
+function stats(overrides: Record<string, unknown>): string {
+  return JSON.stringify({
+    cpu_stats: { cpu_usage: { total_usage: 1_200 }, system_cpu_usage: 11_600, online_cpus: 4 },
+    precpu_stats: { cpu_usage: { total_usage: 1_000 }, system_cpu_usage: 10_000 },
+    memory_stats: { usage: 1_000, limit: 8_000, stats: { inactive_file: 200 } },
     ...overrides,
   });
 }

@@ -12,7 +12,7 @@ import { Svc } from "@/models/Svc";
 import { Uuid } from "@/models/Uuid";
 import { Temporal } from "@js-temporal/polyfill";
 import { and, asc, desc, eq, gt, inArray, InferInsertModel, isNull, lt, lte, notExists, SQL, sql } from "drizzle-orm";
-import { BehaviorSubject, catchError, concatMap, defer, EMPTY, interval, Observable } from "rxjs";
+import { catchError, concatMap, defer, EMPTY, interval, Observable } from "rxjs";
 import { PredicateFactory } from "./PredicateFactory";
 
 /**
@@ -20,7 +20,6 @@ import { PredicateFactory } from "./PredicateFactory";
  */
 export class EventRepository {
   private readonly log = new Logger(__filename);
-  private readonly containers = new BehaviorSubject<Container[]>([]);
 
   private readonly FLUSH_INTERVAL = Temporal.Duration.from({ seconds: 1 });
   private pending: ContainerEvent[] = [];
@@ -31,31 +30,13 @@ export class EventRepository {
     private readonly flushTrigger: Observable<unknown> = interval(this.FLUSH_INTERVAL.total("milliseconds")), // overridable for unit tests
   ) {}
 
-  public streamContainers(): Observable<Container[]> {
-    return this.containers;
-  }
-
-  /**
-   * Also manually invoked after every write, so the overview reflects containers that have only just (dis)appeared
-   */
-  @Initialize
-  private publishUpdatedContainers(): void {
-    const containers = this.sqlite
+  public listContainers(): Container[] {
+    return this.sqlite
       .select()
       .from($container)
       .orderBy(asc($container.dname), asc($container.did))
       .all()
       .map(ContainerEventConverter.containerFromDatabase);
-    const previous = this.containers.value;
-    const unchanged =
-      previous.length === containers.length &&
-      previous.every((was, index) => {
-        const now = containers[index]!;
-        return was.did === now.did && was.dname === now.dname && was.dgroup === now.dgroup && was.online === now.online;
-      });
-    if (!unchanged) {
-      this.containers.next(containers);
-    }
   }
 
   private listContainersForService(svcId: Svc.Id) {
@@ -312,7 +293,6 @@ export class EventRepository {
         did: container.did,
         dname: container.dname,
         dgroup: container.dgroup ?? null,
-        online: container.online,
       }));
       for (let offset = 0; offset < containerRows.length; offset += INSERT_CHUNK) {
         tx.insert($container)
@@ -326,7 +306,6 @@ export class EventRepository {
             set: {
               dname: sql`excluded.${sql.identifier($container.dname.name)}`,
               dgroup: sql`excluded.${sql.identifier($container.dgroup.name)}`,
-              online: sql`excluded.${sql.identifier($container.online.name)}`,
             },
           })
           // returned in no guaranteed order, so the docker id comes back too rather than being positional
@@ -348,8 +327,6 @@ export class EventRepository {
           .run();
       }
     });
-    // a write may have introduced a container, or renamed one
-    this.publishUpdatedContainers();
   }
 
   private queryEventsUpToLimitWithPredicate<T = typeof $containerEvent.$inferSelect>({
@@ -498,8 +475,6 @@ export class EventRepository {
       )
       .returning({ one: sql<number>`1` })
       .all().length;
-    // pruning may have purged a container entirely
-    this.publishUpdatedContainers();
     return deleted;
   }
 }

@@ -18,7 +18,6 @@ export class SocketService {
     this.connections.set(socket.data.clientId, {
       socket,
       lastHeardBack: Temporal.Now.instant(),
-      filterDropThrottleEvents: false,
     });
   };
 
@@ -67,7 +66,7 @@ export class SocketService {
       .forEach((connection) => connection.socket.send(JSON.stringify(message)));
   };
 
-  public broadcastSvcs = (svcs: Svc[]) => {
+  public broadcastSvcStream = (svcs: Svc[]) => {
     const message: ServerMessage = {
       type: ServerMessage.Type.svcs,
       svcs,

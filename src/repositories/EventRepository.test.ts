@@ -9,7 +9,6 @@ import { TestEnvironment } from "@/testing/TestEnvironment.test";
 import { TestFixture } from "@/testing/TestFixture.test";
 import { Temporal } from "@js-temporal/polyfill";
 import { beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { firstValueFrom } from "rxjs";
 import { Svc } from "@/models/Svc";
 import { EventRepository } from "./EventRepository";
 import { PredicateFactory } from "./PredicateFactory";
@@ -543,20 +542,6 @@ describe(EventRepository.name, () => {
     expect(await containers()).toEqual([after]);
   });
 
-  it("should keep a container's liveness current across batches", async () => {
-    // given (alive when it logged, seen to have died afterwards)
-    const alive = TestFixture.container({ dname: "postgres-1", online: true });
-    const dead = { ...alive, online: false };
-
-    // when
-    await write([TestFixture.logEvent({ container: alive })]);
-    await write([TestFixture.stopEvent({ container: dead })]);
-
-    // then (one row, flipped -- a stored liveness that never updates is worse than none, because
-    // the overview would go on insisting a dead container is up)
-    expect(await containers()).toEqual([dead]);
-  });
-
   it("should keep only the newest events per container, independently of each other", async () => {
     // given (one chatty container and one quiet one)
     const chatty = TestFixture.container({ dname: "chatty" });
@@ -627,20 +612,6 @@ describe(EventRepository.name, () => {
     expect(remaining.at(0)).toEqual(expect.objectContaining({ line: "recent 0" } satisfies Partial<ContainerEvent>));
   });
 
-  it("should republish the container overview only when the set actually changes", async () => {
-    // given
-    const container = TestFixture.container();
-    const published: Container[][] = [];
-    repository.streamContainers().subscribe((list) => published.push(list));
-
-    // when (three batches, all from the same already-known container)
-    await write([TestFixture.logEvent({ container })]);
-    await write([TestFixture.logEvent({ container })]);
-    await write([TestFixture.logEvent({ container })]);
-    // then (the seed, plus one emission for the container appearing -- not one per batch)
-    expect(published).toEqual([[], [container]]);
-  });
-
   /** "line 0" .. "line 9", all of them written. */
   async function tenWrittenLines(): Promise<{ container: Container; all: ContainerEvent[] }> {
     const container = TestFixture.container();
@@ -670,7 +641,7 @@ describe(EventRepository.name, () => {
 
   /** The overview the repository publishes, which is always current after a mutation. */
   async function containers(): Promise<Container[]> {
-    return await firstValueFrom(repository.streamContainers());
+    return repository.listContainers();
   }
 
   /**

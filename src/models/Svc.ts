@@ -1,15 +1,13 @@
 import { ZodParser } from "@/helpers/ZodParser";
 import z from "zod/v4";
-import type { Container } from "./Container";
+import { Container } from "./Container";
 
 // "Docker Service"
 export type Svc = {
   id: string;
   dname: string;
   dgroup?: string;
-  online: boolean;
-  throttling: boolean;
-  logsPerSecond: number;
+  liveStats?: Container.LiveStats; // present when the service has a running container, absent for one that only has history
 };
 
 export namespace Svc {
@@ -41,9 +39,7 @@ export namespace Svc {
         id: z.string(),
         dname: z.string(),
         dgroup: z.string().optional(),
-        online: z.boolean(),
-        throttling: z.boolean(),
-        logsPerSecond: z.number(),
+        liveStats: Container.LIVE_STATS_SCHEMA.optional(),
       }),
     )
     .ensureTypeMatchesSchema();

@@ -1,9 +1,27 @@
 import { Logger } from "@/Logger";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
-import { Throughput } from "@/models/Throughput";
 import { Temporal } from "@js-temporal/polyfill";
-import { defer, EMPTY, filter, from, map, merge, mergeMap, Observable, of, repeat, retry, share, takeUntil, timer } from "rxjs";
+import {
+  defer,
+  EMPTY,
+  exhaustMap,
+  filter,
+  from,
+  map,
+  merge,
+  mergeMap,
+  Observable,
+  of,
+  repeat,
+  ReplaySubject,
+  retry,
+  share,
+  Subject,
+  takeUntil,
+  timer,
+  toArray,
+} from "rxjs";
 import { DockerSocket } from "./DockerSocket";
 import { ThrottleService } from "./ThrottleService";
 
@@ -18,6 +36,8 @@ import { ThrottleService } from "./ThrottleService";
  */
 export class Fountain {
   private readonly log = new Logger(__filename);
+
+  private containers?: Observable<Container.Live[]>;
   private events?: Observable<ContainerEvent>;
 
   public constructor(
@@ -25,8 +45,19 @@ export class Fountain {
     private readonly throttleService: ThrottleService,
   ) {}
 
+  public streamContainers(): Observable<Container.Live[]> {
+    this.containers ??= defer(() => this.initRawContainerStream()) //
+      .pipe(
+        share({
+          connector: () => new ReplaySubject(1),
+          resetOnRefCountZero: false,
+        }),
+      );
+    return this.containers;
+  }
+
   public streamEvents(): Observable<ContainerEvent> {
-    this.events ??= defer(() => this.rawSocketStream()) //
+    this.events ??= defer(() => this.initRawSocketStream()) //
       .pipe(
         this.throttleService.groupAndThrottleByContainer(),
         share({
@@ -39,14 +70,101 @@ export class Fountain {
     return this.events;
   }
 
-  public streamThroughputs(): Observable<Throughput[]> {
-    return this.throttleService.streamThroughputs();
+  private initRawContainerStream(): Observable<Container.Live[]> {
+    const OVERVIEW = new Map<string, Container.Live>();
+    const RECONCILIATION_INTERVAL = Temporal.Duration.from({ minutes: 1 });
+
+    const arrivals = new Subject<Container>();
+    const departures = new Subject<string>();
+
+    const update = (did: string, next: (previous: Container.Live) => Container.Live): boolean => {
+      const previous = OVERVIEW.get(did);
+      if (!previous) {
+        return false; // a throughput or sample that outlived its container
+      }
+      const updated = next(previous);
+      if (!Container.changed(previous, updated)) {
+        return false;
+      }
+      OVERVIEW.set(did, updated);
+      return true;
+    };
+
+    const annotate = (did: string, patch: Partial<Container.LiveStats>): boolean => {
+      return update(did, (previous) => ({ ...previous, liveStats: { ...previous.liveStats, ...patch } }));
+    };
+
+    const introduce = (container: Container): boolean => {
+      if (OVERVIEW.has(container.did)) {
+        return update(container.did, (previous) => ({ ...previous, ...container, liveStats: previous.liveStats })); // a rename, at most
+      }
+      OVERVIEW.set(container.did, {
+        ...container,
+        liveStats: { throttling: false, logsPerSecond: 0, memoryTotal: 0, memoryUsage: 0, cpuTotal: 0, cpuUsage: 0 },
+      });
+      arrivals.next(container);
+      return true;
+    };
+
+    const retire = (did: string): boolean => {
+      if (!OVERVIEW.delete(did)) {
+        return false;
+      }
+      departures.next(did);
+      return true;
+    };
+
+    const wasAnythingUpdated = (changes: boolean[]): boolean => changes.includes(true);
+
+    // subscribed first, so it is listening by the time the sources below announce anything
+    const samples = arrivals.pipe(
+      mergeMap((container) =>
+        this.stats(container).pipe(
+          takeUntil(departures.pipe(filter((did) => did === container.did))),
+          filter((sample) => annotate(container.did, sample)),
+        ),
+      ),
+    );
+
+    const lifecycles = this.streamEvents().pipe(
+      filter((event) => {
+        switch (event.type) {
+          case ContainerEvent.Type.start:
+            return introduce(event.container);
+          case ContainerEvent.Type.stop:
+            return retire(event.container.did);
+          default:
+            return false;
+        }
+      }),
+    );
+
+    // catches whatever was running before we started listening, and any `die` we missed since
+    const reconciliations = timer(0, RECONCILIATION_INTERVAL.total("milliseconds")) //
+      .pipe(
+        exhaustMap(() => this.burstRunningContainers().pipe(toArray())),
+        filter((containers) => {
+          const containerIds = new Set(containers.map((c) => c.did));
+          const toBeRetiredContainerIds = [...OVERVIEW.keys()].filter((did) => !containerIds.has(did));
+          return wasAnythingUpdated([...containers.map(introduce), ...toBeRetiredContainerIds.map(retire)]);
+        }),
+      );
+
+    const throughputs = this.throttleService.streamThroughputs().pipe(
+      filter((throughputs) => {
+        return wasAnythingUpdated(
+          throughputs.map(({ container, throttling, logsPerSecond }) => annotate(container.did, { throttling, logsPerSecond })),
+        );
+      }),
+    );
+
+    return merge(samples, lifecycles, reconciliations, throughputs).pipe(map(() => [...OVERVIEW.values()]));
   }
 
-  private rawSocketStream(): Observable<ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log> {
-    const containersBeingFollowed = new Set<string>();
+  private initRawSocketStream(): Observable<ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log> {
+    const CONTAINERS_BEING_FOLLOWED = new Set<string>();
 
-    const lifecycle = this.lifecycle().pipe(share());
+    const lifecycle = this.streamLifecycles().pipe(share());
 
     const isStopped = (did: string): Observable<ContainerEvent.Stop> => {
       return lifecycle.pipe(
@@ -56,15 +174,15 @@ export class Fountain {
     };
 
     const followLogs = (container: Container): Observable<ContainerEvent.Log> => {
-      if (containersBeingFollowed.has(container.did)) {
+      if (CONTAINERS_BEING_FOLLOWED.has(container.did)) {
         return EMPTY;
       }
-      containersBeingFollowed.add(container.did);
+      CONTAINERS_BEING_FOLLOWED.add(container.did);
       return this.logs(container).pipe(takeUntil(isStopped(container.did)));
     };
 
     return merge(
-      this.alreadyRunning().pipe(mergeMap(followLogs)),
+      this.burstRunningContainers().pipe(mergeMap(followLogs)),
       lifecycle.pipe(
         mergeMap((event) => {
           switch (event.type) {
@@ -72,7 +190,7 @@ export class Fountain {
               return merge(of(event), followLogs(event.container));
             }
             case ContainerEvent.Type.stop: {
-              containersBeingFollowed.delete(event.container.did);
+              CONTAINERS_BEING_FOLLOWED.delete(event.container.did);
               return of(event);
             }
           }
@@ -81,17 +199,18 @@ export class Fountain {
     );
   }
 
-  private alreadyRunning(): Observable<Container> {
-    return defer(() => this.dockerSocket.listRunningContainers()).pipe(
-      retry({
-        delay: (error, retryCount) => this.exponentialBackoff(retryCount, "Could not list running containers", error),
-        resetOnSuccess: true,
-      }),
-      mergeMap((containers) => from(containers)),
-    );
+  private burstRunningContainers(): Observable<Container> {
+    return defer(() => this.dockerSocket.listRunningContainers()) //
+      .pipe(
+        retry({
+          delay: (error, retryCount) => this.exponentialBackoff(retryCount, "Could not list running containers", error),
+          resetOnSuccess: true,
+        }),
+        mergeMap((containers) => from(containers)),
+      );
   }
 
-  private lifecycle(): Observable<ContainerEvent.Start | ContainerEvent.Stop> {
+  private streamLifecycles(): Observable<ContainerEvent.Start | ContainerEvent.Stop> {
     return this.toObservable((signal) => this.dockerSocket.streamLifecycles(signal)) //
       .pipe(
         map(({ status, timestamp, container }): ContainerEvent.Start | ContainerEvent.Stop => {
@@ -146,6 +265,19 @@ export class Fountain {
         repeat({
           // retry indefinitely when the stream closes cleanly
           delay: (retryCount) => this.exponentialBackoff(retryCount, `Log stream closed for ${container.dname}`),
+        }),
+      );
+  }
+
+  private stats(container: Container): Observable<DockerSocket.Stats> {
+    return this.toObservable((signal) => this.dockerSocket.streamStats(container.did, signal)) //
+      .pipe(
+        retry({
+          delay: (error, retryCount) => this.exponentialBackoff(retryCount, `Stats stream failed for ${container.dname}`, error),
+          resetOnSuccess: true,
+        }),
+        repeat({
+          delay: (retryCount) => this.exponentialBackoff(retryCount, `Stats stream closed for ${container.dname}`),
         }),
       );
   }
