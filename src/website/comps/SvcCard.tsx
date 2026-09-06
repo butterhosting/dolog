@@ -26,11 +26,11 @@ export function SvcCard({ svc: { id, dname, dgroup, liveStats } }: Props) {
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-sm">{Prettify.cores(liveStats.cpuUsage)}</span>
-              <span className="text-xs text-c-rule">of {Prettify.cores(liveStats.cpuTotal)} cpu</span>
+              <span className="text-xs text-c-rule">of {Prettify.cores(liveStats.cpuTotalCores)} cpu</span>
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-sm">{Prettify.bytes(liveStats.memoryUsage)}</span>
-              <span className="text-xs text-c-rule">of {Prettify.bytes(liveStats.memoryTotal)} memory</span>
+              <span className="text-xs text-c-rule">of {Prettify.bytes(liveStats.memoryTotalBytes)} memory</span>
             </div>
           </div>
         )}

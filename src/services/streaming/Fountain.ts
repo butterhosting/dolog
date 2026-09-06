@@ -1,6 +1,7 @@
 import { Logger } from "@/Logger";
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { LiveStats } from "@/models/LiveStats";
 import { Temporal } from "@js-temporal/polyfill";
 import {
   defer,
@@ -37,7 +38,7 @@ import { ThrottleService } from "./ThrottleService";
 export class Fountain {
   private readonly log = new Logger(__filename);
 
-  private containers?: Observable<Container.Live[]>;
+  private containers?: Observable<Container[]>;
   private events?: Observable<ContainerEvent>;
 
   public constructor(
@@ -45,7 +46,7 @@ export class Fountain {
     private readonly throttleService: ThrottleService,
   ) {}
 
-  public streamContainers(): Observable<Container.Live[]> {
+  public streamContainers(): Observable<Container[]> {
     this.containers ??= defer(() => this.initRawContainerStream()) //
       .pipe(
         share({
@@ -70,28 +71,31 @@ export class Fountain {
     return this.events;
   }
 
-  private initRawContainerStream(): Observable<Container.Live[]> {
-    const OVERVIEW = new Map<string, Container.Live>();
+  private initRawContainerStream(): Observable<Container[]> {
+    const OVERVIEW = new Map<string, Container>();
     const RECONCILIATION_INTERVAL = Temporal.Duration.from({ minutes: 1 });
 
     const arrivals = new Subject<Container>();
     const departures = new Subject<string>();
 
-    const update = (did: string, next: (previous: Container.Live) => Container.Live): boolean => {
+    const update = (did: string, next: (previous: Container) => Container): boolean => {
       const previous = OVERVIEW.get(did);
       if (!previous) {
         return false; // a throughput or sample that outlived its container
       }
       const updated = next(previous);
-      if (!Container.changed(previous, updated)) {
+      if (Container.equals(previous, updated)) {
         return false;
       }
       OVERVIEW.set(did, updated);
       return true;
     };
 
-    const annotate = (did: string, patch: Partial<Container.LiveStats>): boolean => {
-      return update(did, (previous) => ({ ...previous, liveStats: { ...previous.liveStats, ...patch } }));
+    const annotate = (did: string, patch: Partial<LiveStats>): boolean => {
+      return update(did, (previous) => ({
+        ...previous,
+        liveStats: { ...previous.liveStats, ...patch } as LiveStats,
+      }));
     };
 
     const introduce = (container: Container): boolean => {
@@ -100,7 +104,14 @@ export class Fountain {
       }
       OVERVIEW.set(container.did, {
         ...container,
-        liveStats: { throttling: false, logsPerSecond: 0, memoryTotal: 0, memoryUsage: 0, cpuTotal: 0, cpuUsage: 0 },
+        liveStats: {
+          throttling: false,
+          logsPerSecond: 0,
+          memoryTotalBytes: 0,
+          memoryUsage: 0,
+          cpuTotalCores: 0,
+          cpuUsage: 0,
+        },
       });
       arrivals.next(container);
       return true;

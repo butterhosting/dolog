@@ -8,6 +8,7 @@ import { firstValueFrom, take, toArray } from "rxjs";
 import { Fountain as Fountain } from "./Fountain";
 import { StreamVariant } from "@/models/StreamVariant";
 import { ThrottleService } from "./ThrottleService";
+import { LiveStats } from "@/models/LiveStats";
 
 describe(Fountain.name, () => {
   let context: TestEnvironment.Context;
@@ -183,10 +184,18 @@ describe(Fountain.name, () => {
     const SAMPLE = { cpuUsage: 0.5, cpuTotal: 4, memoryUsage: 1_000, memoryTotal: 8_000 };
 
     /** a container as the fountain first announces it: running, with nothing measured yet */
-    function live(container: Container, liveStats: Partial<Container.LiveStats> = {}): Container.Live {
+    function live(container: Container, liveStats: Partial<LiveStats> = {}): Container {
       return {
         ...container,
-        liveStats: { throttling: false, logsPerSecond: 0, memoryTotal: 0, memoryUsage: 0, cpuTotal: 0, cpuUsage: 0, ...liveStats },
+        liveStats: {
+          throttling: false,
+          logsPerSecond: 0,
+          memoryTotalBytes: 0,
+          memoryUsage: 0,
+          cpuTotalCores: 0,
+          cpuUsage: 0,
+          ...liveStats,
+        },
       };
     }
 
@@ -244,7 +253,7 @@ describe(Fountain.name, () => {
       });
 
       // when
-      const snapshots: Container.Live[][] = [];
+      const snapshots: Container[][] = [];
       fountain.streamContainers().subscribe((snapshot) => snapshots.push(snapshot));
       await Bun.sleep(50);
       // then (an introduction that changes nothing is silent, and docker is asked for stats once)
@@ -259,7 +268,7 @@ describe(Fountain.name, () => {
       await firstValueFrom(fountain.streamContainers());
 
       // when
-      const snapshots: Container.Live[][] = [];
+      const snapshots: Container[][] = [];
       fountain.streamContainers().subscribe((snapshot) => snapshots.push(snapshot));
       // then (synchronously, rather than waiting for the next change)
       expect(snapshots).toEqual([[live(container)]]);

@@ -1,13 +1,13 @@
 import { ZodParser } from "@/helpers/ZodParser";
 import z from "zod/v4";
-import { Container } from "./Container";
+import { LiveStats } from "./LiveStats";
 
 // "Docker Service"
 export type Svc = {
   id: string;
   dname: string;
   dgroup?: string;
-  liveStats?: Container.LiveStats; // present when the service has a running container, absent for one that only has history
+  liveStats?: LiveStats; // presence/absence indicates online/offline
 };
 
 export namespace Svc {
@@ -28,7 +28,7 @@ export namespace Svc {
     return { dname, dgroup };
   }
 
-  export function matches(svcId: string | Id, container: Pick<Container, "dname" | "dgroup">): boolean {
+  export function matches(svcId: string | Id, container: Pick<Svc, "dname" | "dgroup">): boolean {
     const id: Id = typeof svcId === "string" ? decodeId(svcId) : svcId;
     return id.dname === container.dname && (id.dgroup ?? undefined) === (container.dgroup ?? undefined);
   }
@@ -39,7 +39,7 @@ export namespace Svc {
         id: z.string(),
         dname: z.string(),
         dgroup: z.string().optional(),
-        liveStats: Container.LIVE_STATS_SCHEMA.optional(),
+        liveStats: LiveStats.parse.SCHEMA.optional(),
       }),
     )
     .ensureTypeMatchesSchema();

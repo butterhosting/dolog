@@ -19,6 +19,8 @@ import { useParentNode } from "../hooks/useParentNode";
 import { useSearch } from "../hooks/useSearch";
 import { useTextSize } from "../hooks/useTextSize";
 import { Line } from "../rendering/Line";
+import { useSvcs } from "../hooks/useSvcs";
+import { Frame } from "../comps/basics/Frame";
 
 export function svcLogsPage() {
   const { id: svcId = "" } = useParams();
@@ -42,9 +44,20 @@ export function svcLogsPage() {
     navigateToUnloadedMatchResult: logsResult.navigateTo,
   });
 
-  const { dname, dgroup } = useMemo(() => Svc.decodeId(svcId), []);
-  useDocumentTitle(dgroup ? `${dname} : ${dgroup} | Dolog` : `${dname} | Dolog`);
+  const svc = useSvcs({ id: svcId });
+  const { dname, dgroup } = svc ?? Svc.decodeId(svcId);
 
+  useDocumentTitle(dgroup ? `${dname} | ${dgroup} | Dolog` : `${dname} | Dolog`);
+
+  if (!svc) {
+    return (
+      <div className="full-bleed flex h-screen flex-col bg-c-shell">
+        <div className="flex justify-center py-24">
+          <Spinner />
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="full-bleed flex h-screen flex-col bg-c-shell">
       <header className="relative flex h-16 shrink-0 items-center justify-center border-b border-c-rule">

@@ -40,7 +40,7 @@ export class SvcService {
 
   private combineWithHistoricContainersIntoSvcs() {
     return pipe(
-      startWith<Container.Live[]>([]),
+      startWith<Container[]>([]),
       map((runningContainers) => this.toSvcs(runningContainers, this.eventRepository.listContainers())),
       share({
         connector: () => new ReplaySubject(1),
@@ -49,7 +49,7 @@ export class SvcService {
     );
   }
 
-  private toSvcs(runningcontainers: Container.Live[], historicContainers: Container[]): Svc[] {
+  private toSvcs(runningcontainers: Container[], historicContainers: Container[]): Svc[] {
     const containers = new Map<string, Container>(historicContainers.map((container) => [container.did, container]));
     runningcontainers.forEach((container) => containers.set(container.did, container));
 
