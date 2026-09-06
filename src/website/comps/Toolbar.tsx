@@ -1,3 +1,4 @@
+import { LiveStats } from "@/models/LiveStats";
 import clsx from "clsx";
 import { ReactNode } from "react";
 import { useFilter } from "../hooks/useFilter";
@@ -5,16 +6,18 @@ import { useTextSize } from "../hooks/useTextSize";
 import { Button } from "./basics/Button";
 import { Toggle } from "./basics/Toggle";
 import { PatternField } from "./PatternField";
+import { Prettify } from "@/helpers/Prettify";
 
 type Props = {
   filter: useFilter.Result;
   textSize: useTextSize.Result;
+  liveStats?: LiveStats;
   onApply: () => void;
   onNavigate: () => void;
   onSearch: () => void;
 };
 
-export function Toolbar({ filter, textSize, onApply, onNavigate, onSearch }: Props) {
+export function Toolbar({ filter, textSize, liveStats, onApply, onNavigate, onSearch }: Props) {
   const { form, formState } = filter;
   return (
     <div className="flex h-14 items-center border-b border-c-rule bg-c-shell">
@@ -26,6 +29,8 @@ export function Toolbar({ filter, textSize, onApply, onNavigate, onSearch }: Pro
 
       <Internal.Cell className="px-4">
         <Button onClick={onSearch} title="find a line among the ones on screen">
+          {" "}
+          {/* TODO: fix all `button` titles */}
           Search {Internal.MODIFIER}K
         </Button>
       </Internal.Cell>
@@ -38,7 +43,44 @@ export function Toolbar({ filter, textSize, onApply, onNavigate, onSearch }: Pro
         ))}
       </Internal.Cell>
 
-      <Internal.Cell className="flex-1" />
+      <Internal.Cell className={clsx(liveStats ? "lg:hidden" : "hidden", "flex-1 px-4")}>
+        {liveStats && (
+          <div className="flex-1 flex flex-col">
+            <div className="flex justify-between">
+              <div>CPU {Prettify.percentage(liveStats.cpuUsage, liveStats.cpuTotalCores)}</div>
+              <div className="text-c-rule">
+                {Prettify.cores(liveStats.cpuUsage)} / {Prettify.cores(liveStats.cpuTotalCores)} cores
+              </div>
+            </div>
+            <div className="h-1 bg-c-chip">
+              <div
+                className="w-full h-full bg-c-accent"
+                style={{ width: Prettify.percentage(liveStats.cpuUsage, liveStats.cpuTotalCores) }}
+              />
+            </div>
+          </div>
+        )}
+      </Internal.Cell>
+      <Internal.Cell className={clsx(liveStats ? "lg:hidden" : "hidden", "flex-1 px-4")}>
+        {liveStats && (
+          <div className="flex-1 flex flex-col">
+            <div className="flex justify-between">
+              <div>MEM {Prettify.percentage(liveStats.memoryUsage, liveStats.memoryTotalBytes)}</div>
+              <div className="text-c-rule">
+                {Prettify.bytes(liveStats.memoryUsage)} / {Prettify.bytes(liveStats.memoryTotalBytes)}
+              </div>
+            </div>
+            <div className="h-1 bg-c-chip">
+              <div
+                className="w-full h-full bg-c-accent"
+                style={{ width: Prettify.percentage(liveStats.memoryUsage, liveStats.memoryTotalBytes) }}
+              />
+            </div>
+          </div>
+        )}
+      </Internal.Cell>
+      {/* Nothing stats*/}
+      <Internal.Cell className={clsx(liveStats ? "hidden lg:flex" : "flex", "flex-1")} />
 
       <Internal.Cell last className="gap-2.5 px-4">
         <PatternField
@@ -59,7 +101,7 @@ export function Toolbar({ filter, textSize, onApply, onNavigate, onSearch }: Pro
 }
 
 namespace Internal {
-  /** The shortcut the page actually binds accepts either, so the hint names the one this keyboard has. */
+  // The shortcut the page actually binds accepts either, so the hint names the one this keyboard has
   export const MODIFIER = typeof navigator !== "undefined" && navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+";
 
   type CellProps = {

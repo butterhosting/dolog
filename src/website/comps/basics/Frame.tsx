@@ -22,7 +22,17 @@ namespace Internal {
       <nav className="mt-10 flex flex-wrap items-center gap-3 md:items-start">
         <Paper className="flex items-center transition-colors hover:border-c-accent">
           <Link to={Route.svcs()} className="p-4 text-lg transition-colors hover:text-c-accent">
-            Containers
+            Services
+          </Link>
+        </Paper>
+        <Paper className="flex items-center transition-colors hover:border-c-accent">
+          <Link to={Route.svcs()} className="p-4 text-lg transition-colors hover:text-c-accent">
+            Alerting
+          </Link>
+        </Paper>
+        <Paper className="flex items-center transition-colors hover:border-c-accent">
+          <Link to={Route.svcs()} className="p-4 text-lg transition-colors hover:text-c-accent">
+            Configuration
           </Link>
         </Paper>
       </nav>

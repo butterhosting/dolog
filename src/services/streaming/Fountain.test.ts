@@ -9,6 +9,7 @@ import { Fountain as Fountain } from "./Fountain";
 import { StreamVariant } from "@/models/StreamVariant";
 import { ThrottleService } from "./ThrottleService";
 import { LiveStats } from "@/models/LiveStats";
+import { DockerSocket } from "./DockerSocket";
 
 describe(Fountain.name, () => {
   let context: TestEnvironment.Context;
@@ -181,7 +182,7 @@ describe(Fountain.name, () => {
   });
 
   describe("streamContainers", () => {
-    const SAMPLE = { cpuUsage: 0.5, cpuTotal: 4, memoryUsage: 1_000, memoryTotal: 8_000 };
+    const SAMPLE: DockerSocket.Stats = { cpuUsage: 0.5, cpuTotalCores: 4, memoryUsage: 1_000, memoryTotalBytes: 8_000 };
 
     /** a container as the fountain first announces it: running, with nothing measured yet */
     function live(container: Container, liveStats: Partial<LiveStats> = {}): Container {

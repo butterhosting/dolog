@@ -11,6 +11,11 @@ export namespace Prettify {
     return `${pad(date.day)}-${pad(date.month)}-${date.year}`;
   }
 
+  /** (1, 4) -> "25.0%"; a whole of nothing is 0%, not NaN */
+  export function percentage(part: number, whole: number): string {
+    return `${(whole > 0 ? (part / whole) * 100 : 0).toFixed(1)}%`;
+  }
+
   export function dayTransition(date: Temporal.PlainDate): string {
     const months = [
       "January",

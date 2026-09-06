@@ -23,13 +23,14 @@ export namespace Range {
   }
 
   export enum Preset {
-    all = "all",
+    last5m = "last5m",
     last10m = "last10m",
     last30m = "last30m",
     last1h = "last1h",
     last24h = "last24h",
     last7d = "last7d",
     last30d = "last30d",
+    all = "all",
     today = "today",
     yesterday = "yesterday",
   }
@@ -77,6 +78,7 @@ export namespace Range {
   };
 
   const DETAILS: Record<Preset, Detail> = {
+    [Preset.last5m]: { window: lastly(5) },
     [Preset.last10m]: { window: lastly(10) },
     [Preset.last30m]: { window: lastly(30) },
     [Preset.last1h]: { window: lastly(60) },

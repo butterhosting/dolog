@@ -235,7 +235,7 @@ describe(DockerSocket.name, () => {
       // when
       const samples = await collect(socket.streamStats("abc", new AbortController().signal));
       // then
-      expect(samples).toEqual([{ cpuUsage: 0.5, cpuTotal: 4, memoryUsage: 800, memoryTotal: 8_000 }]);
+      expect(samples).toEqual([{ cpuUsage: 0.5, cpuTotalCores: 4, memoryUsage: 800, memoryTotalBytes: 8_000 }]);
     });
 
     it("should say nothing for a container that is not running", async () => {

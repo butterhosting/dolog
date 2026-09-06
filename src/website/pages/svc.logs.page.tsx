@@ -1,7 +1,6 @@
 import { RangeDisplay } from "@/helpers/RangeDisplay";
 import { Svc } from "@/models/Svc";
 import clsx from "clsx";
-import { useMemo } from "react";
 import { Link, useParams } from "react-router";
 import { Route } from "../Route";
 import { Row } from "../comps/Row";
@@ -17,10 +16,9 @@ import { useFilter } from "../hooks/useFilter";
 import { useLogs } from "../hooks/useLogs";
 import { useParentNode } from "../hooks/useParentNode";
 import { useSearch } from "../hooks/useSearch";
+import { useSvcs } from "../hooks/useSvcs";
 import { useTextSize } from "../hooks/useTextSize";
 import { Line } from "../rendering/Line";
-import { useSvcs } from "../hooks/useSvcs";
-import { Frame } from "../comps/basics/Frame";
 
 export function svcLogsPage() {
   const { id: svcId = "" } = useParams();
@@ -47,7 +45,7 @@ export function svcLogsPage() {
   const svc = useSvcs({ id: svcId });
   const { dname, dgroup } = svc ?? Svc.decodeId(svcId);
 
-  useDocumentTitle(dgroup ? `${dname} | ${dgroup} | Dolog` : `${dname} | Dolog`);
+  useDocumentTitle(`${dname} | Dolog`);
 
   if (!svc) {
     return (
@@ -62,12 +60,14 @@ export function svcLogsPage() {
     <div className="full-bleed flex h-screen flex-col bg-c-shell">
       <header className="relative flex h-16 shrink-0 items-center justify-center border-b border-c-rule">
         <Link to={Route.svcs()} title="back to the containers" className="absolute left-5 text-white hover:text-c-accent">
-          <Internal.BackArrow />
+          <svg viewBox="0 0 24 28" className="w-4 fill-current" aria-hidden>
+            <path d="M20 4 L20 24 L4 14 Z" strokeWidth="7" stroke="currentColor" strokeLinejoin="round" />
+          </svg>
         </Link>
-        <span>
+        <div className="flex flex-col items-center">
           <span className="text-base text-c-accent">{dname}</span>
-          {dgroup && <span className="text-base"> : {dgroup}</span>}
-        </span>
+          {dgroup && <span className="text-sm text-c-rule">{dgroup}</span>}
+        </div>
         <Button
           className="absolute right-4"
           onClick={() => void filterResult.form.promptRangeDialog()}
@@ -80,6 +80,7 @@ export function svcLogsPage() {
       <Toolbar
         filter={filterResult}
         textSize={textSize}
+        liveStats={svc.liveStats}
         onApply={filterResult.formState.apply}
         onNavigate={() => void anchorResult.promptNavigation()}
         onSearch={() => (searchResult.activated ? searchResult.deactivate() : searchResult.activate())}
@@ -143,15 +144,4 @@ export function svcLogsPage() {
       </div>
     </div>
   );
-}
-
-namespace Internal {
-  /** The way back. Stroked as well as filled, which is what rounds its points off. */
-  export function BackArrow() {
-    return (
-      <svg viewBox="0 0 37 28" className="w-6 fill-current" aria-hidden>
-        <path d="M32 4 L32 24 L5 14 Z" strokeWidth="7" stroke="currentColor" strokeLinejoin="round" />
-      </svg>
-    );
-  }
 }

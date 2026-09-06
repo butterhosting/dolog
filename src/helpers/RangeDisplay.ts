@@ -8,6 +8,7 @@ export namespace RangeDisplay {
   }
 
   const PRESETS: Record<Range.Preset, { label: string; group: Group }> = {
+    [Range.Preset.last5m]: { label: "Last 5m", group: Group.relative },
     [Range.Preset.last10m]: { label: "Last 10m", group: Group.relative },
     [Range.Preset.last30m]: { label: "Last 30m", group: Group.relative },
     [Range.Preset.last1h]: { label: "Last 1h", group: Group.relative },

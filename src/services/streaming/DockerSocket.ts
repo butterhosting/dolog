@@ -1,6 +1,7 @@
 import { Env } from "@/Env";
 import { DockerError } from "@/errors/DockerError";
 import { Container } from "@/models/Container";
+import { LiveStats } from "@/models/LiveStats";
 import { StreamVariant } from "@/models/StreamVariant";
 import { Temporal } from "@js-temporal/polyfill";
 import z from "zod/v4";
@@ -128,9 +129,9 @@ export class DockerSocket {
 
       yield {
         cpuUsage: Math.max(0, cpuDelta / systemDelta) * cpuTotal,
-        cpuTotal,
+        cpuTotalCores: cpuTotal,
         memoryUsage: cache < memory_stats.usage ? memory_stats.usage - cache : memory_stats.usage,
-        memoryTotal: memory_stats.limit,
+        memoryTotalBytes: memory_stats.limit,
       };
     }
   }
@@ -308,12 +309,8 @@ export namespace DockerSocket {
     container: Container;
   };
 
-  export type Stats = {
-    cpuUsage: number; // cores
-    cpuTotal: number; // cores
-    memoryUsage: number; // bytes
-    memoryTotal: number; // bytes
-  };
+  // the measured half of LiveStats, so a sample spreads into it by name; usage is in cores and bytes, like the totals
+  export type Stats = Pick<LiveStats, "cpuUsage" | "cpuTotalCores" | "memoryUsage" | "memoryTotalBytes">;
 }
 
 /**
