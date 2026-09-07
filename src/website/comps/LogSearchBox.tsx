@@ -7,7 +7,7 @@ import { PatternField } from "./PatternField";
 type Props = {
   search: useSearch.Result;
 };
-export function SearchBox({ search }: Props) {
+export function LogSearchBox({ search }: Props) {
   return (
     <Overlay className="left-1/2 -translate-x-1/2">
       <PatternField

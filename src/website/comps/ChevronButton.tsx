@@ -22,7 +22,7 @@ export function ChevronButton({ ref, direction, onClick, disabled, busy }: Props
         <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
       ) : (
         // the sole place the domain's sense of time becomes a direction on screen
-        <Caret down={direction === Direction.forwards_in_time} />
+        <Caret direction={direction === Direction.forwards_in_time ? "down" : "up"} />
       )}
     </button>
   );

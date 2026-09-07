@@ -19,19 +19,14 @@ export function Frame(props: Props) {
 namespace Internal {
   export function Header() {
     return (
-      <nav className="mt-10 flex flex-wrap items-center gap-3 md:items-start">
+      <nav className="mt-10 flex flex-wrap gap-3">
         <Paper className="flex items-center transition-colors hover:border-c-accent">
           <Link to={Route.svcs()} className="p-4 text-lg transition-colors hover:text-c-accent">
             Services
           </Link>
         </Paper>
         <Paper className="flex items-center transition-colors hover:border-c-accent">
-          <Link to={Route.svcs()} className="p-4 text-lg transition-colors hover:text-c-accent">
-            Alerting
-          </Link>
-        </Paper>
-        <Paper className="flex items-center transition-colors hover:border-c-accent">
-          <Link to={Route.svcs()} className="p-4 text-lg transition-colors hover:text-c-accent">
+          <Link to={Route.configuration()} className="p-4 text-lg transition-colors hover:text-c-accent">
             Configuration
           </Link>
         </Paper>

@@ -17,7 +17,7 @@ type Props = {
   onSearch: () => void;
 };
 
-export function Toolbar({ filter, textSize, liveStats, onApply, onNavigate, onSearch }: Props) {
+export function SvcToolbar({ filter, textSize, liveStats, onApply, onNavigate, onSearch }: Props) {
   const { form, formState } = filter;
   return (
     <div className="flex h-14 items-center border-b border-c-rule bg-c-shell">
@@ -43,6 +43,7 @@ export function Toolbar({ filter, textSize, liveStats, onApply, onNavigate, onSe
         ))}
       </Internal.Cell>
 
+      {/* cpu/mem stats */}
       <Internal.Cell className={clsx(liveStats ? "lg:hidden" : "hidden", "flex-1 px-4")}>
         {liveStats && (
           <div className="flex-1 flex flex-col">
@@ -79,7 +80,7 @@ export function Toolbar({ filter, textSize, liveStats, onApply, onNavigate, onSe
           </div>
         )}
       </Internal.Cell>
-      {/* Nothing stats*/}
+      {/* no stats */}
       <Internal.Cell className={clsx(liveStats ? "hidden lg:flex" : "flex", "flex-1")} />
 
       <Internal.Cell last className="gap-2.5 px-4">

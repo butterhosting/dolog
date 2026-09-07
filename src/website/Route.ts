@@ -5,4 +5,7 @@ export const Route = {
   svcsLogs(svcId = ":id") {
     return `/services/${svcId}/logs`;
   },
+  configuration() {
+    return "/configuration";
+  },
 };

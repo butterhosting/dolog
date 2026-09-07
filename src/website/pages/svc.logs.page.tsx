@@ -4,8 +4,8 @@ import clsx from "clsx";
 import { Link, useParams } from "react-router";
 import { Route } from "../Route";
 import { Row } from "../comps/Row";
-import { SearchBox } from "../comps/SearchBox";
-import { Toolbar } from "../comps/Toolbar";
+import { LogSearchBox } from "../comps/LogSearchBox";
+import { SvcToolbar } from "../comps/SvcToolbar";
 import { Button } from "../comps/basics/Button";
 import { Caret } from "../comps/basics/Caret";
 import { Overlay } from "../comps/basics/Overlay";
@@ -19,6 +19,7 @@ import { useSearch } from "../hooks/useSearch";
 import { useSvcs } from "../hooks/useSvcs";
 import { useTextSize } from "../hooks/useTextSize";
 import { Line } from "../rendering/Line";
+import { SvcHeader } from "../comps/SvcHeader";
 
 export function svcLogsPage() {
   const { id: svcId = "" } = useParams();
@@ -58,26 +59,12 @@ export function svcLogsPage() {
   }
   return (
     <div className="full-bleed flex h-screen flex-col bg-c-shell">
-      <header className="relative flex h-16 shrink-0 items-center justify-center border-b border-c-rule">
-        <Link to={Route.svcs()} title="back to the containers" className="absolute left-5 text-white hover:text-c-accent">
-          <svg viewBox="0 0 24 28" className="w-4 fill-current" aria-hidden>
-            <path d="M20 4 L20 24 L4 14 Z" strokeWidth="7" stroke="currentColor" strokeLinejoin="round" />
-          </svg>
-        </Link>
-        <div className="flex flex-col items-center">
-          <span className="text-base text-c-accent">{dname}</span>
-          {dgroup && <span className="text-sm text-c-rule">{dgroup}</span>}
-        </div>
-        <Button
-          className="absolute right-4"
-          onClick={() => void filterResult.form.promptRangeDialog()}
-          title="choose the time span this filter covers"
-        >
-          {RangeDisplay.label(filterResult.form.range)}
-        </Button>
-      </header>
-
-      <Toolbar
+      <SvcHeader
+        dname={dname} //
+        dgroup={dgroup}
+        filter={filterResult}
+      />
+      <SvcToolbar
         filter={filterResult}
         textSize={textSize}
         liveStats={svc.liveStats}
@@ -85,7 +72,6 @@ export function svcLogsPage() {
         onNavigate={() => void anchorResult.promptNavigation()}
         onSearch={() => (searchResult.activated ? searchResult.deactivate() : searchResult.activate())}
       />
-
       <div className="relative min-h-0 flex-1 bg-c-surface">
         <div ref={registerParentNode} className={clsx("h-full overflow-y-auto [overflow-anchor:none] px-4 py-3.5", textSize.className)}>
           {logsResult.isLoading && (
@@ -132,12 +118,13 @@ export function svcLogsPage() {
           })}
         </div>
 
-        {searchResult.activated && <SearchBox search={searchResult} />}
-
+        {/* search box overlay */}
+        {searchResult.activated && <LogSearchBox search={searchResult} />}
+        {/* jump-to-live button */}
         {!logsResult.isFollowingStream && (
           <Overlay className="right-4">
             <Button onClick={() => logsResult.followStream()} title="new lines are not being added while you read back">
-              <Caret down />
+              <Caret direction="down" />
             </Button>
           </Overlay>
         )}
