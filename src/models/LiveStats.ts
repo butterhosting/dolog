@@ -5,9 +5,9 @@ import z from "zod/v4";
 export type LiveStats = {
   throttling: boolean;
   logsPerSecond: number;
-  memoryTotalBytes: number;
+  memoryTotal: number;
   memoryUsage: number;
-  cpuTotalCores: number;
+  cpuTotal: number;
   cpuUsage: number;
 };
 
@@ -17,18 +17,18 @@ export namespace LiveStats {
       z.object({
         throttling: z.boolean(),
         logsPerSecond: z.number(),
-        memoryTotalBytes: z.number(),
+        memoryTotal: z.number(),
         memoryUsage: z.number(),
-        cpuTotalCores: z.number(),
+        cpuTotal: z.number(),
         cpuUsage: z.number(),
       }),
     )
     .ensureTypeMatchesSchema();
 
   export const equals = EqualsFactory.createEquals<LiveStats>({
-    memoryTotalBytes: (a, b) => a === b,
+    memoryTotal: (a, b) => a === b,
     memoryUsage: (a, b) => a === b,
-    cpuTotalCores: (a, b) => a === b,
+    cpuTotal: (a, b) => a === b,
     cpuUsage: (a, b) => a === b,
     logsPerSecond: (a, b) => a === b,
     throttling: (a, b) => a === b,

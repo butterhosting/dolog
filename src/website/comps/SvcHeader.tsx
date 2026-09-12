@@ -17,8 +17,11 @@ export function SvcHeader({ dname, dgroup, filter }: Props) {
         <Caret direction="left" className="my-5 mx-2 h-5" />
       </Link>
       <div className="flex flex-col items-center">
-        <span className="text-base text-c-accent">{dname}</span>
-        {dgroup && <span className="text-sm text-c-rule">{dgroup}</span>}
+        <div>
+          {dgroup && <span className="text-sm text-c-rule">{dgroup} / </span>}
+          <span className="text-base text-c-accent">{dname}</span>
+        </div>
+        <span className="text-xs text-c-rule/50">lscr.io/linuxserver/qbittorrent:latest TODO</span>
       </div>
       <Button
         className="absolute right-4"

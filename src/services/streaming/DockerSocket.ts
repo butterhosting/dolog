@@ -129,9 +129,9 @@ export class DockerSocket {
 
       yield {
         cpuUsage: Math.max(0, cpuDelta / systemDelta) * cpuTotal,
-        cpuTotalCores: cpuTotal,
+        cpuTotal: cpuTotal,
         memoryUsage: cache < memory_stats.usage ? memory_stats.usage - cache : memory_stats.usage,
-        memoryTotalBytes: memory_stats.limit,
+        memoryTotal: memory_stats.limit,
       };
     }
   }
@@ -310,7 +310,7 @@ export namespace DockerSocket {
   };
 
   // the measured half of LiveStats, so a sample spreads into it by name; usage is in cores and bytes, like the totals
-  export type Stats = Pick<LiveStats, "cpuUsage" | "cpuTotalCores" | "memoryUsage" | "memoryTotalBytes">;
+  export type Stats = Pick<LiveStats, "cpuUsage" | "cpuTotal" | "memoryUsage" | "memoryTotal">;
 }
 
 /**

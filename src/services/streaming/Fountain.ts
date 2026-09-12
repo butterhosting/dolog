@@ -107,9 +107,9 @@ export class Fountain {
         liveStats: {
           throttling: false,
           logsPerSecond: 0,
-          memoryTotalBytes: 0,
+          memoryTotal: 0,
           memoryUsage: 0,
-          cpuTotalCores: 0,
+          cpuTotal: 0,
           cpuUsage: 0,
         },
       });
