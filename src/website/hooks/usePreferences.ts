@@ -18,6 +18,6 @@ export function usePreferences() {
   const preferences = useSyncExternalStore(store.subscribe, store.getSnapshot);
   return {
     ...preferences,
-    update: store.update,
+    modify: store.modify,
   };
 }

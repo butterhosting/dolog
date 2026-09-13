@@ -6,9 +6,9 @@ import { Row } from "../comps/Row";
 import { SvcHeader } from "../comps/SvcHeader";
 import { SvcToolbar } from "../comps/SvcToolbar";
 import { Button } from "../comps/basics/Button";
-import { Caret } from "../comps/basics/Caret";
+import { CaretIcon } from "../comps/icons/CaretIcon";
 import { Overlay } from "../comps/basics/Overlay";
-import { Spinner } from "../comps/basics/Spinner";
+import { SpinnerIcon } from "../comps/icons/SpinnerIcon";
 import { useDocumentTitle } from "../hooks/basics/useDocumentTitle";
 import { useAnchor } from "../hooks/useAnchor";
 import { useFilter } from "../hooks/useFilter";
@@ -50,7 +50,7 @@ export function svcLogsPage() {
     return (
       <div className="full-bleed flex h-screen flex-col bg-c-shell">
         <div className="flex justify-center py-24">
-          <Spinner />
+          <SpinnerIcon />
         </div>
       </div>
     );
@@ -74,7 +74,7 @@ export function svcLogsPage() {
         <div ref={registerParentNode} className={clsx("h-full overflow-y-auto [overflow-anchor:none] px-4 py-3.5", textSize.className)}>
           {logsResult.isLoading && (
             <div className="flex justify-center py-8">
-              <Spinner />
+              <SpinnerIcon />
             </div>
           )}
           {!logsResult.isLoading && logsResult.lines.length === 0 && (
@@ -122,7 +122,7 @@ export function svcLogsPage() {
         {!logsResult.isFollowingStream && (
           <Overlay className="right-4">
             <Button onClick={() => logsResult.followStream()} title="new lines are not being added while you read back">
-              <Caret direction="down" />
+              <CaretIcon direction="down" />
             </Button>
           </Overlay>
         )}

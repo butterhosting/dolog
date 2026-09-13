@@ -3,7 +3,7 @@ import z from "zod/v4";
 export type LocalStorageStore<T> = {
   getSnapshot(): T;
   subscribe(listener: () => void): () => void;
-  update(patch: Partial<T>): void;
+  modify(patch: Partial<T>): void;
 };
 
 export namespace LocalStorageStore {
@@ -68,7 +68,7 @@ export namespace LocalStorageStore {
       };
     }
 
-    function update(patch: Partial<Value>) {
+    function modify(patch: Partial<Value>) {
       snapshot.value = { ...snapshot.value, ...patch }; // new object, since react only re-renders when the snapshot's identity changes
       localStorage.setItem(key, JSON.stringify(snapshot.value));
       notify(); // browser only invokes the `onStorage` callback for _other_ tabs when there's been a write
@@ -77,7 +77,7 @@ export namespace LocalStorageStore {
     const store: LocalStorageStore<Value> = {
       getSnapshot,
       subscribe,
-      update,
+      modify,
     };
     INSTANCES.set(key, store);
     return store;

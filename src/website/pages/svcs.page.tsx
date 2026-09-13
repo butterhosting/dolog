@@ -2,7 +2,7 @@ import { Svc } from "@/models/Svc";
 import clsx from "clsx";
 import { Frame } from "../comps/basics/Frame";
 import { Paper } from "../comps/basics/Paper";
-import { Spinner } from "../comps/basics/Spinner";
+import { SpinnerIcon } from "../comps/icons/SpinnerIcon";
 import { SvcCard } from "../comps/SvcCard";
 import { useDocumentTitle } from "../hooks/basics/useDocumentTitle";
 import { usePreferences } from "../hooks/usePreferences";
@@ -17,7 +17,7 @@ export function svcsPage() {
     return (
       <Frame>
         <div className="flex justify-center py-24">
-          <Spinner />
+          <SpinnerIcon />
         </div>
       </Frame>
     );

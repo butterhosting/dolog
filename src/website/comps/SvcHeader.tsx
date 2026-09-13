@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { useFilter } from "../hooks/useFilter";
 import { Route } from "../Route";
 import { Button } from "./basics/Button";
-import { Caret } from "./basics/Caret";
+import { CaretIcon } from "./icons/CaretIcon";
 
 type Props = {
   dname: string;
@@ -14,7 +14,7 @@ export function SvcHeader({ dname, dgroup, filter }: Props) {
   return (
     <header className="relative flex h-16 shrink-0 items-center justify-center border-b border-c-rule">
       <Link to={Route.svcs()} title="back to the containers" className="absolute left-5 text-white hover:text-c-accent">
-        <Caret direction="left" className="my-5 mx-2 h-5" />
+        <CaretIcon direction="left" className="my-5 mx-2 h-5" />
       </Link>
       <div className="flex flex-col items-center">
         <div>

@@ -2,10 +2,10 @@ import { TextSize } from "@/models/TextSize";
 import { usePreferences } from "./usePreferences";
 
 export function useTextSize(): useTextSize.Result {
-  const { textSize, update } = usePreferences();
+  const { textSize, modify } = usePreferences();
   return {
     size: textSize,
-    setSize: (size) => update({ textSize: size }),
+    setSize: (size) => modify({ textSize: size }),
     className: Internal.classes[textSize],
   };
 }

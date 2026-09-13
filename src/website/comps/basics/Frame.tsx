@@ -8,9 +8,9 @@ import { usePreferences } from "../../hooks/usePreferences";
 import { useSvcs } from "../../hooks/useSvcs";
 import { Route } from "../../Route";
 import { Meter } from "../Meter";
+import { DialogClient } from "../../clients/DialogClient";
 import { Cell } from "./Cell";
-import { EyeIcon } from "./EyeIcon";
-import { Toggle } from "./Toggle";
+import { SlidersIcon } from "../icons/SlidersIcon";
 
 type Props = ComponentProps<"main">;
 export function Frame(props: Props) {
@@ -27,21 +27,18 @@ namespace Internal {
   export function Header() {
     const host = useHost();
     const svcs = useSvcs();
-    const { showStoppedContainers, update } = usePreferences();
+    const { showStoppedContainers } = usePreferences();
+    const dialogClient = useRegistry(DialogClient);
     const running = svcs?.filter((svc) => svc.liveStats).length ?? 0;
     const stopped = (svcs?.length ?? 0) - running;
     return (
       <header className="flex h-16 shrink-0 border-b border-c-rule">
         <NavCell to={Route.svcs()}>services</NavCell>
         <NavCell to={Route.configuration()}>configuration</NavCell>
-        <Cell className="px-5">
-          <Toggle
-            active={showStoppedContainers}
-            onClick={() => update({ showStoppedContainers: !showStoppedContainers })}
-            title={showStoppedContainers ? "hide stopped containers" : "show stopped containers"}
-          >
-            <EyeIcon crossed={!showStoppedContainers} />
-          </Toggle>
+        <Cell>
+          <button onClick={() => void dialogClient.openPreferencesDialog()} title="preferences" className={clsx(NAV_CELL_CLASSES, "px-5")}>
+            <SlidersIcon className="size-6" />
+          </button>
         </Cell>
 
         <Cell className="flex-1 flex-col justify-center gap-0.5 px-4">
@@ -73,15 +70,13 @@ namespace Internal {
     to: string;
     children: ReactNode;
   };
+  // shared with the preferences button, so it hovers like a nav cell
+  const NAV_CELL_CLASSES = "flex h-full cursor-pointer items-center bg-c-chip transition-colors hover:bg-black";
+
   function NavCell({ to, children }: NavCellProps) {
     return (
       <Cell>
-        <NavLink
-          to={to}
-          className={({ isActive }) =>
-            clsx("flex h-full items-center bg-c-chip px-14 text-xl transition-colors hover:bg-black", isActive && "text-c-accent")
-          }
-        >
+        <NavLink to={to} className={({ isActive }) => clsx(NAV_CELL_CLASSES, "px-14 text-xl", isActive && "text-c-accent")}>
           {children}
         </NavLink>
       </Cell>

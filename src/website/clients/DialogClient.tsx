@@ -2,6 +2,7 @@ import { Range } from "@/website/hooks/objects/Range";
 import { Temporal } from "@js-temporal/polyfill";
 import { DialogManager } from "../comps/basics/DialogManager";
 import { NavigateDialog } from "../comps/dialogs/NavigateDialog";
+import { PreferencesDialog } from "../comps/dialogs/PreferencesDialog";
 import { RangeDialog } from "../comps/dialogs/RangeDialog";
 
 export class DialogClient {
@@ -26,6 +27,17 @@ export class DialogClient {
     const { token } = this.manager.insert(
       <NavigateDialog current={current} close={() => resolve("cancel")} done={(instant) => resolve(instant)} />,
     );
+    return promise;
+  }
+
+  // Nothing comes back: the dialog writes each preference as it gets flipped
+  public openPreferencesDialog(): Promise<void> {
+    const { promise, resolve: internalResolve } = Promise.withResolvers<void>();
+    const resolve = () => {
+      internalResolve();
+      this.manager.remove({ token });
+    };
+    const { token } = this.manager.insert(<PreferencesDialog close={resolve} />);
     return promise;
   }
 
