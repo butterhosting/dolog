@@ -532,14 +532,33 @@ describe(EventRepository.name, () => {
 
   it("should keep a container's identity current across batches", async () => {
     // given (a container is renamed, or joins a compose project, between batches)
-    const before = TestFixture.container({ dname: "old-name" });
-    const after = { ...before, dname: "new-name", dgroup: "shop" };
+    const before = TestFixture.container({ dname: "old-name", dlabels: { retention: "P7D" } });
+    const after = { ...before, dname: "new-name", dgroup: "shop", dimage: "nginx:1.28", dlabels: { retention: "P30D" } };
 
     // when
     await write([TestFixture.logEvent({ container: before })]);
     await write([TestFixture.logEvent({ container: after })]);
     // then (still one row, carrying the latest identity)
     expect(await containers()).toEqual([after]);
+  });
+
+  it("should list the most recently active container first", async () => {
+    // given (two containers, whose newest events arrive out of order)
+    const stale = TestFixture.container({ dname: "stale" });
+    const fresh = TestFixture.container({ dname: "fresh" });
+    const at = (iso: string) => Temporal.Instant.from(iso);
+
+    // when
+    await write([
+      TestFixture.logEvent({ container: fresh, timestamp: at("2026-01-01T00:00:00Z") }),
+      TestFixture.logEvent({ container: stale, timestamp: at("2026-01-02T00:00:00Z") }),
+    ]);
+    await write([
+      TestFixture.logEvent({ container: fresh, timestamp: at("2026-01-03T00:00:00Z") }),
+      TestFixture.logEvent({ container: fresh, timestamp: at("2026-01-01T12:00:00Z") }),
+    ]);
+    // then (a later batch carrying an older event does not move it back)
+    expect((await containers()).map(({ dname }) => dname)).toEqual(["fresh", "stale"]);
   });
 
   it("should keep only the newest events per container, independently of each other", async () => {

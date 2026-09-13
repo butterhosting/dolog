@@ -5,4 +5,7 @@ export const $container = sqliteTable("container", {
   did: text().notNull(), // "Docker ID"
   dname: text().notNull(), // "Docker name"
   dgroup: text(), // "Docker group"
+  dimage: text().notNull(), // "Docker image"
+  dlabels: text({ mode: "json" }).$type<Record<string, string>>().notNull(), // "Docker labels"
+  lastActivity: text("last_activity").notNull(),
 });

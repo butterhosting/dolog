@@ -69,11 +69,14 @@ export class SvcService {
       if (live.length > 1) {
         this.log.error(`Service ${svcContainers[0].dname} has ${live.length} running containers; showing the first`);
       }
+      // the running container describes the service; failing that, the most recently active one (historic containers come sorted that way)
+      const representative = live.at(0) ?? svcContainers[0];
       return {
         id,
-        dname: svcContainers[0].dname,
-        dgroup: svcContainers[0].dgroup,
-        liveStats: live.at(0)?.liveStats,
+        dname: representative.dname,
+        dgroup: representative.dgroup,
+        dimage: representative.dimage,
+        liveStats: representative.liveStats,
       };
     });
   }

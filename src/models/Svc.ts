@@ -7,6 +7,7 @@ export type Svc = {
   id: string;
   dname: string;
   dgroup?: string;
+  dimage: string;
   liveStats?: LiveStats; // presence/absence indicates online/offline
 };
 
@@ -39,6 +40,7 @@ export namespace Svc {
         id: z.string(),
         dname: z.string(),
         dgroup: z.string().optional(),
+        dimage: z.string(),
         liveStats: LiveStats.parse.SCHEMA.optional(),
       }),
     )

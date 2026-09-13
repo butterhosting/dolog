@@ -60,6 +60,7 @@ export function svcLogsPage() {
       <SvcHeader
         dname={dname} //
         dgroup={dgroup}
+        dimage={svc.dimage}
         filter={filterResult}
       />
       <SvcToolbar

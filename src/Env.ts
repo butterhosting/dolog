@@ -6,7 +6,7 @@ import { Timezone } from "./helpers/Timezone";
 import { LogLevel } from "./models/internal/LogLevel";
 
 export namespace Env {
-  const baseEnv = z.object({
+  const BASE_ENV = z.object({
     O_DOLOG_STAGE: z.enum(["dev", "e2e", "prod"]),
     O_DOLOG_TIMEZONE: z.string().refine((tz) => Timezone.check(tz), {
       error: "invalid_timezone",
@@ -32,8 +32,7 @@ export namespace Env {
   });
 
   export function initializePartiallyForLogger(environment = Bun.env) {
-    return baseEnv
-      .partial()
+    return BASE_ENV.partial()
       .required({
         O_DOLOG_TIMEZONE: true,
         X_DOLOG_LOGGING: true,
@@ -41,15 +40,14 @@ export namespace Env {
       .parse(environment);
   }
 
-  export function initialize(timezone = Temporal.Now.timeZoneId() as "UTC", environment = Bun.env as z.output<typeof baseEnv>) {
+  export function initialize(timezone = Temporal.Now.timeZoneId() as "UTC", environment = Bun.env as z.output<typeof BASE_ENV>) {
     if (timezone !== "UTC") {
       throw new Error(`Invalid timezone: ${timezone}`);
     }
-    return baseEnv
-      .transform(({ X_DOLOG_ROOT, ...env }) => ({
-        ...env,
-        X_DOLOG_ROOT: isAbsolute(X_DOLOG_ROOT) ? X_DOLOG_ROOT : join(process.cwd(), X_DOLOG_ROOT),
-      }))
+    return BASE_ENV.transform(({ X_DOLOG_ROOT, ...env }) => ({
+      ...env,
+      X_DOLOG_ROOT: isAbsolute(X_DOLOG_ROOT) ? X_DOLOG_ROOT : join(process.cwd(), X_DOLOG_ROOT),
+    }))
       .transform((env) => ({
         ...env,
         O_DOLOG_COMMIT: packageJson.commit.slice(0, 7),
@@ -58,6 +56,7 @@ export namespace Env {
         X_DOLOG_RETENTION_TIME_WINDOW: Temporal.Duration.from(env.X_DOLOG_RETENTION_TIME_WINDOW),
         X_DOLOG_RETENTION_MAX_LINES_PER_CONTAINER: Number(env.X_DOLOG_RETENTION_MAX_LINES_PER_CONTAINER),
         X_DOLOG_DATABASE: join(env.X_DOLOG_ROOT, "data", "db.sqlite"),
+        X_DOLOG_CONTAINER_LABEL_PREFIX: "ing.butterhost.",
       }))
       .parse(environment);
   }

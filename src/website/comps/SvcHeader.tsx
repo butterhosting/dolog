@@ -8,9 +8,10 @@ import { CaretIcon } from "./icons/CaretIcon";
 type Props = {
   dname: string;
   dgroup?: string;
+  dimage: string;
   filter: useFilter.Result;
 };
-export function SvcHeader({ dname, dgroup, filter }: Props) {
+export function SvcHeader({ dname, dgroup, dimage, filter }: Props) {
   return (
     <header className="relative flex h-16 shrink-0 items-center justify-center border-b border-c-rule">
       <Link to={Route.svcs()} title="back to the containers" className="absolute left-5 text-white hover:text-c-accent">
@@ -21,7 +22,7 @@ export function SvcHeader({ dname, dgroup, filter }: Props) {
           {dgroup && <span className="text-sm text-c-rule">{dgroup} / </span>}
           <span className="text-base text-c-accent">{dname}</span>
         </div>
-        <span className="text-xs text-c-rule/50">lscr.io/linuxserver/qbittorrent:latest TODO</span>
+        <span className="text-xs text-c-rule/50">{dimage}</span>
       </div>
       <Button
         className="absolute right-4"

@@ -12,6 +12,8 @@ export namespace TestFixture {
       object: "container",
       dname: "web",
       dgroup: "shop",
+      dimage: "nginx:1.27",
+      dlabels: {},
     };
     return deepMerge(defaults, overrides);
   }

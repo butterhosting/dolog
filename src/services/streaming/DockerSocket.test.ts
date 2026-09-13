@@ -177,6 +177,7 @@ describe(DockerSocket.name, () => {
           {
             Id: "abc",
             Names: ["/web"],
+            Image: "nginx:1.27",
             Labels: { "com.docker.stack.namespace": "stack", "com.docker.compose.project": "project" },
           },
         ]),
@@ -184,15 +185,50 @@ describe(DockerSocket.name, () => {
       // when
       const containers = await socket.listRunningContainers();
       // then
-      expect(containers).toEqual([{ did: "abc", object: "container", dname: "web", dgroup: "stack" }]);
+      expect(containers).toEqual([{ did: "abc", object: "container", dname: "web", dgroup: "stack", dimage: "nginx:1.27", dlabels: {} }]);
+    });
+
+    it("should keep only the labels under the configured prefix, and strip that prefix", async () => {
+      // given
+      const prefix = context.env.X_DOLOG_CONTAINER_LABEL_PREFIX;
+      respondWith(
+        Response.json([
+          {
+            Id: "abc",
+            Names: ["/web"],
+            Image: "nginx:1.27",
+            Labels: { [`${prefix}retention`]: "P7D", [`${prefix}tier`]: "edge", "org.opencontainers.image.title": "nginx" },
+          },
+        ]),
+      );
+      // when
+      const containers = await socket.listRunningContainers();
+      // then
+      expect(containers.at(0)?.dlabels).toEqual({ retention: "P7D", tier: "edge" });
+    });
+
+    it("should spell out the `:latest` tag docker leaves implicit, and leave tagged or pinned references alone", async () => {
+      // given
+      const images = ["alpine", "nginx:1.27", "localhost:5000/app", "lscr.io/linuxserver/qbittorrent:latest", "alpine@sha256:28bd5fe8"];
+      respondWith(Response.json(images.map((Image, i) => ({ Id: `${i}`, Names: [`/c${i}`], Image, Labels: null }))));
+      // when
+      const containers = await socket.listRunningContainers();
+      // then
+      expect(containers.map(({ dimage }) => dimage)).toEqual([
+        "alpine:latest",
+        "nginx:1.27",
+        "localhost:5000/app:latest",
+        "lscr.io/linuxserver/qbittorrent:latest",
+        "alpine@sha256:28bd5fe8",
+      ]);
     });
 
     it("should fall back to the compose project, and leave an unlabelled container ungrouped", async () => {
       // given
       respondWith(
         Response.json([
-          { Id: "a", Names: ["/one"], Labels: { "com.docker.compose.project": "shop" } },
-          { Id: "b", Names: ["/two"], Labels: null },
+          { Id: "a", Names: ["/one"], Image: "nginx:1.27", Labels: { "com.docker.compose.project": "shop" } },
+          { Id: "b", Names: ["/two"], Image: "nginx:1.27", Labels: null },
         ]),
       );
       // when
@@ -213,7 +249,14 @@ describe(DockerSocket.name, () => {
       const events = await collect(socket.streamLifecycles(new AbortController().signal));
       // then
       expect(events.map(({ status }) => status)).toEqual(["start", "die"]);
-      expect(events.at(0)?.container).toEqual({ did: "abc", object: "container", dname: "web", dgroup: "shop" });
+      expect(events.at(0)?.container).toEqual({
+        did: "abc",
+        object: "container",
+        dname: "web",
+        dgroup: "shop",
+        dimage: "nginx:1.27",
+        dlabels: { tier: "edge" },
+      });
     });
 
     it("should still read a legacy daemon's `status` field", async () => {
@@ -338,7 +381,10 @@ function lifecycle(overrides: Record<string, string>): string {
   return JSON.stringify({
     Type: "container",
     time: 1785592390,
-    Actor: { ID: "abc", Attributes: { name: "/web", "com.docker.compose.project": "shop" } },
+    Actor: {
+      ID: "abc",
+      Attributes: { name: "/web", image: "nginx:1.27", "com.docker.compose.project": "shop", "ing.butterhost.tier": "edge" },
+    },
     ...overrides,
   });
 }

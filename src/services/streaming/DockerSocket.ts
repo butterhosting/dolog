@@ -23,6 +23,8 @@ export class DockerSocket {
       did: summary.Id,
       dname: this.readName(summary.Names.at(0) ?? summary.Id),
       dgroup: this.readGroup(summary.Labels),
+      dimage: this.readImage(summary.Image),
+      dlabels: this.readLabels(summary.Labels),
     }));
   }
 
@@ -49,6 +51,8 @@ export class DockerSocket {
           did: lifecycleEvent.Actor.ID,
           dname: this.readName(lifecycleEvent.Actor.Attributes.name),
           dgroup: this.readGroup(lifecycleEvent.Actor.Attributes),
+          dimage: this.readImage(lifecycleEvent.Actor.Attributes.image),
+          dlabels: this.readLabels(lifecycleEvent.Actor.Attributes),
         },
       };
     }
@@ -266,6 +270,24 @@ export class DockerSocket {
     return labels?.[DockerSocket.LABEL_SWARM_STACK] ?? labels?.[DockerSocket.LABEL_COMPOSE_PROJECT];
   }
 
+  /**
+   * Docker resolves a reference without a tag or digest to `:latest`, but reports it as written.
+   * Only the last path segment is inspected, since a registry host may carry a port
+   */
+  private readImage(reference: string): string {
+    const name = reference.slice(reference.lastIndexOf("/") + 1);
+    return name.includes(":") || name.includes("@") ? reference : `${reference}:latest`;
+  }
+
+  private readLabels(labels: Record<string, string> | null | undefined): Record<string, string> {
+    const prefix = this.env.X_DOLOG_CONTAINER_LABEL_PREFIX;
+    return Object.fromEntries(
+      Object.entries(labels ?? {})
+        .filter(([key]) => key.startsWith(prefix))
+        .map(([key, value]) => [key.slice(prefix.length), value]),
+    );
+  }
+
   private readBody(response: Response, path: string): ReadableStream<Uint8Array> {
     if (!response.body) {
       throw DockerError.empty_response_body({ path });
@@ -350,6 +372,7 @@ namespace Internal {
     z.object({
       Id: z.string(),
       Names: z.array(z.string()),
+      Image: z.string(),
       Labels: z.record(z.string(), z.string()).nullish(),
     }),
   );
@@ -403,7 +426,8 @@ namespace Internal {
       time: z.number(),
       Actor: z.object({
         ID: z.string(),
-        Attributes: z.record(z.string(), z.string()),
+        // the container's labels, plus docker's own `name` and `image`
+        Attributes: z.record(z.string(), z.string()).and(z.object({ name: z.string(), image: z.string() })),
       }),
     })
     .refine((event) => Boolean(event.Action ?? event.status), {

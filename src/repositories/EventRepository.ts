@@ -11,9 +11,10 @@ import { Pattern } from "@/models/Pattern";
 import { Svc } from "@/models/Svc";
 import { Uuid } from "@/models/Uuid";
 import { Temporal } from "@js-temporal/polyfill";
-import { and, asc, desc, eq, gt, inArray, InferInsertModel, isNull, lt, lte, notExists, SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, InferInsertModel, InferSelectModel, isNull, lt, lte, notExists, SQL, sql } from "drizzle-orm";
 import { catchError, concatMap, defer, EMPTY, interval, Observable } from "rxjs";
 import { PredicateFactory } from "./PredicateFactory";
+import { OmitBetter } from "@/types/OmitBetter";
 
 /**
  * Recent events are held in a `pending` memory buffer until they are flushed
@@ -30,11 +31,12 @@ export class EventRepository {
     private readonly flushTrigger: Observable<unknown> = interval(this.FLUSH_INTERVAL.total("milliseconds")), // overridable for unit tests
   ) {}
 
+  /** Most recently active first, so the first container of a service is the one to describe it by */
   public listContainers(): Container[] {
     return this.sqlite
       .select()
       .from($container)
-      .orderBy(asc($container.dname), asc($container.did))
+      .orderBy(desc($container.lastActivity), asc($container.did))
       .all()
       .map(ContainerEventConverter.containerFromDatabase);
   }
@@ -283,16 +285,21 @@ export class EventRepository {
       return;
     }
     this.sqlite.transaction((tx) => {
-      const distinctContainers = new Map<string, Container>();
-      for (const { container } of events) {
-        distinctContainers.set(container.did, container);
+      const distinctContainers = new Map<string, { container: Container; lastActivity: Temporal.Instant }>();
+      for (const { container, timestamp } of events) {
+        const known = distinctContainers.get(container.did);
+        const lastActivity = known && Temporal.Instant.compare(known.lastActivity, timestamp) > 0 ? known.lastActivity : timestamp;
+        distinctContainers.set(container.did, { container, lastActivity });
       }
 
       const containerIds = new Map<string, number>(); // `did` -> `id`
-      const containerRows = [...distinctContainers.values()].map<InferInsertModel<typeof $container>>((container) => ({
+      const containerRows = [...distinctContainers.values()].map<InferInsertModel<typeof $container>>(({ container, lastActivity }) => ({
         did: container.did,
         dname: container.dname,
         dgroup: container.dgroup ?? null,
+        dimage: container.dimage,
+        dlabels: container.dlabels,
+        lastActivity: lastActivity.toString(),
       }));
       for (let offset = 0; offset < containerRows.length; offset += INSERT_CHUNK) {
         tx.insert($container)
@@ -306,7 +313,10 @@ export class EventRepository {
             set: {
               dname: sql`excluded.${sql.identifier($container.dname.name)}`,
               dgroup: sql`excluded.${sql.identifier($container.dgroup.name)}`,
-            },
+              dimage: sql`excluded.${sql.identifier($container.dimage.name)}`,
+              dlabels: sql`excluded.${sql.identifier($container.dlabels.name)}`,
+              lastActivity: sql`excluded.${sql.identifier($container.lastActivity.name)}`,
+            } satisfies OmitBetter<Record<keyof InferSelectModel<typeof $container>, SQL<unknown>>, "id" | "did">,
           })
           // returned in no guaranteed order, so the docker id comes back too rather than being positional
           .returning({ id: $container.id, did: $container.did })

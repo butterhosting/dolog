@@ -57,6 +57,8 @@ export namespace ContainerEventConverter {
       did: db.did,
       dname: db.dname,
       dgroup: db.dgroup ?? undefined,
+      dimage: db.dimage,
+      dlabels: db.dlabels,
     };
   }
 }

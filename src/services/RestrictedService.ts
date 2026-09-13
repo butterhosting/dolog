@@ -14,6 +14,7 @@ export class RestrictedService {
 
   private readonly DNAME = "fixture";
   private readonly DID = "9348572893540278572759485339";
+  private readonly DIMAGE = "dolog/fixture:invented";
   private readonly DEPTH = Temporal.Duration.from({ days: 3 });
   private readonly SPACING = Temporal.Duration.from({ minutes: 10 }).total("milliseconds");
 
@@ -42,8 +43,8 @@ export class RestrictedService {
   private upsertFixtureContainer(): number {
     return this.sqlite
       .insert($container)
-      .values({ did: this.DID, dname: this.DNAME })
-      .onConflictDoUpdate({ target: $container.did, set: { dname: this.DNAME } })
+      .values({ did: this.DID, dname: this.DNAME, dimage: this.DIMAGE, dlabels: {}, lastActivity: Temporal.Now.instant().toString() })
+      .onConflictDoUpdate({ target: $container.did, set: { dname: this.DNAME, dimage: this.DIMAGE, dlabels: {} } })
       .returning({ id: $container.id })
       .all()
       .at(0)!.id;
