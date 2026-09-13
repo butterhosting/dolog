@@ -10,6 +10,8 @@ services:
   trickle:
     image: alpine
     container_name: trickle
+    cpus: "0.1"
+    mem_limit: 12m
     restart: unless-stopped
     attach: false
     # a line a second, deterministic rather than random so a run reads the same twice
@@ -42,6 +44,8 @@ services:
   firehose:
     image: alpine
     container_name: firehose
+    cpus: "0.1"
+    mem_limit: 12m
     restart: unless-stopped
     attach: false
     # ~400 lines a second, comfortably over the default budget of 100 so the throttler has to fold

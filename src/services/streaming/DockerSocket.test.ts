@@ -242,16 +242,34 @@ describe(DockerSocket.name, () => {
       // given (a container using half of one core, and 1000 bytes of which 200 is page cache)
       const first = stats({ precpu_stats: { cpu_usage: { total_usage: 0 } } });
       const second = stats({});
-      respondWith(streamOf(encode(`${first}\n${second}\n`)));
+      respondWithStats(streamOf(encode(`${first}\n${second}\n`)));
       // when
       const samples = await collect(socket.streamStats("abc", new AbortController().signal));
       // then
       expect(samples).toEqual([{ cpuUsage: 0.5, cpuTotal: 4, memoryUsage: 800, memoryTotal: 8_000 }]);
     });
 
+    it("should make a cpu quota the total, the way a memory limit already is, without touching the usage", async () => {
+      // given (the same half a core, in a container allowed a quarter of one)
+      respondWithStats(streamOf(encode(`${stats({})}\n`)), { NanoCpus: 250_000_000 });
+      // when
+      const samples = await collect(socket.streamStats("abc", new AbortController().signal));
+      // then
+      expect(samples).toEqual([{ cpuUsage: 0.5, cpuTotal: 0.25, memoryUsage: 800, memoryTotal: 8_000 }]);
+    });
+
+    it("should read the older quota and period pair as the same ratio", async () => {
+      // given
+      respondWithStats(streamOf(encode(`${stats({})}\n`)), { CpuQuota: 25_000, CpuPeriod: 100_000 });
+      // when
+      const samples = await collect(socket.streamStats("abc", new AbortController().signal));
+      // then
+      expect(samples.map(({ cpuTotal }) => cpuTotal)).toEqual([0.25]);
+    });
+
     it("should say nothing for a container that is not running", async () => {
       // given (docker answers with empty objects for a stopped container)
-      respondWith(streamOf(encode(`${stats({ memory_stats: {} })}\n`)));
+      respondWithStats(streamOf(encode(`${stats({ memory_stats: {} })}\n`)));
       // when
       const samples = await collect(socket.streamStats("abc", new AbortController().signal));
       // then
@@ -300,7 +318,18 @@ function respondWith(body: ReadableStream<Uint8Array> | Response) {
 function respondWithLogs(body: ReadableStream<Uint8Array>, { tty = false, record }: { tty?: boolean; record?: string[] } = {}) {
   const handler = async (input: URL | RequestInfo) => {
     record?.push(`${input}`);
-    return `${input}`.includes("/logs") ? new Response(body, { status: 200 }) : Response.json({ Config: { Tty: tty } });
+    return `${input}`.includes("/logs") ? new Response(body, { status: 200 }) : Response.json({ Config: { Tty: tty }, HostConfig: {} });
+  };
+  spyOn(globalThis, "fetch").mockImplementation(handler as typeof fetch);
+}
+
+/**
+ * `streamStats` inspects the container for its cpu limit before opening the stream, so these two
+ * calls have to be answered separately as well.
+ */
+function respondWithStats(body: ReadableStream<Uint8Array>, hostConfig: Record<string, number> = {}) {
+  const handler = async (input: URL | RequestInfo) => {
+    return `${input}`.includes("/stats") ? new Response(body, { status: 200 }) : Response.json({ Config: { Tty: false }, HostConfig: hostConfig });
   };
   spyOn(globalThis, "fetch").mockImplementation(handler as typeof fetch);
 }

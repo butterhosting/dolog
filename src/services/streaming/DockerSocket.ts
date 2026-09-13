@@ -113,6 +113,8 @@ export class DockerSocket {
    * Docker samples a running container about once a second; the maths below is the docker CLI's.
    */
   public async *streamStats(id: string, signal: AbortSignal): AsyncGenerator<DockerSocket.Stats> {
+    const cpuLimit = this.readCpuLimit(await this.inspect(id, signal));
+
     const path = `/containers/${id}/stats?stream=1`;
     const response = await this.request(path, signal);
     for await (const line of this.readLines(this.readBody(response, path))) {
@@ -128,15 +130,15 @@ export class DockerSocket {
       }
       const cpuDelta = cpu_stats.cpu_usage.total_usage - (precpu_stats.cpu_usage?.total_usage ?? 0);
       const systemDelta = Math.max(1, cpu_stats.system_cpu_usage - precpu_stats.system_cpu_usage);
-      const cpuTotal = cpu_stats.online_cpus ?? cpu_stats.cpu_usage.percpu_usage?.length ?? 1;
+      const onlineCpus = cpu_stats.online_cpus ?? cpu_stats.cpu_usage.percpu_usage?.length ?? 1;
 
       // Docker counts the page cache as usage, which is really the kernel's memory, not the container's.
       // cgroup v1 reports it as `total_inactive_file`, v2 as `inactive_file`.
       const cache = memory_stats.stats?.total_inactive_file ?? memory_stats.stats?.inactive_file ?? 0;
 
       yield {
-        cpuUsage: Math.max(0, cpuDelta / systemDelta) * cpuTotal,
-        cpuTotal: cpuTotal,
+        cpuUsage: Math.max(0, cpuDelta / systemDelta) * onlineCpus,
+        cpuTotal: cpuLimit ?? onlineCpus,
         memoryUsage: cache < memory_stats.usage ? memory_stats.usage - cache : memory_stats.usage,
         memoryTotal: memory_stats.limit,
       };
@@ -144,8 +146,23 @@ export class DockerSocket {
   }
 
   private async hasTty(id: string, signal: AbortSignal): Promise<boolean> {
+    return (await this.inspect(id, signal)).Config.Tty;
+  }
+
+  /** `--cpus` lands as NanoCpus; the older `--cpu-quota` and `--cpu-period` pair says the same thing as a ratio. */
+  private readCpuLimit({ HostConfig }: Internal.Inspection): number | undefined {
+    if (HostConfig.NanoCpus) {
+      return HostConfig.NanoCpus / 1e9;
+    }
+    if (HostConfig.CpuQuota && HostConfig.CpuPeriod) {
+      return HostConfig.CpuQuota / HostConfig.CpuPeriod;
+    }
+    return undefined;
+  }
+
+  private async inspect(id: string, signal: AbortSignal): Promise<Internal.Inspection> {
     const response = await this.request(`/containers/${id}/json`, signal);
-    return Internal.Inspection.parse(await response.json()).Config.Tty;
+    return Internal.Inspection.parse(await response.json());
   }
 
   /**
@@ -337,8 +354,15 @@ namespace Internal {
     }),
   );
 
+  export type Inspection = z.output<typeof Inspection>;
   export const Inspection = z.object({
     Config: z.object({ Tty: z.boolean() }),
+    // docker writes zeros for a limit that was never set
+    HostConfig: z.object({
+      NanoCpus: z.number().optional(),
+      CpuQuota: z.number().optional(),
+      CpuPeriod: z.number().optional(),
+    }),
   });
 
   export const Info = z.object({
