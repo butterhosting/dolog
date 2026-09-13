@@ -79,7 +79,7 @@ namespace Internal {
         <NavLink
           to={to}
           className={({ isActive }) =>
-            clsx("flex h-full items-center bg-c-chip px-14 text-xl transition-colors hover:text-c-accent", isActive && "text-c-accent")
+            clsx("flex h-full items-center bg-c-chip px-14 text-xl transition-colors hover:bg-black", isActive && "text-c-accent")
           }
         >
           {children}
