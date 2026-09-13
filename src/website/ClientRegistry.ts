@@ -5,6 +5,7 @@ import { createContext } from "react";
 import { Yesttp } from "yesttp";
 import { SvcClient } from "./clients/SvcClient";
 import { DialogClient } from "./clients/DialogClient";
+import { HostClient } from "./clients/HostClient";
 import { LogClient } from "./clients/LogClient";
 import { SocketClient } from "./clients/SocketClient";
 import { LineRenderer } from "./rendering/Renderer";
@@ -45,6 +46,7 @@ export class ClientRegistry {
     this.registry[SocketClient.name] = new SocketClient();
     this.registry[DialogClient.name] = new DialogClient();
     this.registry[SvcClient.name] = new SvcClient(yesttp);
+    this.registry[HostClient.name] = new HostClient(yesttp);
     this.registry[LogClient.name] = new LogClient(yesttp);
     this.registry[LineRenderer.name] = new LineRenderer();
   }

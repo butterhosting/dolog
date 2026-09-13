@@ -12,7 +12,7 @@ export function useSvcs(opts?: { id: string }): Svc[] | Svc | undefined {
   const svcClient = useRegistry(SvcClient);
   const socketClient = useRegistry(SocketClient);
 
-  const { data, setData, reload } = useYesQuery({
+  const { data, setData } = useYesQuery({
     queryFn: () => svcClient.list(),
   });
   useEffect(() => {

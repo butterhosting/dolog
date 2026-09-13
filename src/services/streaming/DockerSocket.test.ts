@@ -226,6 +226,17 @@ describe(DockerSocket.name, () => {
     });
   });
 
+  describe("inspectHost", () => {
+    it("should read the host's name, docker version and size off docker's info", async () => {
+      // given (docker says a great deal more about itself than is wanted)
+      respondWith(Response.json({ Name: "tnlap", ServerVersion: "29.4.0", NCPU: 10, MemTotal: 16_819_609_600, Containers: 5 }));
+      // when
+      const identity = await socket.inspectHost();
+      // then
+      expect(identity).toEqual({ hostname: "tnlap", dockerVersion: "29.4.0", cpuTotal: 10, memoryTotal: 16_819_609_600 });
+    });
+  });
+
   describe("streamStats", () => {
     it("should skip the first sample, and read cores and bytes off the second the way the docker cli does", async () => {
       // given (a container using half of one core, and 1000 bytes of which 200 is page cache)

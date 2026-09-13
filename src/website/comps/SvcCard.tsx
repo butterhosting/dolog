@@ -10,7 +10,7 @@ type Props = {
 };
 export function SvcCard({ svc: { id, dname, liveStats } }: Props) {
   return (
-    <Link to={Route.svcsLogs(id)} className="w-56">
+    <Link to={Route.svcsLogs(id)} className="w-64">
       <Paper className={clsx("flex h-full flex-col gap-3 px-4 py-3 transition-colors hover:border-c-accent", !liveStats && "opacity-50")}>
         <span className="truncate">{dname}</span>
         {liveStats ? (
@@ -19,7 +19,6 @@ export function SvcCard({ svc: { id, dname, liveStats } }: Props) {
             <Internal.Row label="MEM" part={liveStats.memoryUsage} whole={liveStats.memoryTotal} />
             <span className={clsx("self-end whitespace-nowrap text-xs italic", liveStats.throttling ? "text-c-error" : "text-c-rule")}>
               {liveStats.logsPerSecond} {liveStats.logsPerSecond === 1 ? "log" : "logs"}/second
-              {liveStats.throttling && " · throttled"}
             </span>
           </div>
         ) : (

@@ -3,71 +3,67 @@ import clsx from "clsx";
 import { ComponentProps, ReactNode } from "react";
 import { NavLink } from "react-router";
 import { useRegistry } from "../../hooks/basics/useRegistry";
+import { useHost } from "../../hooks/useHost";
+import { usePreferences } from "../../hooks/usePreferences";
+import { useSvcs } from "../../hooks/useSvcs";
 import { Route } from "../../Route";
 import { Meter } from "../Meter";
 import { Cell } from "./Cell";
+import { EyeIcon } from "./EyeIcon";
+import { Toggle } from "./Toggle";
 
-type Props = ComponentProps<"main"> & {
-  tools?: ReactNode;
-  summary?: Frame.Summary;
-};
-export function Frame({ tools, summary, ...props }: Props) {
+type Props = ComponentProps<"main">;
+export function Frame(props: Props) {
   return (
     <div className="full-bleed flex min-h-screen flex-col">
-      <Internal.Header tools={tools} summary={summary} />
+      <Internal.Header />
       <Internal.Main {...props} />
       <Internal.Footer />
     </div>
   );
 }
 
-export namespace Frame {
-  export type Summary = {
-    running: number;
-    stopped: number;
-    stoppedHidden: boolean;
-  };
-}
-
 namespace Internal {
-  // TODO placeholders until the server reports its host -- nothing in here is measured
-  const HOST = {
-    hostname: "tnlap",
-    dockerVersion: "v27.1.1",
-    cpuUsage: 0.27,
-    cpuTotal: 10,
-    memoryUsage: 3 * 2 ** 30,
-    memoryTotal: 32 * 2 ** 30,
-  };
-
-  type HeaderProps = Pick<Props, "tools" | "summary">;
-  export function Header({ tools, summary }: HeaderProps) {
+  export function Header() {
+    const host = useHost();
+    const svcs = useSvcs();
+    const { showStoppedContainers, update } = usePreferences();
+    const running = svcs?.filter((svc) => svc.liveStats).length ?? 0;
+    const stopped = (svcs?.length ?? 0) - running;
     return (
       <header className="flex h-16 shrink-0 border-b border-c-rule">
         <NavCell to={Route.svcs()}>services</NavCell>
         <NavCell to={Route.configuration()}>configuration</NavCell>
-        {tools && <Cell className="gap-2 px-5">{tools}</Cell>}
+        <Cell className="px-5">
+          <Toggle
+            active={showStoppedContainers}
+            onClick={() => update({ showStoppedContainers: !showStoppedContainers })}
+            title={showStoppedContainers ? "hide stopped containers" : "show stopped containers"}
+          >
+            <EyeIcon crossed={!showStoppedContainers} />
+          </Toggle>
+        </Cell>
 
         <Cell className="flex-1 flex-col justify-center gap-0.5 px-4">
           <div>
-            {HOST.hostname}
-            {summary && (
+            {host?.hostname}
+            {svcs && (
               <>
+                {host && " • "}
+                {running} running
                 {" • "}
-                {summary.running} running
-                {" • "}
-                <span className={clsx("text-c-rule", summary.stoppedHidden && "italic")}>{summary.stopped} stopped</span>
+                <span className={clsx("text-c-rule", !showStoppedContainers && "italic")}>{stopped} stopped</span>
               </>
             )}
           </div>
-          <div className="text-sm text-c-rule">docker {HOST.dockerVersion}</div>
+          <div className="text-sm text-c-rule">{host && `docker v${host.dockerVersion}`}</div>
         </Cell>
 
         <Cell className="w-80 px-4 lg:hidden">
-          <Meter label="CPU" part={HOST.cpuUsage} whole={HOST.cpuTotal} format={Prettify.cores} unit="cores" />
+          {host && <Meter label="CPU" part={host.cpuUsage} whole={host.cpuTotal} format={Prettify.cores} unit="cores" />}
         </Cell>
         <Cell last className="w-80 px-4 lg:hidden">
-          <Meter label="MEM" part={HOST.memoryUsage} whole={HOST.memoryTotal} format={Prettify.bytes} />
+          {host && <Meter label="MEM" part={host.memoryUsage} whole={host.memoryTotal} format={Prettify.bytes} />}
         </Cell>
       </header>
     );

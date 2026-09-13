@@ -1,6 +1,7 @@
 import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { Host } from "@/models/Host";
 import { Connection } from "@/models/socket/Connection";
 import { Svc } from "@/models/Svc";
 import { PredicateFactory } from "@/repositories/PredicateFactory";
@@ -70,6 +71,14 @@ export class SocketService {
     const message: ServerMessage = {
       type: ServerMessage.Type.svcs,
       svcs,
+    };
+    this.connections.forEach(({ socket }) => socket.send(JSON.stringify(message)));
+  };
+
+  public broadcastHostStream = (host: Host) => {
+    const message: ServerMessage = {
+      type: ServerMessage.Type.host,
+      host,
     };
     this.connections.forEach(({ socket }) => socket.send(JSON.stringify(message)));
   };

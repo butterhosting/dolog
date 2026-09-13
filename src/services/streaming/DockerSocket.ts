@@ -1,6 +1,7 @@
 import { Env } from "@/Env";
 import { DockerError } from "@/errors/DockerError";
 import { Container } from "@/models/Container";
+import { Host } from "@/models/Host";
 import { LiveStats } from "@/models/LiveStats";
 import { StreamVariant } from "@/models/StreamVariant";
 import { Temporal } from "@js-temporal/polyfill";
@@ -23,6 +24,12 @@ export class DockerSocket {
       dname: this.readName(summary.Names.at(0) ?? summary.Id),
       dgroup: this.readGroup(summary.Labels),
     }));
+  }
+
+  public async inspectHost(): Promise<Host.Identity> {
+    const response = await this.request("/info");
+    const { Name, ServerVersion, NCPU, MemTotal } = Internal.Info.parse(await response.json());
+    return { hostname: Name, dockerVersion: ServerVersion, cpuTotal: NCPU, memoryTotal: MemTotal };
   }
 
   public async *streamLifecycles(signal: AbortSignal): AsyncGenerator<DockerSocket.Lifecycle> {
@@ -332,6 +339,13 @@ namespace Internal {
 
   export const Inspection = z.object({
     Config: z.object({ Tty: z.boolean() }),
+  });
+
+  export const Info = z.object({
+    Name: z.string(),
+    ServerVersion: z.string(),
+    NCPU: z.number(),
+    MemTotal: z.number(),
   });
 
   /**

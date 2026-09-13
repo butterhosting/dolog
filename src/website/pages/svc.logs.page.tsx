@@ -1,10 +1,9 @@
-import { RangeDisplay } from "@/helpers/RangeDisplay";
 import { Svc } from "@/models/Svc";
 import clsx from "clsx";
-import { Link, useParams } from "react-router";
-import { Route } from "../Route";
-import { Row } from "../comps/Row";
+import { useParams } from "react-router";
 import { LogSearchBox } from "../comps/LogSearchBox";
+import { Row } from "../comps/Row";
+import { SvcHeader } from "../comps/SvcHeader";
 import { SvcToolbar } from "../comps/SvcToolbar";
 import { Button } from "../comps/basics/Button";
 import { Caret } from "../comps/basics/Caret";
@@ -19,7 +18,6 @@ import { useSearch } from "../hooks/useSearch";
 import { useSvcs } from "../hooks/useSvcs";
 import { useTextSize } from "../hooks/useTextSize";
 import { Line } from "../rendering/Line";
-import { SvcHeader } from "../comps/SvcHeader";
 
 export function svcLogsPage() {
   const { id: svcId = "" } = useParams();

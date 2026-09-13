@@ -10,6 +10,7 @@ import { Logger } from "./Logger";
 import { Middleware } from "./middleware/Middleware";
 import { Svc } from "./models/Svc";
 import { Socket } from "./models/socket/Socket";
+import { HostService } from "./services/HostService";
 import { LogService } from "./services/LogService";
 import { SocketService } from "./services/SocketService";
 import { SvcService } from "./services/SvcService";
@@ -21,6 +22,7 @@ export class Server {
     private readonly env: Env.Private,
     private readonly svcService: SvcService,
     private readonly logService: LogService,
+    private readonly hostService: HostService,
     private readonly socketService: SocketService,
     private readonly middleware: Middleware,
   ) {}
@@ -95,6 +97,13 @@ export class Server {
               .reduce((kv1, kv2) => Object.assign({}, kv1, kv2), {});
             return Response.json(response as Env.Public);
           }),
+        },
+
+        /**
+         * Host
+         */
+        "/internal-api/host": {
+          GET: this.handleRoute(async () => Response.json(await this.hostService.get())),
         },
 
         /**

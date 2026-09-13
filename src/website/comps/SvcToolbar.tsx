@@ -8,6 +8,7 @@ import { Cell } from "./basics/Cell";
 import { Toggle } from "./basics/Toggle";
 import { Meter } from "./Meter";
 import { PatternField } from "./PatternField";
+import { TextSize } from "@/models/TextSize";
 
 type Props = {
   filter: useFilter.Result;
@@ -37,7 +38,7 @@ export function SvcToolbar({ filter, textSize, liveStats, onApply, onNavigate, o
       </Cell>
 
       <Cell className="gap-2 px-4">
-        {useTextSize.SIZES.map((size) => (
+        {Object.values(TextSize).map((size) => (
           <Toggle key={size} active={textSize.size === size} onClick={() => textSize.setSize(size)} title={`${size.toUpperCase()} text`}>
             {size.toUpperCase()}
           </Toggle>

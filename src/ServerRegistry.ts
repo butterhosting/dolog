@@ -7,6 +7,7 @@ import { Middleware } from "./middleware/Middleware";
 import { EventRepository } from "./repositories/EventRepository";
 import { Server } from "./Server";
 import { AlertingService } from "./services/AlertingService";
+import { HostService } from "./services/HostService";
 import { LogService } from "./services/LogService";
 import { RestrictedService } from "./services/RestrictedService";
 import { RetentionService } from "./services/RetentionService";
@@ -39,6 +40,7 @@ export class ServerRegistry {
     const { socketService } = this.register({ SocketService }, []);
     const { svcService } = this.register({ SvcService }, [fountain, eventRepository, socketService]);
     const { logService } = this.register({ LogService }, [fountain, eventRepository, socketService]);
+    const { hostService } = this.register({ HostService }, [dockerSocket, socketService]);
     this.register({ RestrictedService }, [env, sqlite]);
 
     // Middleware
@@ -46,7 +48,7 @@ export class ServerRegistry {
     const { middleware } = this.register({ Middleware }, [loggingMiddleware]);
 
     // Server
-    this.register({ Server }, [env, svcService, logService, socketService, middleware]);
+    this.register({ Server }, [env, svcService, logService, hostService, socketService, middleware]);
   }
 
   /**

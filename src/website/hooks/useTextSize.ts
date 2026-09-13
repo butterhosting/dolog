@@ -1,18 +1,17 @@
-import { useState } from "react";
+import { TextSize } from "@/models/TextSize";
+import { usePreferences } from "./usePreferences";
 
-// TODO: save to local storage, so the preferred size is remembered
 export function useTextSize(): useTextSize.Result {
-  const [size, setSize] = useState<useTextSize.Size>("m");
+  const { textSize, update } = usePreferences();
   return {
-    size,
-    setSize,
-    className: Internal.CLASS_NAMES[size],
+    size: textSize,
+    setSize: (size) => update({ textSize: size }),
+    className: Internal.classes[textSize],
   };
 }
 
 namespace Internal {
-  /** Whole class strings, since Tailwind reads these literally and cannot see one built at runtime. */
-  export const CLASS_NAMES: Record<useTextSize.Size, string> = {
+  export const classes: Record<TextSize, string> = {
     s: "text-xs leading-5",
     m: "text-sm leading-6",
     l: "text-lg leading-8",
@@ -20,13 +19,9 @@ namespace Internal {
 }
 
 export namespace useTextSize {
-  export type Size = "s" | "m" | "l";
-
-  export const SIZES: Size[] = ["s", "m", "l"];
-
   export type Result = {
-    size: Size;
-    setSize(size: Size): void;
+    size: TextSize;
+    setSize(size: TextSize): void;
     className: string;
   };
 }

@@ -1,19 +1,17 @@
 import { Svc } from "@/models/Svc";
 import clsx from "clsx";
-import { useState } from "react";
-import { EyeIcon } from "../comps/basics/EyeIcon";
 import { Frame } from "../comps/basics/Frame";
 import { Paper } from "../comps/basics/Paper";
 import { Spinner } from "../comps/basics/Spinner";
-import { Toggle } from "../comps/basics/Toggle";
 import { SvcCard } from "../comps/SvcCard";
 import { useDocumentTitle } from "../hooks/basics/useDocumentTitle";
+import { usePreferences } from "../hooks/usePreferences";
 import { useSvcs } from "../hooks/useSvcs";
 
 export function svcsPage() {
   useDocumentTitle("Services | Dolog");
   const svcs = useSvcs();
-  const [showStopped, setShowStopped] = useState(false);
+  const { showStoppedContainers: showStopped } = usePreferences();
 
   if (!svcs) {
     return (
@@ -24,22 +22,9 @@ export function svcsPage() {
       </Frame>
     );
   }
-  const running = svcs.filter((svc) => svc.liveStats).length;
   const groups = Internal.group(showStopped ? svcs : svcs.filter((svc) => svc.liveStats));
   return (
-    <Frame
-      tools={
-        <Toggle
-          active={showStopped}
-          onClick={() => setShowStopped(!showStopped)}
-          title={showStopped ? "hide stopped containers" : "show stopped containers"}
-        >
-          <EyeIcon crossed={!showStopped} />
-        </Toggle>
-      }
-      summary={{ running, stopped: svcs.length - running, stoppedHidden: !showStopped }}
-      className="flex flex-col gap-12"
-    >
+    <Frame className="flex flex-col gap-12">
       {groups.length === 0 && (
         <Paper className="px-6 py-12 text-center">
           <span className="text-sm tracking-wide text-c-rule">{svcs.length === 0 ? "NO CONTAINERS" : "NOTHING RUNNING"}</span>
