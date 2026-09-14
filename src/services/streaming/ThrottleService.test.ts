@@ -63,6 +63,22 @@ describe(ThrottleService.name, () => {
     });
   });
 
+  it("should let a container's label set its own budget", () => {
+    // given (a budget of 2, labelled on the container, against the env's 5)
+    const container = TestFixture.container({ dlabels: { "throttle.logs-per-second": "2" } });
+    const events = { a: log(container, "1"), b: log(container, "2"), c: log(container, "3") };
+
+    scheduler.run(({ cold, expectObservable }) => {
+      // when
+      const throttled = cold("(abc)", events).pipe(service.groupAndThrottleByContainer());
+      // then
+      expectObservable(throttled, "^ 1500ms !").toBe("(ab) 996ms t", {
+        ...events,
+        t: expect.objectContaining({ type: ContainerEvent.Type.log_throttle, dropCount: 1 } satisfies Partial<ContainerEvent>) as ContainerEvent.LogThrottle,
+      });
+    });
+  });
+
   it("should never throttle lifecycle events", () => {
     // given (a start, then more logs than the budget allows)
     const container = TestFixture.container();

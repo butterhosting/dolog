@@ -6,7 +6,7 @@ type Props = {
   close: () => void;
 };
 export function PreferencesDialog({ close }: Props) {
-  const { showStoppedContainers, modify } = usePreferences();
+  const { hideStoppedSvcs, modify } = usePreferences();
   return (
     <Dialog isOpen issueCloseRequestWhenClickingBackdrop issueCloseRequestWhenPressingEscape onCloseRequest={close} className="p-6">
       <div className="flex flex-col gap-5">
@@ -15,11 +15,11 @@ export function PreferencesDialog({ close }: Props) {
         <label className="flex cursor-pointer items-center gap-3">
           <input
             type="checkbox"
-            checked={showStoppedContainers}
-            onChange={(event) => modify({ showStoppedContainers: event.target.checked })}
+            checked={hideStoppedSvcs}
+            onChange={(event) => modify({ hideStoppedSvcs: event.target.checked })}
             className="size-4 accent-c-accent"
           />
-          <span className="text-sm">Show stopped containers</span>
+          <span className="text-sm">Hide stopped services from the overview page</span>
         </label>
 
         <div className="flex justify-end">

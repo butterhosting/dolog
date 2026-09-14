@@ -383,7 +383,7 @@ function lifecycle(overrides: Record<string, string>): string {
     time: 1785592390,
     Actor: {
       ID: "abc",
-      Attributes: { name: "/web", image: "nginx:1.27", "com.docker.compose.project": "shop", "ing.butterhost.tier": "edge" },
+      Attributes: { name: "/web", image: "nginx:1.27", "com.docker.compose.project": "shop", "dolog.tier": "edge" },
     },
     ...overrides,
   });

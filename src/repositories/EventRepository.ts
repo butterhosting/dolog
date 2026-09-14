@@ -415,17 +415,17 @@ export class EventRepository {
   /**
    * Caps how much history (number of events) any one container may hold
    */
-  public async pruneEventsPerContainer(maxEvents: number) {
-    const containers = this.sqlite.select({ id: $container.id }).from($container).all();
+  public async pruneEventsPerContainer(getConfig: (container: Container) => { maxLines: number }) {
     let eventDeleteCount = 0;
-    for (const { id } of containers) {
+    for (const row of this.sqlite.select().from($container).all()) {
+      const { id } = row;
       const [surplusCursor] = this.sqlite
         .select({ id: $containerEvent.id })
         .from($containerEvent)
         .where(eq($containerEvent.containerId, id))
         .orderBy(desc($containerEvent.id))
         .limit(1)
-        .offset(maxEvents)
+        .offset(getConfig(ContainerEventConverter.containerFromDatabase(row)).maxLines)
         .all();
       if (surplusCursor) {
         const deleted = this.sqlite
@@ -440,28 +440,30 @@ export class EventRepository {
   }
 
   /**
-   * Forgets everything older than the cutoff (and drops any container left without events)
+   * Forgets everything older than each container's own cutoff (and drops any container left without events)
    */
-  public async pruneEventsOlderThan(cutoff: Temporal.Instant) {
+  public async pruneEventsOlderThan(getConfig: (container: Container) => { cutoffTime: Temporal.Instant }) {
     const CHUNK = 10_000;
 
     // delete oldest events
-    const boundary = Uuid.lowerBoundAt(cutoff);
     let eventDeleteCount = 0;
-    for (;;) {
-      // a row back per row deleted, since drizzle's driver types away SQLite's rows-affected count.
-      // A constant rather than the ids, so a chunk this size is not carried back only to be counted
-      const deleted = this.sqlite
-        .delete($containerEvent)
-        .where(lt($containerEvent.id, boundary))
-        .limit(CHUNK)
-        .returning({ one: sql<number>`1` })
-        .all().length;
-      if (deleted > 0) {
-        eventDeleteCount += deleted;
-        continue;
+    for (const row of this.sqlite.select().from($container).all()) {
+      const boundary = Uuid.lowerBoundAt(getConfig(ContainerEventConverter.containerFromDatabase(row)).cutoffTime);
+      for (;;) {
+        // a row back per row deleted, since drizzle's driver types away SQLite's rows-affected count.
+        // A constant rather than the ids, so a chunk this size is not carried back only to be counted
+        const deleted = this.sqlite
+          .delete($containerEvent)
+          .where(and(eq($containerEvent.containerId, row.id), lt($containerEvent.id, boundary)))
+          .limit(CHUNK)
+          .returning({ one: sql<number>`1` })
+          .all().length;
+        if (deleted > 0) {
+          eventDeleteCount += deleted;
+          continue;
+        }
+        break;
       }
-      break;
     }
     // delete orphaned containers
     const containerDeleteCount = this.deleteContainersWithoutEvents();

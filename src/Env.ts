@@ -2,6 +2,7 @@ import { Temporal } from "@js-temporal/polyfill";
 import { isAbsolute, join } from "path";
 import { z } from "zod/v4";
 import packageJson from "../package.json";
+import { Formats } from "./helpers/Formats";
 import { Timezone } from "./helpers/Timezone";
 import { LogLevel } from "./models/internal/LogLevel";
 
@@ -15,20 +16,11 @@ export namespace Env {
     X_DOLOG_ROOT: z.string(),
     X_DOLOG_LOGGING: z.enum(LogLevel),
     X_DOLOG_DOCKER_SOCKET: z.string(),
-    X_DOLOG_THROTTLE_LOGS_PER_SECOND: z.string().regex(/^[1-9]\d*$/),
-    // an ISO-8601 duration, so "P30D" and "PT12H" both say what they mean without a unit suffix
-    X_DOLOG_RETENTION_TIME_WINDOW: z.string().refine(
-      (value) => {
-        try {
-          Temporal.Duration.from(value);
-          return true;
-        } catch {
-          return false;
-        }
-      },
-      { error: "invalid_duration" },
-    ),
-    X_DOLOG_RETENTION_MAX_LINES_PER_CONTAINER: z.string().regex(/^[1-9]\d*$/),
+
+    // per-container global config (can be overridden via container labels)
+    X_DOLOG_THROTTLE_LOGS_PER_SECOND: Formats.POSITIVE_INTEGER,
+    X_DOLOG_RETENTION_TIME_WINDOW: Formats.DURATION,
+    X_DOLOG_RETENTION_MAX_LINES: Formats.POSITIVE_INTEGER,
   });
 
   export function initializePartiallyForLogger(environment = Bun.env) {
@@ -40,7 +32,7 @@ export namespace Env {
       .parse(environment);
   }
 
-  export function initialize(timezone = Temporal.Now.timeZoneId() as "UTC", environment = Bun.env as z.output<typeof BASE_ENV>) {
+  export function initialize(timezone = Temporal.Now.timeZoneId() as "UTC", environment = Bun.env as z.input<typeof BASE_ENV>) {
     if (timezone !== "UTC") {
       throw new Error(`Invalid timezone: ${timezone}`);
     }
@@ -52,11 +44,8 @@ export namespace Env {
         ...env,
         O_DOLOG_COMMIT: packageJson.commit.slice(0, 7),
         O_DOLOG_VERSION: packageJson.version,
-        X_DOLOG_THROTTLE_LOGS_PER_SECOND: Number(env.X_DOLOG_THROTTLE_LOGS_PER_SECOND),
-        X_DOLOG_RETENTION_TIME_WINDOW: Temporal.Duration.from(env.X_DOLOG_RETENTION_TIME_WINDOW),
-        X_DOLOG_RETENTION_MAX_LINES_PER_CONTAINER: Number(env.X_DOLOG_RETENTION_MAX_LINES_PER_CONTAINER),
         X_DOLOG_DATABASE: join(env.X_DOLOG_ROOT, "data", "db.sqlite"),
-        X_DOLOG_CONTAINER_LABEL_PREFIX: "ing.butterhost.",
+        X_DOLOG_CONTAINER_LABEL_PREFIX: "dolog.",
       }))
       .parse(environment);
   }

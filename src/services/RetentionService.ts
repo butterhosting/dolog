@@ -1,6 +1,8 @@
 import { Env } from "@/Env";
 import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
+import { Container } from "@/models/Container";
+import { ContainerConfig } from "@/models/ContainerConfig";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { EventRepository } from "@/repositories/EventRepository";
 import { Temporal } from "@js-temporal/polyfill";
@@ -48,23 +50,29 @@ export class RetentionService {
       });
   }
 
+  /** Every container is pruned under its own configuration: the env defaults, unless its labels say otherwise */
   private async prune(): Promise<void> {
-    const perContainer = this.env.X_DOLOG_RETENTION_MAX_LINES_PER_CONTAINER;
-    const window = this.env.X_DOLOG_RETENTION_TIME_WINDOW;
+    const config = <K extends keyof ContainerConfig>(container: Pick<Container, "dlabels">, key: K): ContainerConfig[K] => {
+      return ContainerConfig.resolve(this.env, container.dlabels).config[key as keyof ContainerConfig] as ContainerConfig[K];
+    };
 
     // Lines-per-container strategy
-    const fairness = await this.logRepository.pruneEventsPerContainer(perContainer);
+    const fairness = await this.logRepository.pruneEventsPerContainer((container) => ({
+      maxLines: config(container, "retentionMaxLines"),
+    }));
     if (fairness.eventDeleteCount > 0) {
-      this.log.info(`Pruned ${fairness.eventDeleteCount} events, keeping at most ${perContainer} per container`);
+      this.log.info(`Pruned ${fairness.eventDeleteCount} events, keeping every container under its line cap`);
     }
 
     // Temporal cut-off strategy
-    const cutoff = Temporal.Now.instant().subtract({ milliseconds: window.total("milliseconds") });
-    const expired = await this.logRepository.pruneEventsOlderThan(cutoff);
+    const now = Temporal.Now.instant();
+    const expired = await this.logRepository.pruneEventsOlderThan((container) => ({
+      cutoffTime: now.subtract({
+        milliseconds: config(container, "retentionTimeWindow").total("milliseconds"),
+      }),
+    }));
     if (expired.eventDeleteCount > 0) {
-      this.log.info(
-        `Pruned ${expired.eventDeleteCount} events and ${expired.containerDeleteCount} containers older than ${window.toString()}`,
-      );
+      this.log.info(`Pruned ${expired.eventDeleteCount} events and ${expired.containerDeleteCount} containers past their time window`);
     }
   }
 }

@@ -1,5 +1,7 @@
 import { Env } from "@/Env";
+import { Logger } from "@/Logger";
 import { Container } from "@/models/Container";
+import { ContainerConfig } from "@/models/ContainerConfig";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Throughput } from "@/models/Throughput";
 import { Temporal } from "@js-temporal/polyfill";
@@ -22,6 +24,7 @@ import {
 } from "rxjs";
 
 export class ThrottleService {
+  private readonly log = new Logger(__filename);
   private readonly throughputs = new BehaviorSubject<Throughput[]>([]);
   private readonly throughputOverview = new Map<string, Throughput>();
 
@@ -58,13 +61,14 @@ export class ThrottleService {
   private throttleContainer(
     group: GroupedObservable<string, ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log>,
   ): Observable<ContainerEvent> {
-    const RATE_LIMIT = this.env.X_DOLOG_THROTTLE_LOGS_PER_SECOND;
     const WINDOW = Temporal.Duration.from({ seconds: 1 });
 
     const signalToStopWatchingThisContainer = new Subject<void>();
 
+    // resolved once per group: a group is one container, and its labels cannot change while it lives
     const windowBudget = {
       container: undefined as Container | undefined,
+      rateLimit: undefined as number | undefined,
       logs: 0,
       bytes: 0,
       droppedLogs: 0,
@@ -73,6 +77,7 @@ export class ThrottleService {
     const allowedContainerEvents: Observable<ContainerEvent.Start | ContainerEvent.Stop | ContainerEvent.Log> = group.pipe(
       mergeMap((event) => {
         windowBudget.container = event.container;
+        windowBudget.rateLimit ??= this.getConfig(event.container).rateLimit;
         switch (event.type) {
           case ContainerEvent.Type.start:
           case ContainerEvent.Type.stop: {
@@ -81,7 +86,7 @@ export class ThrottleService {
           case ContainerEvent.Type.log: {
             windowBudget.logs += 1;
             windowBudget.bytes += Buffer.byteLength(event.line);
-            if (windowBudget.logs > RATE_LIMIT) {
+            if (windowBudget.logs > windowBudget.rateLimit) {
               windowBudget.droppedLogs += 1;
               return EMPTY;
             }
@@ -142,5 +147,15 @@ export class ThrottleService {
     );
 
     return merge(allowedContainerEvents, throttleEvents);
+  }
+
+  private getConfig(container: Container): { rateLimit: number } {
+    const { config, issues } = ContainerConfig.resolve(this.env, container.dlabels);
+    for (const { label, value, reason } of issues) {
+      this.log.warn(`Ignoring label ${label}="${value}" on ${container.dname} (${reason}); using the env default`);
+    }
+    return {
+      rateLimit: config.throttleLogsPerSecond,
+    };
   }
 }

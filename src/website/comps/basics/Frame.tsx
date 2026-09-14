@@ -2,15 +2,14 @@ import { Prettify } from "@/helpers/Prettify";
 import clsx from "clsx";
 import { ComponentProps, ReactNode } from "react";
 import { NavLink } from "react-router";
+import { DialogClient } from "../../clients/DialogClient";
 import { useRegistry } from "../../hooks/basics/useRegistry";
 import { useHost } from "../../hooks/useHost";
-import { usePreferences } from "../../hooks/usePreferences";
 import { useSvcs } from "../../hooks/useSvcs";
 import { Route } from "../../Route";
-import { Meter } from "../Meter";
-import { DialogClient } from "../../clients/DialogClient";
-import { Cell } from "./Cell";
 import { SlidersIcon } from "../icons/SlidersIcon";
+import { Meter } from "../Meter";
+import { Cell } from "./Cell";
 
 type Props = ComponentProps<"main">;
 export function Frame(props: Props) {
@@ -27,7 +26,6 @@ namespace Internal {
   export function Header() {
     const host = useHost();
     const svcs = useSvcs();
-    const { showStoppedContainers } = usePreferences();
     const dialogClient = useRegistry(DialogClient);
     const running = svcs?.filter((svc) => svc.liveStats).length ?? 0;
     const stopped = (svcs?.length ?? 0) - running;
@@ -43,17 +41,15 @@ namespace Internal {
 
         <Cell className="flex-1 flex-col justify-center gap-0.5 px-4">
           <div>
-            {host?.hostname}
             {svcs && (
               <>
-                {host && " • "}
-                {running} running
+                <span className="text-c-accent">{running} running</span>
                 {" • "}
-                <span className={clsx("text-c-rule", !showStoppedContainers && "italic")}>{stopped} stopped</span>
+                <span>{stopped} stopped</span>
               </>
             )}
           </div>
-          <div className="text-sm text-c-rule">{host && `docker v${host.dockerVersion}`}</div>
+          <div className="text-sm text-c-rule">{host && `${host.hostname} • docker v${host.dockerVersion}`}</div>
         </Cell>
 
         <Cell className="w-80 px-4 lg:hidden">

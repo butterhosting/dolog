@@ -571,7 +571,7 @@ describe(EventRepository.name, () => {
     ]);
 
     // when
-    const pruned = await repository.pruneEventsPerContainer(10);
+    const pruned = await repository.pruneEventsPerContainer(() => ({ maxLines: 10 }));
     // then (the quiet one is untouched -- its own history is not the chatty one's to spend)
     expect(pruned.eventDeleteCount).toEqual(90);
     expect((await repository.listEvents(svcOf(quiet), 1_000, {}, {})).data).toHaveLength(3);
@@ -587,10 +587,43 @@ describe(EventRepository.name, () => {
     await write(Array.from({ length: 5 }, () => TestFixture.logEvent({ container })));
 
     // when
-    const pruned = await repository.pruneEventsPerContainer(10);
+    const pruned = await repository.pruneEventsPerContainer(() => ({ maxLines: 10 }));
     // then
     expect(pruned.eventDeleteCount).toEqual(0);
     expect((await repository.listEvents(svcOf(container), 1_000, {}, {})).data).toHaveLength(5);
+  });
+
+  it("should give every container its own line cap", async () => {
+    // given (two containers with 20 lines each; one is allowed 15, the other 5)
+    const generous = TestFixture.container({ dname: "generous" });
+    const strict = TestFixture.container({ dname: "strict" });
+    await write([
+      ...Array.from({ length: 20 }, () => TestFixture.logEvent({ container: generous })),
+      ...Array.from({ length: 20 }, () => TestFixture.logEvent({ container: strict })),
+    ]);
+
+    // when
+    const pruned = await repository.pruneEventsPerContainer(({ dname }) => ({ maxLines: dname === "generous" ? 15 : 5 }));
+    // then
+    expect(pruned.eventDeleteCount).toEqual(20);
+    expect((await repository.listEvents(svcOf(generous), 1_000, {}, {})).data).toHaveLength(15);
+    expect((await repository.listEvents(svcOf(strict), 1_000, {}, {})).data).toHaveLength(5);
+  });
+
+  it("should give every container its own time window", async () => {
+    // given (both wrote a line two days ago; one forgets after a day, the other after a week)
+    const forgetful = TestFixture.container({ dname: "forgetful" });
+    const mindful = TestFixture.container({ dname: "mindful" });
+    const twoDaysAgo = Temporal.Now.instant().subtract({ hours: 48 });
+    await write([aged(forgetful, twoDaysAgo, "old"), aged(mindful, twoDaysAgo, "old")]);
+
+    // when
+    const pruned = await repository.pruneEventsOlderThan(({ dname }) => ({
+      cutoffTime: Temporal.Now.instant().subtract({ hours: dname === "forgetful" ? 24 : 24 * 7 }),
+    }));
+    // then
+    expect(pruned).toEqual({ eventDeleteCount: 1, containerDeleteCount: 1 });
+    expect(await containers()).toEqual([mindful]);
   });
 
   it("should do nothing while everything is inside the window", async () => {
@@ -599,7 +632,9 @@ describe(EventRepository.name, () => {
     await write(Array.from({ length: 10 }, () => TestFixture.logEvent({ container })));
 
     // when
-    const pruned = await repository.pruneEventsOlderThan(Temporal.Now.instant().subtract({ hours: 24 }));
+    const pruned = await repository.pruneEventsOlderThan(() => ({
+      cutoffTime: Temporal.Now.instant().subtract({ hours: 24 }),
+    }));
     // then
     expect(pruned).toEqual({ eventDeleteCount: 0, containerDeleteCount: 0 });
     expect((await repository.listEvents(svcOf(container), 1_000, {}, {})).data).toHaveLength(10);
@@ -620,7 +655,9 @@ describe(EventRepository.name, () => {
     ]);
 
     // when
-    const pruned = await repository.pruneEventsOlderThan(Temporal.Now.instant().subtract({ hours: 24 * 30 }));
+    const pruned = await repository.pruneEventsOlderThan(() => ({
+      cutoffTime: Temporal.Now.instant().subtract({ hours: 24 * 30 }),
+    }));
     // then
     expect(pruned.eventDeleteCount).toEqual(10_051);
     expect(pruned.containerDeleteCount).toEqual(1);

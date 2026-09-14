@@ -7,11 +7,11 @@ export function usePreferences() {
   const store = LocalStorageStore.sharedModuleInstance({
     key: "dolog.preferences",
     schema: z.object({
-      showStoppedContainers: z.boolean(),
+      hideStoppedSvcs: z.boolean(),
       textSize: z.enum(TextSize),
     }),
     defaults: {
-      showStoppedContainers: false,
+      hideStoppedSvcs: true,
       textSize: TextSize.m,
     },
   });

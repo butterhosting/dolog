@@ -11,7 +11,7 @@ import { useSvcs } from "../hooks/useSvcs";
 export function svcsPage() {
   useDocumentTitle("Services | Dolog");
   const svcs = useSvcs();
-  const { showStoppedContainers: showStopped } = usePreferences();
+  const { hideStoppedSvcs } = usePreferences();
 
   if (!svcs) {
     return (
@@ -22,7 +22,7 @@ export function svcsPage() {
       </Frame>
     );
   }
-  const groups = Internal.group(showStopped ? svcs : svcs.filter((svc) => svc.liveStats));
+  const groups = Internal.group(hideStoppedSvcs ? svcs.filter((svc) => svc.liveStats) : svcs);
   return (
     <Frame className="flex flex-col gap-12">
       {groups.length === 0 && (
