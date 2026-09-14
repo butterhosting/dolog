@@ -11,7 +11,7 @@ describe("ContainerConfig", () => {
   });
 
   it("should fall back to the env for every setting a container does not label", () => {
-    // given (the test env: 5 logs per second, P30D, 100000 lines)
+    // given (the test env: 5 logs per second, 30d, 100000 lines)
     // when
     const { config, sources, issues } = ContainerConfig.resolve(context.env, {});
     // then
@@ -24,7 +24,7 @@ describe("ContainerConfig", () => {
 
   it("should let a label override its env default, and only its own", () => {
     // given
-    const dlabels = { "throttle.logs-per-second": "50", "retention.time-window": "PT12H" };
+    const dlabels = { "throttle.logs-per-second": "50", "retention.time-window": "12h" };
     // when
     const { config, sources } = ContainerConfig.resolve(context.env, dlabels);
     // then
@@ -47,6 +47,25 @@ describe("ContainerConfig", () => {
       { label: "dolog.throttle.logs-per-second", value: "0", reason: "invalid_positive_integer" },
       { label: "dolog.retention.max-lines", value: "lots", reason: "invalid_positive_integer" },
     ]);
+  });
+
+  it("should read a duration as a whole number of a fixed unit, with a week being seven days", () => {
+    // given
+    const window = (value: string) => ContainerConfig.resolve(context.env, { "retention.time-window": value }).config.retentionTimeWindow;
+    // then
+    expect(window("90s").total("seconds")).toEqual(90);
+    expect(window("30m").total("minutes")).toEqual(30);
+    expect(window("2w").total("days")).toEqual(14);
+  });
+
+  it("should refuse a duration it cannot total, and say so", () => {
+    // given (ISO-8601 and months are not accepted; neither has a fixed length in every unit)
+    const dlabels = { "retention.time-window": "P30D" };
+    // when
+    const { config, issues } = ContainerConfig.resolve(context.env, dlabels);
+    // then
+    expect(config.retentionTimeWindow.toString()).toEqual("P30D");
+    expect(issues).toEqual([{ label: "dolog.retention.time-window", value: "P30D", reason: "invalid_duration" }]);
   });
 
   it("should spell a setting's env var as its name upper-cased with underscores", () => {

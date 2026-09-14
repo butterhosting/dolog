@@ -67,7 +67,7 @@ export namespace TestEnvironment {
       X_DOLOG_LOGGING: LogLevel.warn,
       X_DOLOG_DOCKER_SOCKET: "/var/run/docker.sock",
       X_DOLOG_THROTTLE_LOGS_PER_SECOND: "5",
-      X_DOLOG_RETENTION_TIME_WINDOW: "P30D",
+      X_DOLOG_RETENTION_TIME_WINDOW: "30d",
       X_DOLOG_RETENTION_MAX_LINES: "100000",
     });
     const patchEnvironmentVariables = (environment: Record<string, string>) => {

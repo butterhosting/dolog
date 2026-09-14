@@ -524,8 +524,8 @@ describe(EventRepository.name, () => {
       ...Array.from({ length: 50 }, () => TestFixture.logEvent({ container: web })),
       ...Array.from({ length: 50 }, () => TestFixture.logEvent({ container: worker })),
     ]);
-    // then
-    expect(await containers()).toEqual([web, worker]);
+    // then (compared by name, since the listing itself is ordered by activity)
+    expect((await containers()).sort((a, b) => a.dname.localeCompare(b.dname))).toEqual([web, worker]);
     expect((await repository.listEvents(svcOf(web), 1_000, {}, {})).data).toHaveLength(50);
     expect((await repository.listEvents(svcOf(worker), 1_000, {}, {})).data).toHaveLength(50);
   });

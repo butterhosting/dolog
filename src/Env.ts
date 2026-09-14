@@ -11,21 +11,26 @@ export namespace Env {
       .string()
       .regex(/^[1-9]\d*$/, { error: "invalid_positive_integer" })
       .transform(Number),
-    // an ISO-8601 duration, so "P30D" and "PT12H" both say what they mean without a unit suffix
+    // a whole number of seconds, minutes, hours, days or weeks: "90s", "30m", "24h", "180d", "2w".
+    // Months and years are left out on purpose: they have no fixed length, so a window in them cannot be totalled
     DURATION: z
       .string()
-      .refine(
-        (value) => {
-          try {
-            Temporal.Duration.from(value);
-            return true;
-          } catch {
-            return false;
-          }
-        },
-        { error: "invalid_duration" },
-      )
-      .transform((value) => Temporal.Duration.from(value)),
+      .regex(/^[1-9]\d*[smhdw]$/, { error: "invalid_duration" })
+      .transform((value) => {
+        const amount = Number(value.slice(0, -1));
+        switch (value.slice(-1)) {
+          case "s":
+            return Temporal.Duration.from({ seconds: amount });
+          case "m":
+            return Temporal.Duration.from({ minutes: amount });
+          case "h":
+            return Temporal.Duration.from({ hours: amount });
+          case "d":
+            return Temporal.Duration.from({ days: amount });
+          default:
+            return Temporal.Duration.from({ days: amount * 7 }); // a week is always seven days
+        }
+      }),
   };
 
   const BASE_ENV = z.object({
