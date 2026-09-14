@@ -1,5 +1,4 @@
 import { Env } from "@/Env";
-import { Formats } from "@/helpers/Formats";
 import { Temporal } from "@js-temporal/polyfill";
 import { z } from "zod/v4";
 
@@ -12,9 +11,9 @@ export type ContainerConfig = {
 export namespace ContainerConfig {
   // Every setting has one canonical `topic.key-words` name
   const SETTINGS = {
-    throttleLogsPerSecond: setting("throttle.logs-per-second", Formats.POSITIVE_INTEGER),
-    retentionTimeWindow: setting("retention.time-window", Formats.DURATION),
-    retentionMaxLines: setting("retention.max-lines", Formats.POSITIVE_INTEGER),
+    throttleLogsPerSecond: setting("throttle.logs-per-second", Env.ConfigSchema.POSITIVE_INTEGER),
+    retentionTimeWindow: setting("retention.time-window", Env.ConfigSchema.DURATION),
+    retentionMaxLines: setting("retention.max-lines", Env.ConfigSchema.POSITIVE_INTEGER),
   } satisfies { [K in keyof ContainerConfig]: Setting<string, ContainerConfig[K]> };
 
   type Source = "label" | "env";

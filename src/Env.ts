@@ -2,11 +2,32 @@ import { Temporal } from "@js-temporal/polyfill";
 import { isAbsolute, join } from "path";
 import { z } from "zod/v4";
 import packageJson from "../package.json";
-import { Formats } from "./helpers/Formats";
 import { Timezone } from "./helpers/Timezone";
 import { LogLevel } from "./models/internal/LogLevel";
 
 export namespace Env {
+  export const ConfigSchema = {
+    POSITIVE_INTEGER: z
+      .string()
+      .regex(/^[1-9]\d*$/, { error: "invalid_positive_integer" })
+      .transform(Number),
+    // an ISO-8601 duration, so "P30D" and "PT12H" both say what they mean without a unit suffix
+    DURATION: z
+      .string()
+      .refine(
+        (value) => {
+          try {
+            Temporal.Duration.from(value);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        { error: "invalid_duration" },
+      )
+      .transform((value) => Temporal.Duration.from(value)),
+  };
+
   const BASE_ENV = z.object({
     O_DOLOG_STAGE: z.enum(["dev", "e2e", "prod"]),
     O_DOLOG_TIMEZONE: z.string().refine((tz) => Timezone.check(tz), {
@@ -17,10 +38,10 @@ export namespace Env {
     X_DOLOG_LOGGING: z.enum(LogLevel),
     X_DOLOG_DOCKER_SOCKET: z.string(),
 
-    // per-container global config (can be overridden via container labels)
-    X_DOLOG_THROTTLE_LOGS_PER_SECOND: Formats.POSITIVE_INTEGER,
-    X_DOLOG_RETENTION_TIME_WINDOW: Formats.DURATION,
-    X_DOLOG_RETENTION_MAX_LINES: Formats.POSITIVE_INTEGER,
+    // per-container global config, overridable via container labels
+    X_DOLOG_THROTTLE_LOGS_PER_SECOND: ConfigSchema.POSITIVE_INTEGER,
+    X_DOLOG_RETENTION_TIME_WINDOW: ConfigSchema.DURATION,
+    X_DOLOG_RETENTION_MAX_LINES: ConfigSchema.POSITIVE_INTEGER,
   });
 
   export function initializePartiallyForLogger(environment = Bun.env) {
@@ -57,5 +78,6 @@ export namespace Env {
       ? z.output<Private[K]>
       : Private[K];
   }>;
+
   export type PublicPrefix = "O_DOLOG_";
 }
