@@ -24,6 +24,14 @@
 
     /* one typeface for the whole app: the logs are monospaced, so the chrome around them is too */
     --font-mono: Menlo, "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+    /* a status light that breathes rather than blinks; tailwind's own pulse is twice as quick */
+    --animate-breathe: breathe 4s ease-in-out infinite;
+    @keyframes breathe {
+        50% {
+            opacity: 0.35;
+        }
+    }
 }
 
 /* DESKTOP FIRST / PART B -> https://stackoverflow.com/a/79607480 */

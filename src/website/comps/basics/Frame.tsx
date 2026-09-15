@@ -11,12 +11,14 @@ import { SlidersIcon } from "../icons/SlidersIcon";
 import { Meter } from "../Meter";
 import { Cell } from "./Cell";
 
-type Props = ComponentProps<"main">;
-export function Frame(props: Props) {
+type Props = ComponentProps<"main"> & {
+  padded?: boolean;
+};
+export function Frame({ padded = true, ...props }: Props) {
   return (
     <div className="full-bleed flex min-h-screen flex-col">
       <Internal.Header />
-      <Internal.Main {...props} />
+      <Internal.Main padded={padded} {...props} />
       <Internal.Footer />
     </div>
   );
@@ -30,7 +32,7 @@ namespace Internal {
     const running = svcs?.filter((svc) => svc.liveStats).length ?? 0;
     const stopped = (svcs?.length ?? 0) - running;
     return (
-      <header className="flex h-16 shrink-0 border-b border-c-rule">
+      <header className="flex h-16 shrink-0 border-y border-c-rule">
         <NavCell to={Route.svcs()}>services</NavCell>
         <NavCell to={Route.configuration()}>configuration</NavCell>
         <Cell>
@@ -79,8 +81,8 @@ namespace Internal {
     );
   }
 
-  export function Main(props: ComponentProps<"main">) {
-    return <main {...props} className={clsx("flex-1 px-12 py-10", props.className)} />;
+  export function Main({ padded, ...props }: ComponentProps<"main"> & { padded: boolean }) {
+    return <main {...props} className={clsx("flex-1", padded && "px-12 py-10", props.className)} />;
   }
 
   export function Footer() {

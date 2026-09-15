@@ -19,7 +19,7 @@ export function PreferencesDialog({ close }: Props) {
             onChange={(event) => modify({ hideStoppedSvcs: event.target.checked })}
             className="size-4 accent-c-accent"
           />
-          <span className="text-sm">Hide stopped services from the overview page</span>
+          <span className="text-sm">Hide stopped services from the overview page(s)</span>
         </label>
 
         <div className="flex justify-end">

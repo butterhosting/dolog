@@ -4,6 +4,7 @@ import { ClientRegistry } from "./ClientRegistry";
 import { DialogClient } from "./clients/DialogClient";
 import { SocketClient } from "./clients/SocketClient";
 import { DialogManager } from "./comps/basics/DialogManager";
+import { configurationPage } from "./pages/configuration.page";
 import { svcLogsPage } from "./pages/svc.logs.page";
 import { svcsPage } from "./pages/svcs.page";
 import { Route } from "./Route";
@@ -16,6 +17,10 @@ const router = createBrowserRouter([
   {
     path: Route.svcsLogs(),
     Component: svcLogsPage,
+  },
+  {
+    path: Route.configuration(),
+    Component: configurationPage,
   },
   {
     path: "*",
