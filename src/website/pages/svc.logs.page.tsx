@@ -60,13 +60,13 @@ export function svcLogsPage() {
       <SvcHeader
         dname={dname} //
         dgroup={dgroup}
-        dimage={svc.dimage}
+        dimage={svc.mostRecentContainer.dimage}
         filter={filterResult}
       />
       <SvcToolbar
         filter={filterResult}
         textSize={textSize}
-        liveStats={svc.liveStats}
+        liveStats={svc.mostRecentContainer.liveStats}
         onApply={filterResult.formState.apply}
         onNavigate={() => void anchorResult.promptNavigation()}
         onSearch={() => (searchResult.activated ? searchResult.deactivate() : searchResult.activate())}

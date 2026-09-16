@@ -8,7 +8,7 @@ import { Paper } from "./basics/Paper";
 type Props = {
   svc: Svc;
 };
-export function SvcCard({ svc: { id, dname, liveStats } }: Props) {
+export function SvcCard({ svc: { id, dname, mostRecentContainer: { liveStats } } }: Props) {
   return (
     <Link to={Route.svcsLogs(id)} className="w-64">
       <Paper className={clsx("flex h-full flex-col gap-3 px-4 py-3 transition-colors hover:border-c-accent", !liveStats && "opacity-50")}>

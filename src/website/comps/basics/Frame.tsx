@@ -29,7 +29,7 @@ namespace Internal {
     const host = useHost();
     const svcs = useSvcs();
     const dialogClient = useRegistry(DialogClient);
-    const running = svcs?.filter((svc) => svc.liveStats).length ?? 0;
+    const running = svcs?.filter((svc) => svc.mostRecentContainer.liveStats).length ?? 0;
     const stopped = (svcs?.length ?? 0) - running;
     return (
       <header className="flex h-16 shrink-0 border-y border-c-rule">

@@ -22,7 +22,7 @@ export function svcsPage() {
       </Frame>
     );
   }
-  const groups = Internal.group(hideStoppedSvcs ? svcs.filter((svc) => svc.liveStats) : svcs);
+  const groups = Internal.group(hideStoppedSvcs ? svcs.filter((svc) => svc.mostRecentContainer.liveStats) : svcs);
   return (
     <Frame className="flex flex-col gap-12">
       {groups.length === 0 && (

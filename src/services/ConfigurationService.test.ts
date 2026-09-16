@@ -59,6 +59,15 @@ describe(ConfigurationService.name, () => {
 
   function svc({ dname, dgroup, dimage, dlabels }: Container, running: boolean): Svc {
     const liveStats = { throttling: false, logsPerSecond: 0, memoryTotal: 0, memoryUsage: 0, cpuTotal: 0, cpuUsage: 0 };
-    return { id: Svc.encodeId({ dname, dgroup }), dname, dgroup, dimage, dlabels, liveStats: running ? liveStats : undefined };
+    return {
+      id: Svc.encodeId({ dname, dgroup }),
+      dname,
+      dgroup,
+      mostRecentContainer: {
+        dimage,
+        dlabels,
+        liveStats: running ? liveStats : undefined,
+      },
+    };
   }
 });

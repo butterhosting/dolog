@@ -49,13 +49,13 @@ export class ConfigurationService {
       containerLabel: {
         name: `${prefix}${name}`,
         overrides: svcs
-          .filter(({ dlabels }) => dlabels[name] !== undefined)
-          .map((svc) => ({
-            dname: svc.dname,
-            dgroup: svc.dgroup,
-            value: svc.dlabels[name]!,
-            valid: !ContainerLabelConfig.resolve(this.env, svc.dlabels).issues.some((issue) => issue.label === `${prefix}${name}`),
-            stopped: !svc.liveStats,
+          .filter(({ mostRecentContainer }) => mostRecentContainer.dlabels[name] !== undefined)
+          .map(({ dname, dgroup, mostRecentContainer: { dlabels, liveStats } }) => ({
+            dname,
+            dgroup,
+            value: dlabels[name]!,
+            valid: !ContainerLabelConfig.resolve(this.env, dlabels).issues.some((issue) => issue.label === `${prefix}${name}`),
+            stopped: !liveStats,
           })),
       },
     }));
