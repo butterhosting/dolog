@@ -48,8 +48,9 @@ services:
     mem_limit: 12m
     restart: unless-stopped
     attach: false
-    # ~400 lines a second, comfortably over the default budget of 100 so the throttler has to fold
-    # it -- bursty rather than a flat-out spin loop, which would pin a core for no extra coverage
+    # ~400 lines a second, comfortably over the custom budget of 150 so the throttler has to fold
+    labels:
+      dolog.throttling.logs-per-second: 150
     command:
       - sh
       - -c
