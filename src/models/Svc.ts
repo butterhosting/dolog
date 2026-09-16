@@ -7,8 +7,9 @@ export type Svc = {
   id: string;
   dname: string;
   dgroup?: string;
-  dimage: string;
-  liveStats?: LiveStats; // presence/absence indicates online/offline
+  dimage: string; // TODO: group under most recent
+  dlabels: Record<string, string>; // TODO: group under most recent
+  liveStats?: LiveStats; // TODO: group under most recent; presence/absence indicates online/offline
 };
 
 export namespace Svc {
@@ -41,6 +42,7 @@ export namespace Svc {
         dname: z.string(),
         dgroup: z.string().optional(),
         dimage: z.string(),
+        dlabels: z.record(z.string(), z.string()),
         liveStats: LiveStats.parse.SCHEMA.optional(),
       }),
     )

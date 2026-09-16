@@ -1,119 +1,99 @@
+import { Configuration } from "@/models/Configuration";
+import { Svc } from "@/models/Svc";
 import clsx from "clsx";
 import { Fragment, ReactNode } from "react";
+import { Link } from "react-router";
 import { Frame } from "../comps/basics/Frame";
+import { SpinnerIcon } from "../comps/icons/SpinnerIcon";
 import { useDocumentTitle } from "../hooks/basics/useDocumentTitle";
+import { useConfiguration } from "../hooks/useConfiguration";
+import { Route } from "../Route";
 
 export function configurationPage() {
   useDocumentTitle("Configuration | Dolog");
+  const configuration = useConfiguration();
+
+  if (!configuration) {
+    return (
+      <Frame>
+        <div className="flex justify-center py-24">
+          <SpinnerIcon />
+        </div>
+      </Frame>
+    );
+  }
   return (
     <Frame padded={false} className="flex flex-col">
       <Internal.Split className="border-b border-c-rule/30" left={<Internal.Intro />} right={<Internal.Example />} />
-      {Internal.TOPICS.map((topic) => (
-        <Internal.Topic key={topic.title} topic={topic} />
+      {Internal.topics(configuration).map((topic, index, { length: total }) => (
+        <Internal.Topic key={topic.title} topic={topic} isLast={index + 1 === total} />
       ))}
     </Frame>
   );
 }
 
 namespace Internal {
-  type Override = {
-    container: string;
-    value: string;
-    stopped?: boolean;
-    invalid?: boolean; // the value could not be read, so the environment applies instead
-  };
-  type Setting = {
+  type Docs = {
+    topic: string;
     title: string;
     description: string;
-    defaultValue: string;
-    envVar: string;
-    envValue?: string;
-    containerLabels?: {
-      // absent for a setting that applies to the instance as a whole
-      name: string;
-      overrides: Override[];
-    };
+  };
+  const DOCS: Record<Configuration.EnvVar, Docs> = {
+    DOLOG_TIMEZONE: {
+      topic: "system",
+      title: "timezone",
+      description: "The timezone timestamps are shown in. Must be an IANA name like Europe/Amsterdam.",
+    },
+    DOLOG_LOGGING: {
+      topic: "system",
+      title: "logging",
+      description: "How much Dolog writes to its own output. Must be one of debug, info, warn or error.",
+    },
+    DOLOG_DOCKER_SOCKET: {
+      topic: "system",
+      title: "docker socket",
+      description: "Where Dolog reads containers and their logs from. Must be mounted into the Dolog container.",
+    },
+    DOLOG_RETENTION_TIME_WINDOW: {
+      topic: "retention",
+      title: "time window",
+      description:
+        "How long a container's logs are kept. Older lines are pruned every few minutes. Must be a string like 30m, 24h or 180d.",
+    },
+    DOLOG_RETENTION_MAX_LINES: {
+      topic: "retention",
+      title: "max lines",
+      description:
+        "Newest lines kept per container. Once a container passes it, its oldest lines go first, whatever their age. Must be a positive integer.",
+    },
+    DOLOG_THROTTLING_LOGS_PER_SECOND: {
+      topic: "throttling",
+      title: "logs per second",
+      description:
+        "Logs a container may write per second. Anything past that within the same second is dropped and counted, so one chatty container cannot drown out the rest. Must be a positive integer.",
+    },
+  };
+
+  type Entry = {
+    docs: Docs;
+    setting: Configuration.Setting;
   };
   type Topic = {
     title: string;
-    settings: Setting[];
+    entries: Entry[];
   };
-
-  // TODO: fake data until the backend serves the live half
-  export const TOPICS: Topic[] = [
-    {
-      title: "system",
-      settings: [
-        {
-          title: "timezone",
-          description: "The timezone timestamps are shown in. Must be an IANA name like Europe/Amsterdam.",
-          defaultValue: "UTC",
-          envVar: "DOLOG_TIMEZONE",
-          envValue: "Europe/Amsterdam",
-        },
-        {
-          title: "logging",
-          description: "How much Dolog writes to its own output. Must be one of debug, info, warn or error.",
-          defaultValue: "info",
-          envVar: "DOLOG_LOGGING",
-        },
-        {
-          title: "docker socket",
-          description: "Where Dolog reads containers and their logs from. Must be mounted into the Dolog container.",
-          defaultValue: "/var/run/docker.sock",
-          envVar: "DOLOG_DOCKER_SOCKET",
-        },
-      ],
-    },
-    {
-      title: "throttling",
-      settings: [
-        {
-          title: "logs per second",
-          description:
-            "Logs a container may write per second. Anything past that within the same second is dropped and counted, so one chatty container cannot drown out the rest. Must be a positive integer.",
-          defaultValue: "100",
-          envVar: "DOLOG_THROTTLE_LOGS_PER_SECOND",
-          envValue: "100",
-          containerLabels: {
-            name: "dolog.throttle.logs-per-second",
-            overrides: [
-              { container: "nextcloud / nextcloud", value: "50" },
-              { container: "medialib / postgres-1", value: "abc", invalid: true },
-            ],
-          },
-        },
-      ],
-    },
-    {
-      title: "retention",
-      settings: [
-        {
-          title: "time window",
-          description:
-            "How long a container's logs are kept. Older lines are pruned every few minutes. Must be a string like 30m, 24h or 180d.",
-          defaultValue: "180d",
-          envVar: "DOLOG_RETENTION_TIME_WINDOW",
-          containerLabels: { name: "dolog.retention.time-window", overrides: [] },
-        },
-        {
-          title: "max lines",
-          description:
-            "Newest lines kept per container. Once a container passes it, its oldest lines go first, whatever their age. Must be a positive integer.",
-          defaultValue: "100000",
-          envVar: "DOLOG_RETENTION_MAX_LINES",
-          envValue: "100000",
-          containerLabels: {
-            name: "dolog.retention.max-lines",
-            overrides: [
-              { container: "nextcloud / mariadb", value: "500000" },
-              { container: "(ungrouped) / worker-3", value: "1000", stopped: true },
-            ],
-          },
-        },
-      ],
-    },
-  ];
+  export function topics(configuration: Configuration): Topic[] {
+    const topics: Topic[] = [];
+    for (const [envVar, docs] of Object.entries(DOCS) as Array<[Configuration.EnvVar, Docs]>) {
+      const setting = configuration.settings.find((setting) => setting.envVar === envVar);
+      if (!setting) {
+        continue;
+      }
+      const topic = topics.find((topic) => topic.title === docs.topic) ?? topics[topics.push({ title: docs.topic, entries: [] }) - 1];
+      topic.entries.push({ docs, setting });
+    }
+    return topics;
+  }
 
   type SplitProps = {
     left?: ReactNode;
@@ -143,7 +123,7 @@ namespace Internal {
             <span className="text-white">individually</span> for a specific container, by specifying a Docker label
           </li>
         </ul>
-        <p>When applicable, container labels precede over Dolog environment variables.</p>
+        <p>Specific container labels precede over Dolog environment variables.</p>
       </div>
     );
   }
@@ -168,14 +148,14 @@ namespace Internal {
     );
   }
 
-  export function Topic({ topic }: { topic: Topic }) {
+  export function Topic({ topic, isLast }: { topic: Topic; isLast: boolean }) {
     return (
-      <div className="border-b border-c-rule/30">
+      <div className={clsx("border-b", isLast ? "border-c-rule" : "border-c-rule/30")}>
         <Split pad="pt-10" left={<Heading yellow>{topic.title}</Heading>} />
-        {topic.settings.map((setting, i) => (
-          <Fragment key={setting.title}>
+        {topic.entries.map((entry, i) => (
+          <Fragment key={entry.setting.envVar}>
             {i > 0 && <Divider />}
-            <Split left={<Docs setting={setting} />} right={<Live setting={setting} />} />
+            <Split left={<Docs entry={entry} />} right={<Live setting={entry.setting} />} />
           </Fragment>
         ))}
       </div>
@@ -191,20 +171,20 @@ namespace Internal {
     );
   }
 
-  function Docs({ setting }: { setting: Setting }) {
+  function Docs({ entry: { docs, setting } }: { entry: Entry }) {
     return (
       <div className="flex max-w-2xl flex-col gap-3">
-        <h3 className="text-lg">{setting.title}</h3>
+        <h3 className="text-lg">{docs.title}</h3>
         <p className="text-c-rule">
-          {setting.description} Default: <span className="text-white">{setting.defaultValue}</span>
+          {docs.description} Default: <span className="text-white">{setting.defaultValue}</span>
         </p>
       </div>
     );
   }
 
-  const ROW = "grid grid-cols-[20rem_1fr] items-start";
+  const ROW = "grid grid-cols-[24rem_1fr] items-start";
 
-  function Live({ setting }: { setting: Setting }) {
+  function Live({ setting }: { setting: Configuration.Setting }) {
     return (
       <div className="flex flex-col gap-3">
         <Caption live>environment variable</Caption>
@@ -212,16 +192,16 @@ namespace Internal {
           <span className="text-sm text-c-rule">{setting.envVar}</span>
           {setting.envValue ?? (
             <Muted>
-              unset, default: <span className="not-italic text-white">{setting.defaultValue}</span>
+              <span className="not-italic text-white">{setting.defaultValue}</span> (using default)
             </Muted>
           )}
         </Card>
-        {setting.containerLabels && <Overrides containerLabels={setting.containerLabels} />}
+        {setting.containerLabel && <Overrides label={setting.containerLabel} />}
       </div>
     );
   }
 
-  function Overrides({ containerLabels }: { containerLabels: NonNullable<Setting["containerLabels"]> }) {
+  function Overrides({ label }: { label: NonNullable<Configuration.Setting["containerLabel"]> }) {
     return (
       <>
         <Caption live className="mt-3">
@@ -229,12 +209,14 @@ namespace Internal {
         </Caption>
         <Card className="flex flex-col gap-3 px-4 py-3">
           <div className={ROW}>
-            <span className="text-sm text-c-rule">{containerLabels.name}</span>
-            {containerLabels.overrides.length === 0 && <Muted>no overrides</Muted>}
+            <span className="text-c-rule">{label.name}</span>
+            {label.overrides.length === 0 && <Muted>(no labels detected)</Muted>}
           </div>
-          {containerLabels.overrides.map((override) => (
-            <div key={override.container} className={clsx(ROW, override.invalid ? "text-c-error" : override.stopped && "text-c-rule")}>
-              <span className="pl-6">{override.container}</span>
+          {label.overrides.map((override) => (
+            <div key={Svc.encodeId(override)} className={clsx(ROW, !override.valid ? "text-c-error" : override.stopped && "text-c-rule")}>
+              <Link to={Route.svcsLogs(Svc.encodeId(override))} className="pl-6 transition-colors hover:text-c-accent">
+                {override.dgroup ?? "(ungrouped)"} / {override.dname}
+              </Link>
               <span>{override.value}</span>
             </div>
           ))}
@@ -243,8 +225,9 @@ namespace Internal {
     );
   }
 
-  function Muted({ children, className }: { children: ReactNode; className?: string }) {
-    return <span className={clsx("italic text-c-rule", className)}>{children}</span>;
+  /** A value slot with nothing in it, said out loud rather than left blank */
+  function Muted({ children }: { children: ReactNode }) {
+    return <span className="italic text-c-rule">{children}</span>;
   }
 
   function Heading({ children, yellow }: { children: ReactNode; yellow?: true }) {
@@ -265,6 +248,7 @@ namespace Internal {
     );
   }
 
+  // the surface is already black here, so a card needs its own step up
   function Card({ children, className }: { children: ReactNode; className?: string }) {
     return <div className={clsx("rounded-xl border border-c-rule/40 bg-c-chip/70", className)}>{children}</div>;
   }

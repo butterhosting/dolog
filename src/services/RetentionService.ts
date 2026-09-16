@@ -2,7 +2,7 @@ import { Env } from "@/Env";
 import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
 import { Container } from "@/models/Container";
-import { ContainerConfig } from "@/models/ContainerConfig";
+import { ContainerLabelConfig } from "@/models/ContainerLabelConfig";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { EventRepository } from "@/repositories/EventRepository";
 import { Temporal } from "@js-temporal/polyfill";
@@ -50,10 +50,9 @@ export class RetentionService {
       });
   }
 
-  /** Every container is pruned under its own configuration: the env defaults, unless its labels say otherwise */
   private async prune(): Promise<void> {
-    const config = <K extends keyof ContainerConfig>(container: Pick<Container, "dlabels">, key: K): ContainerConfig[K] => {
-      return ContainerConfig.resolve(this.env, container.dlabels).config[key as keyof ContainerConfig] as ContainerConfig[K];
+    const config = <K extends keyof ContainerLabelConfig>(container: Pick<Container, "dlabels">, key: K): ContainerLabelConfig[K] => {
+      return ContainerLabelConfig.resolve(this.env, container.dlabels).config[key as keyof ContainerLabelConfig] as ContainerLabelConfig[K];
     };
 
     // Lines-per-container strategy

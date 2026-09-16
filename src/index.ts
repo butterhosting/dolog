@@ -5,7 +5,7 @@ import { Env } from "./Env";
 import { Logger } from "./Logger";
 import { ServerRegistry } from "./ServerRegistry";
 
-Logger.initialize(Env.initializePartiallyForLogger());
+Logger.initialize(Env.initialize.partiallyForLogger());
 const env = Env.initialize();
 
 await mkdir(dirname(env.X_DOLOG_DATABASE), { recursive: true });

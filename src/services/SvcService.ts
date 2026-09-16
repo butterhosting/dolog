@@ -38,6 +38,10 @@ export class SvcService {
     return firstValueFrom(this.svcs);
   }
 
+  public streamSvcs(): Observable<Svc[]> {
+    return this.svcs;
+  }
+
   private combineWithHistoricContainersIntoSvcs() {
     return pipe(
       startWith<Container[]>([]),
@@ -76,6 +80,7 @@ export class SvcService {
         dname: representative.dname,
         dgroup: representative.dgroup,
         dimage: representative.dimage,
+        dlabels: representative.dlabels,
         liveStats: representative.liveStats,
       };
     });

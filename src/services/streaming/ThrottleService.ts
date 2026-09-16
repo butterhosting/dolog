@@ -1,7 +1,7 @@
 import { Env } from "@/Env";
 import { Logger } from "@/Logger";
 import { Container } from "@/models/Container";
-import { ContainerConfig } from "@/models/ContainerConfig";
+import { ContainerLabelConfig } from "@/models/ContainerLabelConfig";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Throughput } from "@/models/Throughput";
 import { Temporal } from "@js-temporal/polyfill";
@@ -150,12 +150,12 @@ export class ThrottleService {
   }
 
   private getConfig(container: Container): { rateLimit: number } {
-    const { config, issues } = ContainerConfig.resolve(this.env, container.dlabels);
+    const { config, issues } = ContainerLabelConfig.resolve(this.env, container.dlabels);
     for (const { label, value, reason } of issues) {
       this.log.warn(`Ignoring label ${label}="${value}" on ${container.dname} (${reason}); using the env default`);
     }
     return {
-      rateLimit: config.throttleLogsPerSecond,
+      rateLimit: config.throttlingLogsPerSecond,
     };
   }
 }

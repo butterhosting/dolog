@@ -23,6 +23,35 @@ export namespace ZodParser {
     }
   }
 
+  export function duration() {
+    return z
+      .string()
+      .regex(/^[1-9]\d*[smhd]$/, { error: "invalid_duration" })
+      .transform((value) => {
+        const amount = Number(value.slice(0, -1));
+        const unit = value.slice(-1);
+        switch (unit) {
+          case "s":
+            return Temporal.Duration.from({ seconds: amount });
+          case "m":
+            return Temporal.Duration.from({ minutes: amount });
+          case "h":
+            return Temporal.Duration.from({ hours: amount });
+          case "d":
+            return Temporal.Duration.from({ days: amount });
+          default:
+            throw new Error(`Unsupported duration unit: ${unit}`);
+        }
+      });
+  }
+
+  export function positiveInteger() {
+    return z
+      .string()
+      .regex(/^[1-9]\d*$/, { error: "invalid_positive_integer" })
+      .transform(Number);
+  }
+
   export function forType<T>() {
     return {
       ensureSchemaMatchesType<U extends z.ZodType<T>>(schemaFn: () => U): ParserFactory<T, z.output<U>> {

@@ -1,21 +1,28 @@
 import { ZodParser } from "@/helpers/ZodParser";
+import { Configuration as ConfigurationModel } from "@/models/Configuration";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Host } from "@/models/Host";
 import z from "zod/v4";
 import { Svc } from "../Svc";
 
-export type ServerMessage = ServerMessage.Svcs | ServerMessage.HostSample | ServerMessage.Log;
+export type ServerMessage = ServerMessage.Svcs | ServerMessage.HostSample | ServerMessage.Log | ServerMessage.Configuration;
 
 export namespace ServerMessage {
   export enum Type {
     svcs = "svcs",
     host = "host",
     event = "event",
+    configuration = "configuration",
   }
 
   export type Svcs = {
     type: Type.svcs;
     svcs: Svc[];
+  };
+
+  export type Configuration = {
+    type: Type.configuration;
+    configuration: ConfigurationModel;
   };
 
   export type HostSample = {
@@ -42,6 +49,10 @@ export namespace ServerMessage {
         z.object({
           type: z.literal(Type.event),
           data: ContainerEvent.parse.SCHEMA,
+        }),
+        z.object({
+          type: z.literal(Type.configuration),
+          configuration: ConfigurationModel.parse.SCHEMA,
         }),
       ]);
     })

@@ -26,7 +26,7 @@
     --font-mono: Menlo, "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 
     /* a status light that breathes rather than blinks; tailwind's own pulse is twice as quick */
-    --animate-breathe: breathe 4s ease-in-out infinite;
+    --animate-breathe: breathe 3s ease-in-out infinite;
     @keyframes breathe {
         50% {
             opacity: 0.35;

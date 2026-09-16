@@ -10,6 +10,7 @@ import { Logger } from "./Logger";
 import { Middleware } from "./middleware/Middleware";
 import { Svc } from "./models/Svc";
 import { Socket } from "./models/socket/Socket";
+import { ConfigurationService } from "./services/ConfigurationService";
 import { HostService } from "./services/HostService";
 import { LogService } from "./services/LogService";
 import { SocketService } from "./services/SocketService";
@@ -23,6 +24,7 @@ export class Server {
     private readonly svcService: SvcService,
     private readonly logService: LogService,
     private readonly hostService: HostService,
+    private readonly configurationService: ConfigurationService,
     private readonly socketService: SocketService,
     private readonly middleware: Middleware,
   ) {}
@@ -92,7 +94,7 @@ export class Server {
         "/internal-api/env": {
           GET: this.handleRoute(() => {
             const response = Object.entries(this.env)
-              .filter(([key]) => key.startsWith("O_DOLOG_" satisfies Env.PublicPrefix))
+              .filter(([key]) => Env.isPublic(key))
               .map(([key, value]) => ({ [key]: value }))
               .reduce((kv1, kv2) => Object.assign({}, kv1, kv2), {});
             return Response.json(response as Env.Public);
@@ -104,6 +106,13 @@ export class Server {
          */
         "/internal-api/host": {
           GET: this.handleRoute(async () => Response.json(await this.hostService.get())),
+        },
+
+        /**
+         * Configuration
+         */
+        "/internal-api/configuration": {
+          GET: this.handleRoute(async () => Response.json(await this.configurationService.get())),
         },
 
         /**
@@ -157,7 +166,7 @@ export class Server {
         `  \x1b[1mLogging\x1b[0m   ${this.env.X_DOLOG_LOGGING}`,
         `  \x1b[1mTimezone\x1b[0m  ${this.env.O_DOLOG_TIMEZONE}`,
         `  \x1b[1mSocket\x1b[0m    ${this.env.X_DOLOG_DOCKER_SOCKET}`,
-        `  \x1b[1mThrottle\x1b[0m  ${this.env.X_DOLOG_THROTTLE_LOGS_PER_SECOND} logs/second/container`,
+        `  \x1b[1mThrottle\x1b[0m  ${this.env.X_DOLOG_THROTTLING_LOGS_PER_SECOND} logs/second/container`,
         "",
       ].join("\n"),
     );

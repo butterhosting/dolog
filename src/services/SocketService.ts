@@ -1,5 +1,6 @@
 import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
+import { Configuration } from "@/models/Configuration";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Host } from "@/models/Host";
 import { Connection } from "@/models/socket/Connection";
@@ -79,6 +80,14 @@ export class SocketService {
     const message: ServerMessage = {
       type: ServerMessage.Type.host,
       host,
+    };
+    this.connections.forEach(({ socket }) => socket.send(JSON.stringify(message)));
+  };
+
+  public broadcastConfigurationStream = (configuration: Configuration) => {
+    const message: ServerMessage = {
+      type: ServerMessage.Type.configuration,
+      configuration,
     };
     this.connections.forEach(({ socket }) => socket.send(JSON.stringify(message)));
   };

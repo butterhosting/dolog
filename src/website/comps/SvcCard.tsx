@@ -18,7 +18,7 @@ export function SvcCard({ svc: { id, dname, liveStats } }: Props) {
             <Internal.Row label="CPU" part={liveStats.cpuUsage} whole={liveStats.cpuTotal} />
             <Internal.Row label="MEM" part={liveStats.memoryUsage} whole={liveStats.memoryTotal} />
             <span className={clsx("self-end whitespace-nowrap text-xs italic", liveStats.throttling ? "text-c-error" : "text-c-rule")}>
-              {liveStats.logsPerSecond} {liveStats.logsPerSecond === 1 ? "log" : "logs"}/second
+              {liveStats.throttling ? "throttling" : `${liveStats.logsPerSecond} ${liveStats.logsPerSecond === 1 ? "log" : "logs"}/second`}
             </span>
           </div>
         ) : (

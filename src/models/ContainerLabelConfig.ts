@@ -2,35 +2,38 @@ import { Env } from "@/Env";
 import { Temporal } from "@js-temporal/polyfill";
 import { z } from "zod/v4";
 
-export type ContainerConfig = {
-  throttleLogsPerSecond: number;
+export type ContainerLabelConfig = {
+  throttlingLogsPerSecond: number;
   retentionTimeWindow: Temporal.Duration;
   retentionMaxLines: number;
 };
 
-export namespace ContainerConfig {
-  // Every setting has one canonical `topic.key-words` name
-  const SETTINGS = {
-    throttleLogsPerSecond: setting("throttle.logs-per-second", Env.ConfigSchema.POSITIVE_INTEGER),
-    retentionTimeWindow: setting("retention.time-window", Env.ConfigSchema.DURATION),
-    retentionMaxLines: setting("retention.max-lines", Env.ConfigSchema.POSITIVE_INTEGER),
-  } satisfies { [K in keyof ContainerConfig]: Setting<string, ContainerConfig[K]> };
+export namespace ContainerLabelConfig {
+  // `satisfies` rather than a type annotation
+  export const Settings = {
+    throttlingLogsPerSecond: setting("throttling.logs-per-second", Env.Schema.shape.X_DOLOG_THROTTLING_LOGS_PER_SECOND),
+    retentionTimeWindow: setting("retention.time-window", Env.Schema.shape.X_DOLOG_RETENTION_TIME_WINDOW),
+    retentionMaxLines: setting("retention.max-lines", Env.Schema.shape.X_DOLOG_RETENTION_MAX_LINES),
+  } satisfies { [K in keyof ContainerLabelConfig]: Setting<string, ContainerLabelConfig[K]> };
 
   type Source = "label" | "env";
-  type Issue = { label: string; value: string; reason: string }; // the label key as the operator wrote it, prefix included
+  type Issue = {
+    label: string;
+    value: string;
+    reason: string;
+  };
   type Resolution = {
-    config: ContainerConfig;
-    sources: { [K in keyof ContainerConfig]: Source };
-    issues: Issue[]; // labels that could not be read
+    config: ContainerLabelConfig;
+    sources: Record<keyof ContainerLabelConfig, Source>;
+    issues: Issue[];
   };
 
-  /** Labels win over env; a label that does not parse is reported, and the env default stands in for it */
   export function resolve(env: Env.Private, dlabels: Record<string, string>): Resolution {
-    const config: Partial<Record<keyof ContainerConfig, unknown>> = {};
+    const config: Partial<Record<keyof ContainerLabelConfig, unknown>> = {};
     const sources: Partial<Resolution["sources"]> = {};
     const issues: Issue[] = [];
-    for (const key of Object.keys(SETTINGS) as Array<keyof ContainerConfig>) {
-      const { name, envKey, schema } = SETTINGS[key];
+    for (const key of Object.keys(Settings) as Array<keyof ContainerLabelConfig>) {
+      const { name, envKey, schema } = Settings[key];
       const raw = dlabels[name];
       const parsed = raw === undefined ? undefined : schema.safeParse(raw);
       if (parsed?.success) {
@@ -48,9 +51,8 @@ export namespace ContainerConfig {
       config[key] = env[envKey];
       sources[key] = "env";
     }
-    // built key by key above, where the union of setting types keeps the compiler from seeing each key's own type
     return {
-      config: config as ContainerConfig,
+      config: config as ContainerLabelConfig,
       sources: sources as Resolution["sources"],
       issues,
     };

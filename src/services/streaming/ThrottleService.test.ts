@@ -65,7 +65,7 @@ describe(ThrottleService.name, () => {
 
   it("should let a container's label set its own budget", () => {
     // given (a budget of 2, labelled on the container, against the env's 5)
-    const container = TestFixture.container({ dlabels: { "throttle.logs-per-second": "2" } });
+    const container = TestFixture.container({ dlabels: { "throttling.logs-per-second": "2" } });
     const events = { a: log(container, "1"), b: log(container, "2"), c: log(container, "3") };
 
     scheduler.run(({ cold, expectObservable }) => {
