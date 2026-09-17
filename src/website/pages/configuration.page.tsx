@@ -236,7 +236,7 @@ namespace Internal {
   function Live({ setting }: { setting: Configuration.Setting }) {
     return (
       <div className="flex flex-col gap-3">
-        <Caption live>environment variable</Caption>
+        <Caption accentText="global setting">- env variable</Caption>
         <Card className={clsx(ROW, "px-4 py-3")}>
           <span className="text-sm text-c-rule">{setting.envVar}</span>
           {setting.envValue !== undefined ? (
@@ -255,10 +255,10 @@ namespace Internal {
   function Overrides({ label }: { label: NonNullable<Configuration.Setting["containerLabel"]> }) {
     return (
       <>
-        <Caption live className="mt-3">
-          docker label overrides
+        <Caption accentText="container overrides" className="mt-5">
+          - detected docker labels
         </Caption>
-        <Card className="flex flex-col gap-3 px-4 py-3">
+        <Card className="flex flex-col gap-3 px-4 py-3 border-l-c-accent!">
           <div className={ROW}>
             <span className="text-c-rule">{label.name}</span>
             {label.overrides.length === 0 && <Muted>(no labels detected)</Muted>}
@@ -288,13 +288,13 @@ namespace Internal {
     return <h2 className={clsx("text-2xl", yellow && "text-c-accent")}>{children}</h2>;
   }
 
-  function Caption({ children, live, className }: { children: ReactNode; live?: boolean; className?: string }) {
+  function Caption({ children, accentText, className }: { children: ReactNode; accentText?: string; className?: string }) {
     return (
-      <span className={clsx("flex items-center gap-1.5 text-xs tracking-wide text-c-rule uppercase", className)}>
-        {live && (
+      <span className={clsx("flex items-center gap-1.5 text-sm tracking-wide text-c-rule uppercase", className)}>
+        {accentText && (
           <>
             <span className="size-1.5 rounded-full bg-c-accent animate-breathe" />
-            <span className="text-c-accent">live</span>
+            <span className="text-c-accent">{accentText}</span>
           </>
         )}
         {children}
