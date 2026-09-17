@@ -25,10 +25,26 @@ describe(ConfigurationService.name, () => {
       "DOLOG_TIMEZONE",
       "DOLOG_LOGGING",
       "DOLOG_DOCKER_SOCKET",
+      "DOLOG_WEBHOOKS",
       "DOLOG_THROTTLING_LOGS_PER_SECOND",
       "DOLOG_RETENTION_TIME_WINDOW",
       "DOLOG_RETENTION_MAX_LINES",
+      "DOLOG_ALERTING_WEBHOOK_REF",
+      "DOLOG_ALERTING_TEXT_PATTERN",
+      "DOLOG_ALERTING_THROUGHPUT_THRESHOLD",
+      "DOLOG_ALERTING_COOLDOWN_WINDOW",
     ]);
+    // one webhook per line, with the credentials left out of the URL
+    expect(settings.find(({ envVar }) => envVar === "DOLOG_WEBHOOKS")).toEqual({
+      envVar: "DOLOG_WEBHOOKS",
+      envValue: "ops = https://hooks.example.com/dolog",
+      defaultValue: "",
+    });
+    expect(settings.find(({ envVar }) => envVar === "DOLOG_ALERTING_WEBHOOK_REF")).toEqual({
+      envVar: "DOLOG_ALERTING_WEBHOOK_REF",
+      defaultValue: "",
+      containerLabel: { name: "dolog.alerting.webhook-ref", overrides: [] },
+    });
     expect(settings.find(({ envVar }) => envVar === "DOLOG_LOGGING")).toEqual({
       envVar: "DOLOG_LOGGING",
       envValue: "warn",

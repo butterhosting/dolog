@@ -1,3 +1,4 @@
+import type { Env } from "@/Env";
 import { Configuration } from "@/models/Configuration";
 import { Svc } from "@/models/Svc";
 import clsx from "clsx";
@@ -35,8 +36,8 @@ export function configurationPage() {
 namespace Internal {
   type Docs = {
     topic: string;
-    title: string;
-    description: string;
+    title?: string;
+    description: ReactNode;
   };
   const DOCS: Record<Configuration.EnvVar, Docs> = {
     DOLOG_TIMEZONE: {
@@ -71,6 +72,48 @@ namespace Internal {
       title: "logs per second",
       description:
         "Logs a container may write per second. Anything past that within the same second is dropped and counted, so one chatty container cannot drown out the rest. Must be a positive integer.",
+    },
+    DOLOG_WEBHOOKS: {
+      topic: "webhooks",
+      description: (
+        <>
+          <p>
+            Defines named endpoints where alerts will be sent as POST requests. For example:{" "}
+            <span className="text-white">"app_alerts=https://app.com/alerts"</span>
+          </p>
+          <p className="mt-4">
+            When a provided webhook endpoint contains credentials in its URL, those will be sent along as basic auth. For example:{" "}
+            <span className="text-white">"app_alerts=https://username:password@app.com/alerts"</span>
+          </p>
+          <p className="mt-4">
+            In order to specify multiple webhooks, separate them by any number of whitespace characters. For example:{" "}
+            <span className="text-white">"app_alerts=https://app.com/alerts db_alerts=https://db.com/alerts"</span>
+          </p>
+        </>
+      ),
+    },
+    DOLOG_ALERTING_WEBHOOK_REF: {
+      topic: "alerting",
+      title: "webhook ref",
+      description: `The name of the webhook where container alerts will be sent. Also see ${"DOLOG_WEBHOOKS" satisfies Env.RealEnvName<Env.Defaultable>}`,
+    },
+    DOLOG_ALERTING_TEXT_PATTERN: {
+      topic: "alerting",
+      title: "text pattern",
+      description:
+        "A regular expression. A log line matching it raises an alert, sent to the webhook above. Leaving it empty raises no text alerts.",
+    },
+    DOLOG_ALERTING_THROUGHPUT_THRESHOLD: {
+      topic: "alerting",
+      title: "throughput threshold",
+      description:
+        "Logs per second above which an alert is raised, counted per second like the throttle and including dropped lines. Must be a positive integer; leaving it empty raises no throughput alerts.",
+    },
+    DOLOG_ALERTING_COOLDOWN_WINDOW: {
+      topic: "alerting",
+      title: "cooldown window",
+      description:
+        "Quiet time per container after an alert, so a log storm sends one message rather than a thousand. Must be a string like 30s, 5m or 1h.",
     },
   };
 
@@ -174,9 +217,15 @@ namespace Internal {
   function Docs({ entry: { docs, setting } }: { entry: Entry }) {
     return (
       <div className="flex max-w-2xl flex-col gap-3">
-        <h3 className="text-lg">{docs.title}</h3>
+        {docs.title && <h3 className="text-lg">{docs.title}</h3>}
         <p className="text-c-rule">
-          {docs.description} Default: <span className="text-white">{setting.defaultValue}</span>
+          {docs.description}
+          {setting.defaultValue && (
+            <>
+              {" "}
+              Default: <Value value={setting.defaultValue} />
+            </>
+          )}
         </p>
       </div>
     );
@@ -190,9 +239,11 @@ namespace Internal {
         <Caption live>environment variable</Caption>
         <Card className={clsx(ROW, "px-4 py-3")}>
           <span className="text-sm text-c-rule">{setting.envVar}</span>
-          {setting.envValue ?? (
+          {setting.envValue !== undefined ? (
+            <span className="whitespace-pre-line break-all">{setting.envValue}</span>
+          ) : (
             <Muted>
-              <span className="not-italic text-white">{setting.defaultValue}</span> (using default)
+              <Value value={setting.defaultValue} /> {setting.defaultValue && "(using default)"}
             </Muted>
           )}
         </Card>
@@ -214,10 +265,10 @@ namespace Internal {
           </div>
           {label.overrides.map((override) => (
             <div key={Svc.encodeId(override)} className={clsx(ROW, !override.valid ? "text-c-error" : override.stopped && "text-c-rule")}>
-              <Link to={Route.svcsLogs(Svc.encodeId(override))} className="pl-6 transition-colors hover:text-c-accent">
+              <Link to={Route.svcsLogs(Svc.encodeId(override))} className="pl-6 text-c-accent">
                 {override.dgroup ?? "(ungrouped)"} / {override.dname}
               </Link>
-              <span>{override.value}</span>
+              <span>{override.value || <Muted>(empty)</Muted>}</span>
             </div>
           ))}
         </Card>
@@ -225,7 +276,10 @@ namespace Internal {
     );
   }
 
-  /** A value slot with nothing in it, said out loud rather than left blank */
+  function Value({ value }: { value: string }) {
+    return value ? <span className="not-italic text-white">{value}</span> : <Muted>(none)</Muted>;
+  }
+
   function Muted({ children }: { children: ReactNode }) {
     return <span className="italic text-c-rule">{children}</span>;
   }

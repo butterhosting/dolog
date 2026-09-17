@@ -69,6 +69,7 @@ export namespace TestEnvironment {
       X_DOLOG_THROTTLING_LOGS_PER_SECOND: "5",
       X_DOLOG_RETENTION_TIME_WINDOW: "30d",
       X_DOLOG_RETENTION_MAX_LINES: "100000",
+      X_DOLOG_WEBHOOKS: "ops=https://alerts:secret@hooks.example.com/dolog",
     });
     const patchEnvironmentVariables = (environment: Record<string, string>) => {
       Object.assign(Bun.env, environment);

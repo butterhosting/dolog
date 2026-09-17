@@ -4,6 +4,15 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { ContainerLabelConfig } from "./ContainerLabelConfig";
 
 describe("ContainerLabelConfig", () => {
+  const ALL_ENV: Record<keyof ContainerLabelConfig, "env"> = {
+    throttlingLogsPerSecond: "env",
+    retentionTimeWindow: "env",
+    retentionMaxLines: "env",
+    alertingWebhookRef: "env",
+    alertingTextPattern: "env",
+    alertingThroughputThreshold: "env",
+    alertingCooldownWindow: "env",
+  };
   let context: TestEnvironment.Context;
 
   beforeEach(async () => {
@@ -18,7 +27,7 @@ describe("ContainerLabelConfig", () => {
     expect(config.throttlingLogsPerSecond).toEqual(5);
     expect(config.retentionTimeWindow.toString()).toEqual("P30D");
     expect(config.retentionMaxLines).toEqual(100_000);
-    expect(sources).toEqual({ throttlingLogsPerSecond: "env", retentionTimeWindow: "env", retentionMaxLines: "env" });
+    expect(sources).toEqual({ ...ALL_ENV });
     expect(issues).toEqual([]);
   });
 
@@ -31,7 +40,7 @@ describe("ContainerLabelConfig", () => {
     expect(config.throttlingLogsPerSecond).toEqual(50);
     expect(Temporal.Duration.compare(config.retentionTimeWindow, { hours: 12 })).toEqual(0);
     expect(config.retentionMaxLines).toEqual(100_000);
-    expect(sources).toEqual({ throttlingLogsPerSecond: "label", retentionTimeWindow: "label", retentionMaxLines: "env" });
+    expect(sources).toEqual({ ...ALL_ENV, throttlingLogsPerSecond: "label", retentionTimeWindow: "label" });
   });
 
   it("should report a label it cannot read, and use the env default in its place", () => {
@@ -68,6 +77,32 @@ describe("ContainerLabelConfig", () => {
     // then
     expect(config.retentionTimeWindow.toString()).toEqual("P30D");
     expect(issues).toEqual([{ label: "dolog.retention.time-window", value: "P30D", reason: "invalid_duration" }]);
+  });
+
+  it("should take a webhook name as written, leaving whether it exists to the sender", () => {
+    // given (the test env defines the `ops` webhook only)
+    const ops = ContainerLabelConfig.resolve(context.env, { "alerting.webhook-ref": "ops" });
+    const nobody = ContainerLabelConfig.resolve(context.env, { "alerting.webhook-ref": "nobody" });
+    // then
+    expect(ops.config.alertingWebhookRef).toEqual("ops");
+    expect(nobody.config.alertingWebhookRef).toEqual("nobody");
+    expect(nobody.issues).toEqual([]);
+  });
+
+  it("should read the other alerting labels, with an empty one switching the feature off", () => {
+    // given
+    const dlabels = { "alerting.text-pattern": "panic|fatal", "alerting.throughput-threshold": "", "alerting.cooldown-window": "30s" };
+    // when
+    const { config, sources, issues } = ContainerLabelConfig.resolve(context.env, dlabels);
+    // then
+    expect(config.alertingTextPattern?.source).toEqual("panic|fatal");
+    expect(config.alertingThroughputThreshold).toBeUndefined();
+    expect(sources.alertingThroughputThreshold).toEqual("label");
+    expect(config.alertingCooldownWindow.total("seconds")).toEqual(30);
+    expect(issues).toEqual([]);
+    expect(ContainerLabelConfig.resolve(context.env, { "alerting.text-pattern": "(" }).issues).toEqual([
+      { label: "dolog.alerting.text-pattern", value: "(", reason: "invalid_regex" },
+    ]);
   });
 
   it("should spell a setting's env var as its name upper-cased with underscores", () => {

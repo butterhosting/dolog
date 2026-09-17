@@ -40,7 +40,7 @@ export class ConfigurationService {
   }
 
   public snapshot(svcs: Svc[]): Configuration {
-    const INSTANCE_WIDE = ["O_DOLOG_TIMEZONE", "X_DOLOG_LOGGING", "X_DOLOG_DOCKER_SOCKET"] satisfies Env.Defaultable[];
+    const INSTANCE_WIDE = ["O_DOLOG_TIMEZONE", "X_DOLOG_LOGGING", "X_DOLOG_DOCKER_SOCKET", "X_DOLOG_WEBHOOKS"] satisfies Env.Defaultable[];
     const prefix = this.env.X_DOLOG_CONTAINER_LABEL_PREFIX;
 
     const instanceWide = INSTANCE_WIDE.map((key) => this.setting(key));
@@ -65,7 +65,17 @@ export class ConfigurationService {
   private setting(key: Env.Defaultable): Configuration.Setting {
     return {
       envVar: Env.realEnvName(key),
-      envValue: this.env.X_DOLOG_PROVIDED[key],
+      envValue: (() => {
+        switch (key) {
+          case "X_DOLOG_WEBHOOKS": {
+            const entries = Object.entries(this.env.X_DOLOG_WEBHOOKS);
+            return entries.length > 0 ? entries.map(([name, webhook]) => `${name} = ${webhook.url}`).join("\n") : undefined;
+          }
+          default: {
+            return this.env.X_DOLOG_PROVIDED[key];
+          }
+        }
+      })(),
       defaultValue: Env.Defaults[key],
     };
   }

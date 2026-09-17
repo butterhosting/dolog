@@ -21,6 +21,12 @@ export namespace Env {
     X_DOLOG_THROTTLING_LOGS_PER_SECOND: ZodParser.positiveInteger(),
     X_DOLOG_RETENTION_TIME_WINDOW: ZodParser.duration(),
     X_DOLOG_RETENTION_MAX_LINES: ZodParser.positiveInteger(),
+
+    X_DOLOG_WEBHOOKS: zWebhooks(),
+    X_DOLOG_ALERTING_WEBHOOK_REF: ZodParser.optional(z.string()),
+    X_DOLOG_ALERTING_TEXT_PATTERN: ZodParser.optional(ZodParser.regex()),
+    X_DOLOG_ALERTING_THROUGHPUT_THRESHOLD: ZodParser.optional(ZodParser.positiveInteger()),
+    X_DOLOG_ALERTING_COOLDOWN_WINDOW: ZodParser.duration(),
   });
 
   export type Defaultable = ExtractBetter<
@@ -31,6 +37,11 @@ export namespace Env {
     | "X_DOLOG_THROTTLING_LOGS_PER_SECOND"
     | "X_DOLOG_RETENTION_MAX_LINES"
     | "X_DOLOG_RETENTION_TIME_WINDOW"
+    | "X_DOLOG_WEBHOOKS"
+    | "X_DOLOG_ALERTING_WEBHOOK_REF"
+    | "X_DOLOG_ALERTING_TEXT_PATTERN"
+    | "X_DOLOG_ALERTING_THROUGHPUT_THRESHOLD"
+    | "X_DOLOG_ALERTING_COOLDOWN_WINDOW"
   >;
   export const Defaults: Record<Defaultable, string> = {
     O_DOLOG_TIMEZONE: "UTC",
@@ -39,6 +50,19 @@ export namespace Env {
     X_DOLOG_THROTTLING_LOGS_PER_SECOND: "100",
     X_DOLOG_RETENTION_TIME_WINDOW: "180d",
     X_DOLOG_RETENTION_MAX_LINES: "100000",
+    X_DOLOG_WEBHOOKS: "",
+    X_DOLOG_ALERTING_WEBHOOK_REF: "",
+    X_DOLOG_ALERTING_TEXT_PATTERN: "",
+    X_DOLOG_ALERTING_THROUGHPUT_THRESHOLD: "",
+    X_DOLOG_ALERTING_COOLDOWN_WINDOW: "5m",
+  };
+
+  type Webhook = {
+    url: string;
+    auth?: {
+      username: string;
+      password: string;
+    };
   };
 
   export function initialize(timezone = Temporal.Now.timeZoneId() as "UTC", environment: Record<string, string | undefined> = Bun.env) {
@@ -70,20 +94,6 @@ export namespace Env {
       .parse(merged);
   };
 
-  function withDefaults(environment: Record<string, string | undefined>) {
-    const provided: Partial<Record<Defaultable, string>> = {};
-    const merged = { ...environment };
-    for (const key of Object.keys(Defaults) as Defaultable[]) {
-      const value = environment[key];
-      if (value) {
-        provided[key] = value;
-      } else {
-        merged[key] = Defaults[key];
-      }
-    }
-    return { provided, merged };
-  }
-
   type PublicPrefix = "O_DOLOG_";
   export function isPublic(key: string) {
     return key.startsWith("O_DOLOG_" satisfies PublicPrefix);
@@ -99,5 +109,52 @@ export namespace Env {
   export type RealEnvName<K extends string> = K extends `${"X" | "O"}_${infer Rest}` ? Rest : K;
   export function realEnvName<K extends string>(key: K): RealEnvName<K> {
     return key.replace(/^[XO]_/, "") as RealEnvName<K>;
+  }
+
+  // v-- helper functions --v
+
+  function withDefaults(environment: Record<string, string | undefined>) {
+    const provided: Partial<Record<Defaultable, string>> = {};
+    const merged = { ...environment };
+    for (const key of Object.keys(Defaults) as Defaultable[]) {
+      const value = environment[key];
+      if (value) {
+        provided[key] = value;
+      } else {
+        merged[key] = Defaults[key];
+      }
+    }
+    return { provided, merged };
+  }
+
+  function zWebhooks() {
+    return z.string().transform((value, ctx) => {
+      const webhooks: Record<string, Webhook> = {};
+      for (const entry of value.split(/\s+/).filter((entry) => entry.length > 0)) {
+        const separator = entry.indexOf("=");
+        const name = separator > 0 ? entry.slice(0, separator) : "";
+        if (!/^[A-Za-z0-9_-]+$/.test(name)) {
+          ctx.addIssue({ code: "custom", message: `invalid_webhook_name: ${entry}` });
+          return z.NEVER;
+        }
+        let url: URL;
+        try {
+          url = new URL(entry.slice(separator + 1));
+        } catch {
+          ctx.addIssue({ code: "custom", message: `invalid_webhook_url: ${name}` });
+          return z.NEVER;
+        }
+        if (url.protocol !== "http:" && url.protocol !== "https:") {
+          ctx.addIssue({ code: "custom", message: `invalid_webhook_url: ${name}` });
+          return z.NEVER;
+        }
+        // fetch refuses a URL that carries credentials, so they travel as a header instead
+        const auth = url.username ? { username: decodeURIComponent(url.username), password: decodeURIComponent(url.password) } : undefined;
+        url.username = "";
+        url.password = "";
+        webhooks[name] = { url: url.toString(), auth };
+      }
+      return webhooks;
+    });
   }
 }

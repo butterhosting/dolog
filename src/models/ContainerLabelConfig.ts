@@ -6,6 +6,10 @@ export type ContainerLabelConfig = {
   throttlingLogsPerSecond: number;
   retentionTimeWindow: Temporal.Duration;
   retentionMaxLines: number;
+  alertingWebhookRef: string | undefined; // the name of a defined webhook; none means alerting is off
+  alertingTextPattern: RegExp | undefined;
+  alertingThroughputThreshold: number | undefined;
+  alertingCooldownWindow: Temporal.Duration;
 };
 
 export namespace ContainerLabelConfig {
@@ -14,6 +18,10 @@ export namespace ContainerLabelConfig {
     throttlingLogsPerSecond: setting("throttling.logs-per-second", Env.Schema.shape.X_DOLOG_THROTTLING_LOGS_PER_SECOND),
     retentionTimeWindow: setting("retention.time-window", Env.Schema.shape.X_DOLOG_RETENTION_TIME_WINDOW),
     retentionMaxLines: setting("retention.max-lines", Env.Schema.shape.X_DOLOG_RETENTION_MAX_LINES),
+    alertingWebhookRef: setting("alerting.webhook-ref", Env.Schema.shape.X_DOLOG_ALERTING_WEBHOOK_REF),
+    alertingTextPattern: setting("alerting.text-pattern", Env.Schema.shape.X_DOLOG_ALERTING_TEXT_PATTERN),
+    alertingThroughputThreshold: setting("alerting.throughput-threshold", Env.Schema.shape.X_DOLOG_ALERTING_THROUGHPUT_THRESHOLD),
+    alertingCooldownWindow: setting("alerting.cooldown-window", Env.Schema.shape.X_DOLOG_ALERTING_COOLDOWN_WINDOW),
   } satisfies { [K in keyof ContainerLabelConfig]: Setting<string, ContainerLabelConfig[K]> };
 
   type Source = "label" | "env";
@@ -33,7 +41,7 @@ export namespace ContainerLabelConfig {
     const sources: Partial<Resolution["sources"]> = {};
     const issues: Issue[] = [];
     for (const key of Object.keys(Settings) as Array<keyof ContainerLabelConfig>) {
-      const { name, envKey, schema } = Settings[key];
+      const { name, envKey, schema } = Settings[key] as Setting<string, unknown>;
       const raw = dlabels[name];
       const parsed = raw === undefined ? undefined : schema.safeParse(raw);
       if (parsed?.success) {

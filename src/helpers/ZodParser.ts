@@ -52,6 +52,37 @@ export namespace ZodParser {
       .transform(Number);
   }
 
+  export function regex() {
+    return z
+      .string()
+      .refine(
+        (value) => {
+          try {
+            new RegExp(value);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        { error: "invalid_regex" },
+      )
+      .transform((value) => new RegExp(value));
+  }
+
+  export function optional<T>(schema: z.ZodType<T, string>): z.ZodType<T | undefined, string> {
+    return z.string().transform((value, ctx) => {
+      if (value === "") {
+        return undefined;
+      }
+      const result = schema.safeParse(value);
+      if (!result.success) {
+        result.error.issues.forEach(({ message }) => ctx.addIssue({ code: "custom", message }));
+        return z.NEVER;
+      }
+      return result.data;
+    });
+  }
+
   export function forType<T>() {
     return {
       ensureSchemaMatchesType<U extends z.ZodType<T>>(schemaFn: () => U): ParserFactory<T, z.output<U>> {
