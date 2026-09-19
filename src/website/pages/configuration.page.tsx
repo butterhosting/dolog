@@ -95,7 +95,7 @@ namespace Internal {
     DOLOG_ALERTING_WEBHOOK_REF: {
       topic: "alerting",
       title: "webhook ref",
-      description: `The name of the webhook where container alerts will be sent. Also see ${"DOLOG_WEBHOOKS" satisfies Env.RealEnvName<Env.Defaultable>}`,
+      description: `The name of the webhook where container alerts will be sent. Also see ${"DOLOG_WEBHOOKS" satisfies Env.Defaultable}`,
     },
     DOLOG_ALERTING_TEXT_PATTERN: {
       topic: "alerting",

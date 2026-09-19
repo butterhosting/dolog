@@ -86,11 +86,11 @@ namespace Internal {
   }
 
   export function Footer() {
-    const { O_DOLOG_VERSION } = useRegistry("env");
+    const { DOLOG_VERSION } = useRegistry("env");
     return (
       <footer className="my-12 flex flex-col items-center gap-4">
         <div className="text-4xl font-bold text-c-accent">Dolog</div>
-        <div className="-mt-3 text-c-rule">{O_DOLOG_VERSION}</div>
+        <div className="-mt-3 text-c-rule">{DOLOG_VERSION}</div>
       </footer>
     );
   }

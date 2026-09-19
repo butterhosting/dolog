@@ -13,9 +13,9 @@ export class Logger {
     [LogLevel.error]: "❌",
   };
 
-  public static initialize(env: Pick<Env.Private, "O_DOLOG_TIMEZONE" | "X_DOLOG_LOGGING">) {
-    this.timeZone = env.O_DOLOG_TIMEZONE;
-    this.globalLogLevel = env.X_DOLOG_LOGGING;
+  public static initialize(env: Pick<Env.Private, "DOLOG_TIMEZONE" | "DOLOG_LOGGING">) {
+    this.timeZone = env.DOLOG_TIMEZONE;
+    this.globalLogLevel = env.DOLOG_LOGGING;
   }
 
   private readonly filename: string;

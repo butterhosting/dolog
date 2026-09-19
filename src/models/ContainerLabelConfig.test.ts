@@ -106,7 +106,7 @@ describe("ContainerLabelConfig", () => {
   });
 
   it("should spell a setting's env var as its name upper-cased with underscores", () => {
-    expect(ContainerLabelConfig.envKeyOf("retention.time-window")).toEqual("X_DOLOG_RETENTION_TIME_WINDOW");
-    expect(ContainerLabelConfig.envKeyOf("throttling.logs-per-second")).toEqual("X_DOLOG_THROTTLING_LOGS_PER_SECOND");
+    expect(ContainerLabelConfig.envKeyOf("retention.time-window")).toEqual("DOLOG_RETENTION_TIME_WINDOW");
+    expect(ContainerLabelConfig.envKeyOf("throttling.logs-per-second")).toEqual("DOLOG_THROTTLING_LOGS_PER_SECOND");
   });
 });

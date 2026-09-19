@@ -252,7 +252,7 @@ export class DockerSocket {
   }
 
   private async request(path: string, signal?: AbortSignal): Promise<Response> {
-    const socket = this.env.X_DOLOG_DOCKER_SOCKET;
+    const socket = this.env.DOLOG_DOCKER_SOCKET;
     const response = await fetch(`http://docker${path}`, { unix: socket, signal }).catch((cause) => {
       throw DockerError.socket_unreachable({ socket, reason: `${cause}` });
     });
@@ -280,7 +280,7 @@ export class DockerSocket {
   }
 
   private readLabels(labels: Record<string, string> | null | undefined): Record<string, string> {
-    const prefix = this.env.X_DOLOG_CONTAINER_LABEL_PREFIX;
+    const prefix = this.env.DOLOG_CONTAINER_LABEL_PREFIX;
     return Object.fromEntries(
       Object.entries(labels ?? {})
         .filter(([key]) => key.startsWith(prefix))

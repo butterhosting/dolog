@@ -190,7 +190,7 @@ describe(DockerSocket.name, () => {
 
     it("should keep only the labels under the configured prefix, and strip that prefix", async () => {
       // given
-      const prefix = context.env.X_DOLOG_CONTAINER_LABEL_PREFIX;
+      const prefix = context.env.DOLOG_CONTAINER_LABEL_PREFIX;
       respondWith(
         Response.json([
           {

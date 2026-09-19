@@ -40,8 +40,8 @@ export class ConfigurationService {
   }
 
   public snapshot(svcs: Svc[]): Configuration {
-    const INSTANCE_WIDE = ["O_DOLOG_TIMEZONE", "X_DOLOG_LOGGING", "X_DOLOG_DOCKER_SOCKET", "X_DOLOG_WEBHOOKS"] satisfies Env.Defaultable[];
-    const prefix = this.env.X_DOLOG_CONTAINER_LABEL_PREFIX;
+    const INSTANCE_WIDE = ["DOLOG_TIMEZONE", "DOLOG_LOGGING", "DOLOG_DOCKER_SOCKET", "DOLOG_WEBHOOKS"] satisfies Env.Defaultable[];
+    const prefix = this.env.DOLOG_CONTAINER_LABEL_PREFIX;
 
     const instanceWide = INSTANCE_WIDE.map((key) => this.setting(key));
     const perContainer = Object.values(ContainerLabelConfig.Settings).map(({ name, envKey }) => ({
@@ -64,15 +64,15 @@ export class ConfigurationService {
 
   private setting(key: Env.Defaultable): Configuration.Setting {
     return {
-      envVar: Env.realEnvName(key),
+      envVar: key,
       envValue: (() => {
         switch (key) {
-          case "X_DOLOG_WEBHOOKS": {
-            const entries = Object.entries(this.env.X_DOLOG_WEBHOOKS);
+          case "DOLOG_WEBHOOKS": {
+            const entries = Object.entries(this.env.DOLOG_WEBHOOKS);
             return entries.length > 0 ? entries.map(([name, webhook]) => `${name} = ${webhook.url}`).join("\n") : undefined;
           }
           default: {
-            return this.env.X_DOLOG_PROVIDED[key];
+            return this.env.DOLOG_PROVIDED[key];
           }
         }
       })(),

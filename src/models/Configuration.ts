@@ -7,7 +7,7 @@ export type Configuration = {
 };
 
 export namespace Configuration {
-  export type EnvVar = Env.RealEnvName<Env.Defaultable>;
+  export type EnvVar = Env.Defaultable;
 
   export type Setting = {
     envVar: EnvVar;

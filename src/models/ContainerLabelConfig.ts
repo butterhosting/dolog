@@ -15,13 +15,13 @@ export type ContainerLabelConfig = {
 export namespace ContainerLabelConfig {
   // `satisfies` rather than a type annotation
   export const Settings = {
-    throttlingLogsPerSecond: setting("throttling.logs-per-second", Env.Schema.shape.X_DOLOG_THROTTLING_LOGS_PER_SECOND),
-    retentionTimeWindow: setting("retention.time-window", Env.Schema.shape.X_DOLOG_RETENTION_TIME_WINDOW),
-    retentionMaxLines: setting("retention.max-lines", Env.Schema.shape.X_DOLOG_RETENTION_MAX_LINES),
-    alertingWebhookRef: setting("alerting.webhook-ref", Env.Schema.shape.X_DOLOG_ALERTING_WEBHOOK_REF),
-    alertingTextPattern: setting("alerting.text-pattern", Env.Schema.shape.X_DOLOG_ALERTING_TEXT_PATTERN),
-    alertingThroughputThreshold: setting("alerting.throughput-threshold", Env.Schema.shape.X_DOLOG_ALERTING_THROUGHPUT_THRESHOLD),
-    alertingCooldownWindow: setting("alerting.cooldown-window", Env.Schema.shape.X_DOLOG_ALERTING_COOLDOWN_WINDOW),
+    throttlingLogsPerSecond: setting("throttling.logs-per-second", Env.Schema.shape.DOLOG_THROTTLING_LOGS_PER_SECOND),
+    retentionTimeWindow: setting("retention.time-window", Env.Schema.shape.DOLOG_RETENTION_TIME_WINDOW),
+    retentionMaxLines: setting("retention.max-lines", Env.Schema.shape.DOLOG_RETENTION_MAX_LINES),
+    alertingWebhookRef: setting("alerting.webhook-ref", Env.Schema.shape.DOLOG_ALERTING_WEBHOOK_REF),
+    alertingTextPattern: setting("alerting.text-pattern", Env.Schema.shape.DOLOG_ALERTING_TEXT_PATTERN),
+    alertingThroughputThreshold: setting("alerting.throughput-threshold", Env.Schema.shape.DOLOG_ALERTING_THROUGHPUT_THRESHOLD),
+    alertingCooldownWindow: setting("alerting.cooldown-window", Env.Schema.shape.DOLOG_ALERTING_COOLDOWN_WINDOW),
   } satisfies { [K in keyof ContainerLabelConfig]: Setting<string, ContainerLabelConfig[K]> };
 
   type Source = "label" | "env";
@@ -51,7 +51,7 @@ export namespace ContainerLabelConfig {
       }
       if (parsed) {
         issues.push({
-          label: `${env.X_DOLOG_CONTAINER_LABEL_PREFIX}${name}`,
+          label: `${env.DOLOG_CONTAINER_LABEL_PREFIX}${name}`,
           value: raw!,
           reason: parsed.error.issues.map((issue) => issue.message).join("; "),
         });
@@ -67,11 +67,11 @@ export namespace ContainerLabelConfig {
   }
 
   export function envKeyOf<Name extends string>(name: Name): EnvKey<Name> {
-    return `X_DOLOG_${name.replaceAll(/[.-]/g, "_").toUpperCase()}` as EnvKey<Name>;
+    return `DOLOG_${name.replaceAll(/[.-]/g, "_").toUpperCase()}` as EnvKey<Name>;
   }
 
   type Underscored<S extends string> = S extends `${infer Head}${"." | "-"}${infer Tail}` ? `${Head}_${Underscored<Tail>}` : S;
-  type EnvKey<Name extends string> = `X_DOLOG_${Uppercase<Underscored<Name>>}`;
+  type EnvKey<Name extends string> = `DOLOG_${Uppercase<Underscored<Name>>}`;
 
   type Setting<Name extends string, T> = {
     name: Name;

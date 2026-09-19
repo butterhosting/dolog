@@ -61,15 +61,15 @@ export namespace TestEnvironment {
     // but Bun is so fast it's not needed
     const unitTestRoot = join(cwd, "opt", "unit-test");
     const env = Env.initialize("UTC", {
-      O_DOLOG_STAGE: "dev",
-      O_DOLOG_TIMEZONE: "UTC",
-      X_DOLOG_ROOT: join(unitTestRoot, "dolog"),
-      X_DOLOG_LOGGING: LogLevel.warn,
-      X_DOLOG_DOCKER_SOCKET: "/var/run/docker.sock",
-      X_DOLOG_THROTTLING_LOGS_PER_SECOND: "5",
-      X_DOLOG_RETENTION_TIME_WINDOW: "30d",
-      X_DOLOG_RETENTION_MAX_LINES: "100000",
-      X_DOLOG_WEBHOOKS: "ops=https://alerts:secret@hooks.example.com/dolog",
+      DOLOG_STAGE: "dev",
+      DOLOG_TIMEZONE: "UTC",
+      DOLOG_ROOT: join(unitTestRoot, "dolog"),
+      DOLOG_LOGGING: LogLevel.warn,
+      DOLOG_DOCKER_SOCKET: "/var/run/docker.sock",
+      DOLOG_THROTTLING_LOGS_PER_SECOND: "5",
+      DOLOG_RETENTION_TIME_WINDOW: "30d",
+      DOLOG_RETENTION_MAX_LINES: "100000",
+      DOLOG_WEBHOOKS: "ops=https://alerts:secret@hooks.example.com/dolog",
     });
     const patchEnvironmentVariables = (environment: Record<string, string>) => {
       Object.assign(Bun.env, environment);
@@ -79,10 +79,10 @@ export namespace TestEnvironment {
     Logger.initialize(env);
 
     // Setup filesystem
-    await mkdir(dirname(env.X_DOLOG_DATABASE), { recursive: true });
+    await mkdir(dirname(env.DOLOG_DATABASE), { recursive: true });
     // WAL keeps two sidecar files; leaving them behind would pair a stale journal with a fresh database
     await Promise.all(
-      [`${env.X_DOLOG_DATABASE}`, `${env.X_DOLOG_DATABASE}-wal`, `${env.X_DOLOG_DATABASE}-shm`].map((file) => rm(file, { force: true })),
+      [`${env.DOLOG_DATABASE}`, `${env.DOLOG_DATABASE}-wal`, `${env.DOLOG_DATABASE}-shm`].map((file) => rm(file, { force: true })),
     );
 
     // Setup SQLite

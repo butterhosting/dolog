@@ -51,9 +51,9 @@ cmd_image_create() {
     tmpfile="./dist/dolog.Dockerfile"
     mkdir -p ./dist
 
-    dolog_root=$(grep '^X_DOLOG_ROOT=' ".env.${stage}" | cut -d= -f2-)
+    dolog_root=$(grep '^DOLOG_ROOT=' ".env.${stage}" | cut -d= -f2-)
     if [ -z "$dolog_root" ]; then
-        printf "Error: X_DOLOG_ROOT not found in .env.%s\n" "$stage"
+        printf "Error: DOLOG_ROOT not found in .env.%s\n" "$stage"
         exit 1
     fi
 

@@ -32,7 +32,7 @@ export class Server {
   @Initialize
   public listen() {
     const server: Bun.Server<Socket.Context> = Bun.serve({
-      development: this.env.O_DOLOG_STAGE === "dev",
+      development: this.env.DOLOG_STAGE === "dev",
       /**
        * Websockets
        */
@@ -93,11 +93,7 @@ export class Server {
          */
         "/internal-api/env": {
           GET: this.handleRoute(() => {
-            const response = Object.entries(this.env)
-              .filter(([key]) => Env.isPublic(key))
-              .map(([key, value]) => ({ [key]: value }))
-              .reduce((kv1, kv2) => Object.assign({}, kv1, kv2), {});
-            return Response.json(response as Env.Public);
+            return Response.json(Env.onlyPublic(this.env));
           }),
         },
 
@@ -153,20 +149,20 @@ export class Server {
     console.log(
       [
         "",
-        `  🚀 \x1b[1mDolog started on ${Temporal.Now.plainDateTimeISO(this.env.O_DOLOG_TIMEZONE)
+        `  🚀 \x1b[1mDolog started on ${Temporal.Now.plainDateTimeISO(this.env.DOLOG_TIMEZONE)
           .toString({ smallestUnit: "second" })
-          .replace("T", " ")} (${this.env.O_DOLOG_TIMEZONE})\x1b[0m`,
+          .replace("T", " ")} (${this.env.DOLOG_TIMEZONE})\x1b[0m`,
         "",
         `  \x1b[1mServer\x1b[0m    ${server.url}`,
         "",
-        `  \x1b[1mStage\x1b[0m     ${this.env.O_DOLOG_STAGE}`,
-        `  \x1b[1mCommit\x1b[0m    ${this.env.O_DOLOG_COMMIT}`,
-        `  \x1b[1mVersion\x1b[0m   ${this.env.O_DOLOG_VERSION}`,
+        `  \x1b[1mStage\x1b[0m     ${this.env.DOLOG_STAGE}`,
+        `  \x1b[1mCommit\x1b[0m    ${this.env.DOLOG_COMMIT}`,
+        `  \x1b[1mVersion\x1b[0m   ${this.env.DOLOG_VERSION}`,
         "",
-        `  \x1b[1mLogging\x1b[0m   ${this.env.X_DOLOG_LOGGING}`,
-        `  \x1b[1mTimezone\x1b[0m  ${this.env.O_DOLOG_TIMEZONE}`,
-        `  \x1b[1mSocket\x1b[0m    ${this.env.X_DOLOG_DOCKER_SOCKET}`,
-        `  \x1b[1mThrottle\x1b[0m  ${this.env.X_DOLOG_THROTTLING_LOGS_PER_SECOND} logs/second/container`,
+        `  \x1b[1mLogging\x1b[0m   ${this.env.DOLOG_LOGGING}`,
+        `  \x1b[1mTimezone\x1b[0m  ${this.env.DOLOG_TIMEZONE}`,
+        `  \x1b[1mSocket\x1b[0m    ${this.env.DOLOG_DOCKER_SOCKET}`,
+        `  \x1b[1mThrottle\x1b[0m  ${this.env.DOLOG_THROTTLING_LOGS_PER_SECOND} logs/second/container`,
         "",
       ].join("\n"),
     );

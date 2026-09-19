@@ -25,7 +25,7 @@ export class RestrictedService {
 
   @Initialize
   public async inventFixtureContainer(): Promise<void> {
-    if (this.env.O_DOLOG_STAGE !== "dev") {
+    if (this.env.DOLOG_STAGE !== "dev") {
       return;
     }
 
