@@ -7,6 +7,7 @@ import { useRegistry } from "../../hooks/basics/useRegistry";
 import { useHost } from "../../hooks/useHost";
 import { useSvcs } from "../../hooks/useSvcs";
 import { Route } from "../../Route";
+import { LogoIcon } from "../icons/LogoIcon";
 import { SlidersIcon } from "../icons/SlidersIcon";
 import { Meter } from "../Meter";
 import { Cell } from "./Cell";
@@ -86,11 +87,21 @@ namespace Internal {
   }
 
   export function Footer() {
-    const { DOLOG_VERSION } = useRegistry("env");
+    const { DOLOG_SUPPORTER } = useRegistry("env");
     return (
-      <footer className="my-12 flex flex-col items-center gap-4">
-        <div className="text-4xl font-bold text-c-accent">Dolog</div>
-        <div className="-mt-3 text-c-rule">{DOLOG_VERSION}</div>
+      <footer className="my-12 flex justify-center">
+        <div className="flex flex-col items-end gap-3">
+          <div className="flex items-center gap-2.5">
+            <LogoIcon className="h-12 w-auto" withLove={DOLOG_SUPPORTER} />
+            <div className="text-5xl font-bold text-c-accent">Dolog</div>
+          </div>
+          <div className="text-c-rule">
+            by{" "}
+            <a href="https://www.butterhost.ing" target="_blank" rel="noopener noreferrer" className="text-c-accent hover:text-white">
+              Butterhost.ing
+            </a>
+          </div>
+        </div>
       </footer>
     );
   }

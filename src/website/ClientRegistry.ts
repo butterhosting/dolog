@@ -1,6 +1,7 @@
 import { Env } from "@/Env";
 import { ProblemDetails } from "@/models/internal/ProblemDetails";
 import { Class } from "@/types/Class";
+import { OmitBetter } from "@/types/OmitBetter";
 import { createContext } from "react";
 import { Yesttp } from "yesttp";
 import { SvcClient } from "./clients/SvcClient";
@@ -25,11 +26,17 @@ export class ClientRegistry {
   }
 
   private static printEnv(env: Env.Public) {
-    const longestKey = Object.keys(env)
+    const envCopy: OmitBetter<Env.Public, "DOLOG_SUPPORTER"> = {
+      DOLOG_STAGE: env.DOLOG_STAGE,
+      DOLOG_VERSION: env.DOLOG_VERSION,
+      DOLOG_COMMIT: env.DOLOG_COMMIT,
+      DOLOG_TIMEZONE: env.DOLOG_TIMEZONE,
+    };
+    const longestKey = Object.keys(envCopy)
       .map((k) => k.length)
       .reduce((l1, l2) => Math.max(l1, l2), 0);
     let result = ``;
-    Object.entries(env).forEach(([key, value]) => {
+    Object.entries(envCopy).forEach(([key, value]) => {
       result += `${key.padEnd(longestKey + 1)}: ${value}\n`;
     });
     console.info("%cDolog\n\n%c%s", "font-size: 24px; font-weight: 800;", "font-size: 12px; font-weight: normal", result);

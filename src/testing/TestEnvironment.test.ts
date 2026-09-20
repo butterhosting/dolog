@@ -68,6 +68,8 @@ export namespace TestEnvironment {
       DOLOG_ROOT: join(unitTestRoot, "dolog"),
       DOLOG_LOGGING: LogLevel.warn,
       DOLOG_DOCKER_SOCKET: "/var/run/docker.sock",
+      DOLOG_VERIFICATION_KEY:
+        "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAalpLQu9Fkn/R3WylORAad6UB0XAOowFIjF2/FwAyjpc=\n-----END PUBLIC KEY-----",
       DOLOG_THROTTLING_LOGS_PER_SECOND: "5",
       DOLOG_RETENTION_TIME_WINDOW: "30d",
       DOLOG_RETENTION_MAX_LINES: "100000",
