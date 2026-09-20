@@ -1,9 +1,9 @@
 import { Temporal } from "@js-temporal/polyfill";
+import { Timezone } from "./Timezone";
 
 export namespace Prettify {
-  export function timestamp(instant: Temporal.Instant): string {
-    // TODO: timzezone
-    const at = instant.toZonedDateTimeISO("UTC");
+  export function timestamp(instant: Temporal.Instant, timezone: string): string {
+    const at = Timezone.toWallClock(instant, timezone);
     return `${day(at.toPlainDate())} ${pad(at.hour)}:${pad(at.minute)}:${pad(at.second)}`;
   }
 

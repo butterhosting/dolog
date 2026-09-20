@@ -1,3 +1,5 @@
+import { Timezone } from "@/helpers/Timezone";
+import { useRegistry } from "@/website/hooks/basics/useRegistry";
 import { Temporal } from "@js-temporal/polyfill";
 import clsx from "clsx";
 import { useMemo, useState } from "react";
@@ -10,22 +12,14 @@ type Props = {
   done: (instant: Temporal.Instant) => void;
 };
 
-/**
- * One field, holding a bare wall clock read as UTC -- the same clock the timestamps beside every log
- * line are printed in, so what is typed here and what is read there are the same thing.
- */
 export function NavigateDialog({ current, close, done }: Props) {
-  /**
-   * Split in two on purpose. A date wants the calendar a native picker gives it -- "the 3rd" is
-   * something you point at -- while a time is something you type, and a combined control makes you
-   * tab through a calendar to reach it. The time therefore starts at midnight, which is the answer
-   * most of the time and the one the presets assume.
-   */
-  const [date, setDate] = useState(current ? Internal.toDateField(current) : "");
-  const [time, setTime] = useState(current ? Internal.toTimeField(current) : Internal.MIDNIGHT);
-  const instant = Internal.parse(date, time);
-  // read off the clock once, so a modal left open overnight cannot relabel its own buttons
-  const presets = useMemo(() => Internal.presets(), []);
+  const { DOLOG_TIMEZONE } = useRegistry("env");
+
+  const [date, setDate] = useState(current ? Internal.toDateField(current, DOLOG_TIMEZONE) : "");
+  const [time, setTime] = useState(current ? Internal.toTimeField(current, DOLOG_TIMEZONE) : Internal.MIDNIGHT);
+  const instant = Internal.parse(date, time, DOLOG_TIMEZONE);
+
+  const presets = useMemo(() => Internal.presets(DOLOG_TIMEZONE), []);
 
   return (
     <Dialog isOpen issueCloseRequestWhenClickingBackdrop issueCloseRequestWhenPressingEscape onCloseRequest={close} className="p-6">
@@ -97,20 +91,11 @@ export function NavigateDialog({ current, close, done }: Props) {
 }
 
 namespace Internal {
-  /** ISO numbering, so index 0 is Monday -- what `dayOfWeek` returns as 1. */
   const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-  /**
-   * The last five days. The two nearest are named by their relation to now, which is how anyone
-   * would say them; the rest carry their date beside the weekday, because a bare "tuesday" leaves
-   * the reader counting backwards to work out which tuesday is meant.
-   *
-   * Each lands on midnight, so the day is entered at its start rather than at whatever time happened
-   * to be in the field.
-   */
-  export function presets(): { label: string; at: string }[] {
-    const today = Temporal.Now.plainDateISO("UTC");
+  export function presets(timezone: string): { label: string; at: string }[] {
+    const today = Timezone.dayOf(Temporal.Now.instant(), timezone);
     return Array.from({ length: 5 }, (_, back) => {
       const date = today.subtract({ days: back });
       const dated = `${WEEKDAYS[date.dayOfWeek - 1]!}, ${MONTHS[date.month - 1]!} ${date.day}`;
@@ -119,33 +104,20 @@ namespace Internal {
     });
   }
 
-  /** What an untouched time field says, and what a preset puts back into it. */
   export const MIDNIGHT = "00:00:00";
 
-  /** Both fields speak a bare wall clock, so the zone is dropped rather than converted. */
-  export function toDateField(instant: Temporal.Instant): string {
-    return instant.toString().slice(0, "YYYY-MM-DD".length);
+  export function toDateField(instant: Temporal.Instant, timezone: string): string {
+    return Timezone.toWallClock(instant, timezone).toPlainDate().toString();
   }
 
-  export function toTimeField(instant: Temporal.Instant): string {
-    return instant.toString({ smallestUnit: "second" }).slice("YYYY-MM-DDT".length).replace("Z", "");
+  export function toTimeField(instant: Temporal.Instant, timezone: string): string {
+    return Timezone.toWallClock(instant, timezone).toPlainTime().toString({ smallestUnit: "second" });
   }
 
-  /**
-   * The two fields back into one instant. Seconds are optional so `09:30` is a fair thing to type,
-   * and an empty time is read as midnight rather than as a mistake -- that is what the placeholder
-   * promises when the field is left alone.
-   */
-  export function parse(date: string, time: string): Temporal.Instant | null {
+  export function parse(date: string, time: string, timezone: string): Temporal.Instant | null {
     if (!date) {
       return null;
     }
-    const typed = time.trim() || MIDNIGHT;
-    const filled = typed.length === "HH:mm".length ? `${typed}:00` : typed;
-    try {
-      return Temporal.Instant.from(`${date}T${filled}Z`);
-    } catch {
-      return null;
-    }
+    return Timezone.fromWallClock(`${date}T${time.trim() || MIDNIGHT}`, timezone);
   }
 }

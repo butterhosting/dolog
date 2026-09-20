@@ -4,7 +4,7 @@ import { TestFixture } from "@/testing/TestFixture.test";
 import { Temporal } from "@js-temporal/polyfill";
 import { describe, expect, it } from "bun:test";
 import { Line } from "./Line";
-import { LineRenderer as Renderer } from "./Renderer";
+import { Renderer as Renderer } from "./Renderer";
 import { Anchor } from "@/models/Anchor";
 
 /**
@@ -15,7 +15,7 @@ import { Anchor } from "@/models/Anchor";
  * lines below it, and a pin comes before whatever it sits above.
  */
 describe(Renderer.name, () => {
-  const renderer = new Renderer();
+  const renderer = new Renderer({ DOLOG_TIMEZONE: "UTC" });
 
   function at(timestamp: string, id = timestamp): ContainerEvent {
     return TestFixture.logEvent({ id, timestamp: Temporal.Instant.from(timestamp) });
@@ -43,7 +43,6 @@ describe(Renderer.name, () => {
     });
   }
 
-  /** Drops the leading note, for tests that are about what happens further down the list. */
   function body(rows: Line[]): string[] {
     return shape(rows).slice(1);
   }
@@ -56,6 +55,24 @@ describe(Renderer.name, () => {
       const rows = build({ events });
       // then
       expect(body(rows)).toEqual(["line:2026-03-01T23:59:00Z", "day:2026-03-02", "line:2026-03-02T00:01:00Z"]);
+    });
+
+    it("turns the date at the zone's midnight, and pins around that", () => {
+      // given -- 18:15Z is midnight in Kathmandu (+05:45), and UTC midnight is mid-day there
+      const kathmandu = new Renderer({ DOLOG_TIMEZONE: "Asia/Kathmandu" });
+      const events = [at("2026-03-01T18:00:00Z"), at("2026-03-01T18:20:00Z"), at("2026-03-02T00:01:00Z")];
+      // when
+      const before = kathmandu.render({ events, hasOlder: true, hasNewer: false, anchor: Anchor.parse("2026-03-01T18:10:00Z") });
+      const after = kathmandu.render({ events, hasOlder: true, hasNewer: false, anchor: Anchor.parse("2026-03-01T18:16:00Z") });
+      // then
+      expect(body(before)).toEqual([
+        "line:2026-03-01T18:00:00Z",
+        "pin",
+        "day:2026-03-02",
+        "line:2026-03-01T18:20:00Z",
+        "line:2026-03-02T00:01:00Z",
+      ]);
+      expect(body(after).slice(1, 3)).toEqual(["day:2026-03-02", "pin"]);
     });
 
     it("leaves lines within one date unheaded", () => {

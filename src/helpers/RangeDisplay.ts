@@ -1,3 +1,4 @@
+import { Timezone } from "@/helpers/Timezone";
 import { Range } from "@/website/hooks/objects/Range";
 import { Temporal } from "@js-temporal/polyfill";
 
@@ -28,12 +29,12 @@ export namespace RangeDisplay {
     return Object.values(Range.Preset).filter((preset) => PRESETS[preset].group === group);
   }
 
-  export function label(range: Range): string {
+  export function label(range: Range, timezone: string): string {
     if (range.type === "preset") {
       return presetLabel(range.preset);
     }
     const shown = (instant: Temporal.Instant | undefined, fallback: string) =>
-      instant ? instant.toString({ smallestUnit: "minute" }).replace("T", " ").replace("Z", "") : fallback;
+      instant ? Timezone.toWallClock(instant, timezone).toString({ smallestUnit: "minute" }).replace("T", " ") : fallback;
     return `${shown(range.since, "the beginning")} → ${shown(range.until, "now")}`;
   }
 }

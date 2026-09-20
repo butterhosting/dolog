@@ -1,17 +1,18 @@
 import { Timestamp } from "@/helpers/Timestamp";
+import { Timezone } from "@/helpers/Timezone";
 import { Temporal } from "@js-temporal/polyfill";
 
 export type Range =
   | {
       type: "preset";
       preset: Range.Preset;
-      materialize(now?: Temporal.Instant): Materialization;
+      materialize(timezone: string, now?: Temporal.Instant): Materialization;
     }
   | {
       type: "custom";
       since?: Temporal.Instant;
       until?: Temporal.Instant;
-      materialize(now?: Temporal.Instant): Materialization;
+      materialize(timezone: string, now?: Temporal.Instant): Materialization;
     };
 
 type Materialization = { since?: Temporal.Instant; until?: Temporal.Instant };
@@ -39,8 +40,8 @@ export namespace Range {
     return {
       type: "preset",
       preset,
-      materialize(now = Temporal.Now.instant()) {
-        return DETAILS[preset].window(now);
+      materialize(timezone, now = Temporal.Now.instant()) {
+        return DETAILS[preset].window(now, timezone);
       },
     };
   }
@@ -65,8 +66,8 @@ export namespace Range {
     return false;
   }
 
-  function midnight(now: Temporal.Instant, daysAgo: number): Temporal.Instant {
-    return now.toZonedDateTimeISO("UTC").startOfDay().subtract({ days: daysAgo }).toInstant();
+  function midnight(now: Temporal.Instant, timezone: string, daysAgo: number): Temporal.Instant {
+    return Timezone.midnight(Timezone.dayOf(now, timezone).subtract({ days: daysAgo }), timezone);
   }
 
   function lastly(minutes: number): (now: Temporal.Instant) => Materialization {
@@ -74,7 +75,7 @@ export namespace Range {
   }
 
   type Detail = {
-    window(now: Temporal.Instant): Materialization;
+    window(now: Temporal.Instant, timezone: string): Materialization;
   };
 
   const DETAILS: Record<Preset, Detail> = {
@@ -86,11 +87,11 @@ export namespace Range {
     [Preset.last7d]: { window: lastly(60 * 24 * 7) },
     [Preset.last30d]: { window: lastly(60 * 24 * 30) },
     [Preset.all]: { window: () => ({}) },
-    [Preset.today]: { window: (now) => ({ since: midnight(now, 0) }) },
+    [Preset.today]: { window: (now, timezone) => ({ since: midnight(now, timezone, 0) }) },
     [Preset.yesterday]: {
-      window: (now) => ({
-        since: midnight(now, 1),
-        until: midnight(now, 0),
+      window: (now, timezone) => ({
+        since: midnight(now, timezone, 1),
+        until: midnight(now, timezone, 0),
       }),
     },
   };

@@ -186,8 +186,8 @@ export namespace useFilter {
     };
   };
 
-  export function serializeForServer(clientFilter: ClientFilter): LogService.FilterSubQuery {
-    const { since, until } = clientFilter.range.materialize();
+  export function serializeForServer(clientFilter: ClientFilter, timezone: string): LogService.FilterSubQuery {
+    const { since, until } = clientFilter.range.materialize(timezone);
     return {
       filterPattern: clientFilter.pattern?.value || undefined,
       filterPatternType: clientFilter.pattern?.type || undefined,

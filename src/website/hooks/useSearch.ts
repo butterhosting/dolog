@@ -18,6 +18,7 @@ export function useSearch({
   navigateToUnloadedMatchResult,
 }: useSearch.Options): useSearch.Result {
   const logClient = useRegistry(LogClient);
+  const { DOLOG_TIMEZONE } = useRegistry("env");
 
   const [needle, setNeedle] = useState("");
   const [needleType, setNeedleType] = useState<Pattern.Type>(Pattern.Type.substr);
@@ -113,7 +114,7 @@ export function useSearch({
         searchPatternType: pattern.type,
         ...(isCurrentMatchVisible ? { anchorExclusive: cursor } : { anchorInclusive: cursor }),
         direction,
-        ...useFilter.serializeForServer(filter),
+        ...useFilter.serializeForServer(filter, DOLOG_TIMEZONE),
       });
 
       if (nextMatchId) {

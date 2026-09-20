@@ -5,6 +5,7 @@ import { Line } from "@/website/rendering/Line";
 import clsx from "clsx";
 import { ReactNode } from "react";
 import { JSX } from "react/jsx-runtime";
+import { useRegistry } from "../hooks/basics/useRegistry";
 import { ClientFilter } from "../hooks/objects/ClientFilter";
 
 /**
@@ -48,6 +49,7 @@ export namespace Row {
   };
 
   export function TimestampAnchor({ line: { timestamp }, dismiss }: TimestampAnchorProps) {
+    const { DOLOG_TIMEZONE } = useRegistry("env");
     return (
       <div data-anchored className="relative flex justify-center my-5">
         <span aria-hidden className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-c-accent" />
@@ -56,7 +58,7 @@ export namespace Row {
           title="dismiss this marker"
           className="relative bg-c-surface px-[1ch] text-c-accent cursor-pointer hover:brightness-125"
         >
-          ({Prettify.timestamp(timestamp)})
+          ({Prettify.timestamp(timestamp, DOLOG_TIMEZONE)})
         </button>
       </div>
     );
@@ -69,6 +71,7 @@ export namespace Row {
     match?: "main_match" | "side_match";
   };
   export function Event({ line: { event, isAnchored }, filter, toggleAnchor, match }: EventProps) {
+    const { DOLOG_TIMEZONE } = useRegistry("env");
     return (
       <div
         data-event={event.id} // TODO: use a shared constant for these custom DOM attributes
@@ -85,7 +88,7 @@ export namespace Row {
         )}
       >
         <button onClick={toggleAnchor} title="mark this line" className={clsx(TIMESTAMP, "cursor-pointer hover:text-white")}>
-          {Prettify.timestamp(event.timestamp)}
+          {Prettify.timestamp(event.timestamp, DOLOG_TIMEZONE)}
         </button>
         {(() => {
           const id = <span className="underline underline-offset-2">{event.container.did.slice(0, 7)}</span>;

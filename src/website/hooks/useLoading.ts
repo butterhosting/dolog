@@ -12,6 +12,7 @@ const MAX_WINDOW_SIZE = 300;
 
 export function useLoading({ svcId, filter }: useLoading.Options): useLoading.Result {
   const logClient = useRegistry(LogClient);
+  const { DOLOG_TIMEZONE } = useRegistry("env");
 
   const [events, setEvents] = useState<ContainerEvent[]>([]);
   const [isLoading, setLoading] = useState(false);
@@ -92,7 +93,7 @@ export function useLoading({ svcId, filter }: useLoading.Options): useLoading.Re
     const { data, hasNewer, hasOlder } = await logClient
       .list(svcId, {
         ...requestOptions,
-        ...useFilter.serializeForServer(filter),
+        ...useFilter.serializeForServer(filter, DOLOG_TIMEZONE),
       })
       .finally(() => setLoading(false));
 

@@ -9,7 +9,7 @@ import { DialogClient } from "./clients/DialogClient";
 import { HostClient } from "./clients/HostClient";
 import { LogClient } from "./clients/LogClient";
 import { SocketClient } from "./clients/SocketClient";
-import { LineRenderer } from "./rendering/Renderer";
+import { Renderer } from "./rendering/Renderer";
 
 export class ClientRegistry {
   /**
@@ -50,7 +50,7 @@ export class ClientRegistry {
     this.registry[HostClient.name] = new HostClient(yesttp);
     this.registry[ConfigurationClient.name] = new ConfigurationClient(yesttp);
     this.registry[LogClient.name] = new LogClient(yesttp);
-    this.registry[LineRenderer.name] = new LineRenderer();
+    this.registry[Renderer.name] = new Renderer(env);
   }
 
   public getEnv() {

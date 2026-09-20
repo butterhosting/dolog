@@ -1,11 +1,19 @@
 import { Anchor } from "@/models/Anchor";
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { Timezone } from "@/helpers/Timezone";
 import { Direction } from "@/models/Direction";
 import { Temporal } from "@js-temporal/polyfill";
 import { Line } from "./Line";
+import { Env } from "@/Env";
 
-export class LineRenderer {
-  public render({ events, hasOlder, hasNewer, anchor }: LineRenderer.Options): Line[] {
+export class Renderer {
+  private readonly timezone: string;
+
+  public constructor(env: Pick<Env.Public, "DOLOG_TIMEZONE">) {
+    this.timezone = env.DOLOG_TIMEZONE;
+  }
+
+  public render({ events, hasOlder, hasNewer, anchor }: Renderer.Options): Line[] {
     if (events.length === 0) {
       return [];
     }
@@ -91,15 +99,15 @@ export class LineRenderer {
   }
 
   private day(event: ContainerEvent): Temporal.PlainDate {
-    return event.timestamp.toZonedDateTimeISO("UTC").toPlainDate(); // TODO: timezone?
+    return Timezone.dayOf(event.timestamp, this.timezone);
   }
 
   private midnight(date: Temporal.PlainDate): Temporal.Instant {
-    return date.toZonedDateTime("UTC").toInstant(); // TODO: timezone?
+    return Timezone.midnight(date, this.timezone);
   }
 }
 
-export namespace LineRenderer {
+export namespace Renderer {
   export type Options = {
     anchor?: Anchor;
     events: ContainerEvent[];

@@ -1,4 +1,6 @@
 import { RangeDisplay } from "@/helpers/RangeDisplay";
+import { Timezone } from "@/helpers/Timezone";
+import { useRegistry } from "@/website/hooks/basics/useRegistry";
 import { Range } from "@/website/hooks/objects/Range";
 import { Temporal } from "@js-temporal/polyfill";
 import clsx from "clsx";
@@ -13,11 +15,12 @@ type Props = {
 };
 
 export function RangeDialog({ current, close, done }: Props) {
+  const { DOLOG_TIMEZONE } = useRegistry("env");
   const [custom, setCustom] = useState(current.type === "custom");
-  const [since, setSince] = useState(current.type === "custom" ? Internal.toField(current.since) : "");
-  const [until, setUntil] = useState(current.type === "custom" ? Internal.toField(current.until) : "");
+  const [since, setSince] = useState(current.type === "custom" ? Internal.toField(current.since, DOLOG_TIMEZONE) : "");
+  const [until, setUntil] = useState(current.type === "custom" ? Internal.toField(current.until, DOLOG_TIMEZONE) : "");
 
-  const parsed = { since: Internal.parse(since), until: Internal.parse(until) };
+  const parsed = { since: Timezone.fromWallClock(since, DOLOG_TIMEZONE), until: Timezone.fromWallClock(until, DOLOG_TIMEZONE) };
   // an empty end is open-ended, which is meaningful; a *malformed* one is not
   const broken = (since.length > 0 && !parsed.since) || (until.length > 0 && !parsed.until);
   const backwards = parsed.since && parsed.until && Temporal.Instant.compare(parsed.since, parsed.until) >= 0;
@@ -55,7 +58,7 @@ export function RangeDialog({ current, close, done }: Props) {
         >
           <div className="flex flex-col gap-1">
             <h2 className="text-lg font-bold">Custom range</h2>
-            <p className="text-sm text-c-rule">In UTC. Leave either side empty for an open end.</p> {/* TODO: timezone aware */}
+            <p className="text-sm text-c-rule">In {DOLOG_TIMEZONE}. Leave either side empty for an open end.</p>
           </div>
           <div className="flex gap-3">
             {(
@@ -112,19 +115,7 @@ namespace Internal {
     );
   }
 
-  /** `datetime-local` speaks a bare wall clock, so the zone is dropped rather than converted. */
-  export function toField(instant: Temporal.Instant | undefined): string {
-    return instant ? instant.toString({ smallestUnit: "second" }).replace("Z", "") : "";
-  }
-
-  export function parse(value: string): Temporal.Instant | null {
-    if (!value) {
-      return null;
-    }
-    try {
-      return Temporal.Instant.from(`${value.length === "YYYY-MM-DDTHH:mm".length ? `${value}:00` : value}Z`);
-    } catch {
-      return null;
-    }
+  export function toField(instant: Temporal.Instant | undefined, timezone: string): string {
+    return instant ? Timezone.toWallClock(instant, timezone).toString({ smallestUnit: "second" }) : "";
   }
 }

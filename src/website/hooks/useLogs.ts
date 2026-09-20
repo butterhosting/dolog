@@ -4,7 +4,7 @@ import { ServerMessage } from "@/models/socket/ServerMessage";
 import { useEffect, useMemo, useRef } from "react";
 import { SocketClient } from "../clients/SocketClient";
 import { Line } from "../rendering/Line";
-import { LineRenderer } from "../rendering/Renderer";
+import { Renderer } from "../rendering/Renderer";
 import { useRegistry } from "./basics/useRegistry";
 import { ClientFilter } from "./objects/ClientFilter";
 import { ParentNode } from "./objects/ParentNode";
@@ -13,7 +13,7 @@ import { Svc } from "@/models/Svc";
 
 export function useLogs({ svcId, parentNode, filter, anchor }: useLogs.Options): useLogs.Result {
   const socketClient = useRegistry(SocketClient);
-  const renderer = useRegistry(LineRenderer);
+  const renderer = useRegistry(Renderer);
 
   const { events, appendEvent, loadingRef, isLoading, hasNewer, hasOlder, requestLogs } = useLoading({
     svcId,
@@ -46,7 +46,7 @@ export function useLogs({ svcId, parentNode, filter, anchor }: useLogs.Options):
         }
       },
     });
-    socketClient.declareStreamInterest(svcId, filter); // TODO: why is this websocket sent every second on the overview page ???
+    socketClient.declareStreamInterest(svcId, filter);
     return () => {
       socketClient.undeclareStreamInterest();
       socketClient.unsubscribe(subscription);
