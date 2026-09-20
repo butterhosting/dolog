@@ -1,0 +1,102 @@
+# What dolog runs beside, in `bun dev` and in the e2e stack alike. Two containers to point it at,
+# which between them cover the two things the viewer has to get right: a log slow enough to read,
+# and one fast enough to be throttled. And `webhooks`, which is where both of them send their alerts.
+#
+# `$` is doubled throughout because compose expands it before the shell ever sees it.
+#
+# The two log writers carry `attach: false`: the daemon still records every line, so dolog reads
+# them off the socket as usual, compose just stops mirroring them into the terminal running `bun dev`.
+# `docker compose logs trickle` still prints them on demand.
+services:
+  trickle:
+    image: alpine
+    container_name: trickle
+    cpus: "0.1"
+    mem_limit: 12m
+    restart: unless-stopped
+    attach: false
+    labels:
+      dolog.alerting.text-pattern: '" 500 '
+    command:
+      - sh
+      - -c
+      - |
+        i=0
+        while true; do
+          i=$$((i + 1))
+          case $$((i % 6)) in
+            0) m=GET;    p=/ ;;
+            1) m=GET;    p=/health ;;
+            2) m=POST;   p=/api/orders ;;
+            3) m=GET;    p=/api/orders/8821 ;;
+            4) m=PUT;    p=/assets/app.css ;;
+            *) m=DELETE; p=/login ;;
+          esac
+          case $$(((i * 3) % 10)) in
+            5) c=201 ;;
+            6) c=304 ;;
+            7) c=404 ;;
+            8) c=500 ;;
+            *) c=200 ;;
+          esac
+          echo "$$(date -u +%H:%M:%S) \"$$m $$p\" $$c $$(((i * 37) % 400 + 3))ms"
+          sleep 1
+        done
+
+  firehose:
+    image: alpine
+    container_name: firehose
+    cpus: "0.1"
+    mem_limit: 12m
+    restart: unless-stopped
+    attach: false
+    # ~400 lines a second, comfortably over the custom budget of 150 so the throttler has to fold
+    # and over the throughput threshold too, which alerts the `webhooks` container once a minute
+    labels:
+      dolog.throttling.logs-per-second: 150
+      dolog.alerting.throughput-threshold: 300
+    command:
+      - sh
+      - -c
+      - |
+        i=0
+        while true; do
+          j=0
+          while [ $$j -lt 200 ]; do
+            i=$$((i + 1))
+            j=$$((j + 1))
+            echo "burst line $$i"
+          done
+          sleep 0.5
+        done
+
+  webhooks:
+    image: oven/bun:alpine
+    container_name: webhooks
+    restart: unless-stopped
+    networks:
+      - app-network
+    stop_grace_period: 100ms
+    command:
+      - bun
+      - -e
+      - |
+        Bun.serve({
+          port: 8080,
+          async fetch(request) {
+            // the healthcheck below asks every second, and is not worth a line
+            if (request.method === "POST") {
+              console.log(request.method, new URL(request.url).pathname, await request.json());
+            }
+            return new Response(null, { status: 204 });
+          },
+        });
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/ || exit 1"]
+      interval: 1s
+      timeout: 10s
+      retries: 10
+
+networks:
+  app-network:
+    driver: bridge

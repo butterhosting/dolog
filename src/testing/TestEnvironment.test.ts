@@ -1,3 +1,4 @@
+import { WebhookSender } from "@/services/alerting/WebhookSender";
 import { DockerSocket } from "@/services/streaming/DockerSocket";
 import { Sqlite } from "@/drizzle/sqlite";
 import { Env } from "@/Env";
@@ -25,6 +26,7 @@ export namespace TestEnvironment {
     flushTrigger: Subject<void>;
     patchEnvironmentVariables(environment: Record<string, string>): void;
     dockerSocketMock: Mocked<DockerSocket>;
+    webhookSenderMock: Mocked<WebhookSender>;
   }
 
   const cleanupTasks: Array<() => unknown | Promise<unknown>> = [];
@@ -104,6 +106,9 @@ export namespace TestEnvironment {
       streamLogLines: mock(),
       streamStats: mock(),
     });
+    const webhookSenderMock = registerMockObject<WebhookSender>({
+      post: mock(),
+    });
 
     /** Stands in for the clock the repository would otherwise flush on, so tests decide when. */
     const flushTrigger = new Subject<void>();
@@ -117,6 +122,7 @@ export namespace TestEnvironment {
       flushTrigger,
       patchEnvironmentVariables,
       dockerSocketMock,
+      webhookSenderMock,
     };
   }
 }

@@ -99,7 +99,7 @@ export class RestrictedService {
 
   /**
    * The same deterministic personality as the real `trickle` container (see
-   * `compose-containers.yaml`), plus a daily half-hour outage and the odd throttle, so every event
+   * `compose-deps.yaml`), plus a daily half-hour outage and the odd throttle, so every event
    * type shows up
    */
   private fakeEvent(ms: number, containerId: number): InferInsertModel<typeof $containerEvent> | undefined {

@@ -1,3 +1,6 @@
+include:
+  - compose-deps.yaml
+
 services:
   application:
     image: dolog:latest
@@ -14,7 +17,10 @@ services:
       interval: 1s
       timeout: 10s
       retries: 10
-
-networks:
-  app-network:
-    driver: bridge
+    depends_on:
+      trickle:
+        condition: service_started
+      firehose:
+        condition: service_started
+      webhooks:
+        condition: service_healthy

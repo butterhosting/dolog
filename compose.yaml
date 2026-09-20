@@ -1,7 +1,5 @@
-# `bun dev`. Brings up the app and the containers it watches together, so there is never a moment
-# where the log viewer is running with nothing to show.
 include:
-  - compose-containers.yaml
+  - compose-deps.yaml
 
 services:
   application:
@@ -12,14 +10,17 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      # the source, so `--hot` reloads on an edit the same as it does outside a container
       - .:/app
-      # keep the image's own install rather than letting the host's shadow it
       - /app/node_modules
-      # what dolog is *for*: the socket it reads containers and their logs from
       - /var/run/docker.sock:/var/run/docker.sock:ro
     working_dir: /app
     stop_grace_period: 100ms
+    networks:
+      - app-network
     depends_on:
-      - trickle
-      - firehose
+      trickle:
+        condition: service_started
+      firehose:
+        condition: service_started
+      webhooks:
+        condition: service_healthy

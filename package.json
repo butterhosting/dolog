@@ -13,7 +13,7 @@
     "e2e:headless": "playwright test --max-failures 1 --reporter github",
     "install:browsers": "playwright install chromium --with-deps",
     "lint": "bunx tsc --noEmit -p tsconfig.lint.json && bunx knip-bun",
-    "start:dev": "bun --env-file=.env.dev --hot src/index.ts",
+    "start:dev": "bun --env-file=.env.dev --watch src/index.ts",
     "start:e2e": "bun --env-file=.env.e2e src/index.ts",
     "start:prod": "bun --env-file=.env.prod src/index.ts",
     "tc": "bunx tsc --noEmit",

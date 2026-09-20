@@ -6,6 +6,7 @@ import { LoggingMiddleware } from "./middleware/logging/LoggingMiddleware";
 import { Middleware } from "./middleware/Middleware";
 import { EventRepository } from "./repositories/EventRepository";
 import { Server } from "./Server";
+import { WebhookSender } from "./services/alerting/WebhookSender";
 import { AlertingService } from "./services/AlertingService";
 import { ConfigurationService } from "./services/ConfigurationService";
 import { HostService } from "./services/HostService";
@@ -37,7 +38,8 @@ export class ServerRegistry {
     const { throttleService } = this.register({ ThrottleService }, [env]);
     const { fountain } = this.register({ Fountain }, [dockerSocket, throttleService]);
     this.register({ RetentionService }, [fountain, env, eventRepository]);
-    this.register({ AlertingService }, [fountain]);
+    const { webhookSender } = this.register({ WebhookSender }, []);
+    this.register({ AlertingService }, [fountain, throttleService, env, webhookSender]);
     const { socketService } = this.register({ SocketService }, []);
     const { svcService } = this.register({ SvcService }, [fountain, eventRepository, socketService]);
     const { logService } = this.register({ LogService }, [fountain, eventRepository, socketService]);

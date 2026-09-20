@@ -1,6 +1,9 @@
 import { Container } from "@/models/Container";
 import { ContainerEvent } from "@/models/ContainerEvent";
+import { Alert } from "@/models/Alert";
 import { StreamVariant } from "@/models/StreamVariant";
+import { Svc } from "@/models/Svc";
+import { Throughput } from "@/models/Throughput";
 import { Temporal } from "@js-temporal/polyfill";
 
 type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } : T;
@@ -61,6 +64,42 @@ export namespace TestFixture {
       timestamp: Temporal.Now.instant(),
       container: container(),
       dropCount: 3,
+    };
+    return deepMerge(defaults, overrides);
+  }
+
+  export function throughput(overrides: DeepPartial<Throughput> = {}): Throughput {
+    const defaults: Throughput = {
+      object: "throughput",
+      container: container(),
+      throttling: false,
+      logsPerSecond: 1,
+      bytesPerSecond: 10,
+    };
+    return deepMerge(defaults, overrides);
+  }
+
+  export function textAlert(overrides: DeepPartial<Alert.Text> = {}): Alert.Text {
+    const defaults: Alert.Text = {
+      object: "alert",
+      id: Bun.randomUUIDv7(),
+      type: Alert.Type.text,
+      timestamp: Temporal.Now.instant(),
+      svc: { id: Svc.encodeId({ dname: "web", dgroup: "shop" }), dname: "web", dgroup: "shop" },
+      containerEventId: Bun.randomUUIDv7(),
+      match: { pattern: "ERROR", line: "ERROR boom" },
+    };
+    return deepMerge(defaults, overrides);
+  }
+
+  export function throughputAlert(overrides: DeepPartial<Alert.Throughput> = {}): Alert.Throughput {
+    const defaults: Alert.Throughput = {
+      object: "alert",
+      id: Bun.randomUUIDv7(),
+      type: Alert.Type.throughput,
+      timestamp: Temporal.Now.instant(),
+      svc: { id: Svc.encodeId({ dname: "web", dgroup: "shop" }), dname: "web", dgroup: "shop" },
+      breach: { threshold: 100, logsPerSecond: 250 },
     };
     return deepMerge(defaults, overrides);
   }

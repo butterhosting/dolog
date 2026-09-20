@@ -5,6 +5,7 @@ import packageJson from "../package.json";
 import { Timezone } from "./helpers/Timezone";
 import { ZodParser } from "./helpers/ZodParser";
 import { LogLevel } from "./models/internal/LogLevel";
+import { Webhook } from "./models/Webhook";
 import { ExtractBetter } from "./types/ExtractBetter";
 
 export namespace Env {
@@ -55,14 +56,6 @@ export namespace Env {
     DOLOG_ALERTING_TEXT_PATTERN: "",
     DOLOG_ALERTING_THROUGHPUT_THRESHOLD: "",
     DOLOG_ALERTING_COOLDOWN_WINDOW: "5m",
-  };
-
-  type Webhook = {
-    url: string;
-    auth?: {
-      username: string;
-      password: string;
-    };
   };
 
   export function initialize(timezone = Temporal.Now.timeZoneId() as "UTC", environment: Record<string, string | undefined> = Bun.env) {
