@@ -149,6 +149,29 @@ describe(DockerSocket.name, () => {
       ]);
     });
 
+    it("should split several lines out of one frame, finishing the line carried into it", async () => {
+      // given
+      respondWithLogs(streamOf(frame(1, `${TIMESTAMP} hel`), frame(1, `${TIMESTAMP} lo\n\nworld\nagain`)));
+      // when
+      const lines = await readLogs();
+      // then (the empty line is dropped, and the unfinished tail waits for the stream to end)
+      expect(lines.map(({ line }) => line)).toEqual(["hello", "world", "again"]);
+    });
+
+    it("should cut a line that never ends, rather than carry it forever", async () => {
+      // given (a progress bar redrawing with `\r` only; docker hands it over in pieces, never with a newline)
+      const piece = "x".repeat(DockerSocket.MAX_LINE_LENGTH / 2);
+      respondWithLogs(streamOf(...Array.from({ length: 5 }, () => frame(1, `${TIMESTAMP} ${piece}`)), frame(1, `${TIMESTAMP} end\n`)));
+      // when
+      const lines = await readLogs();
+      // then (five halves make two full cuts, and the last half is finished by the newline)
+      expect(lines.map(({ line }) => line.length)).toEqual([
+        DockerSocket.MAX_LINE_LENGTH,
+        DockerSocket.MAX_LINE_LENGTH,
+        DockerSocket.MAX_LINE_LENGTH / 2 + "end".length,
+      ]);
+    });
+
     it("should still emit a trailing line that never got its newline", async () => {
       // given (the container exited without a final newline)
       respondWithLogs(streamOf(frame(1, `${TIMESTAMP} no trailing newline`)));

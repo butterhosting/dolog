@@ -13,6 +13,7 @@ import z from "zod/v4";
 export class DockerSocket {
   private static readonly LABEL_COMPOSE_PROJECT = "com.docker.compose.project";
   private static readonly LABEL_SWARM_STACK = "com.docker.stack.namespace";
+  public static readonly MAX_LINE_LENGTH = 64 * 1024;
 
   public constructor(private readonly env: Env.Private) {}
 
@@ -86,9 +87,24 @@ export class DockerSocket {
         timestamp = split.timestamp ?? timestamp;
       }
 
-      // TODO: we hope to find a newline sometime in the log stream, otherwise below is a memory leak ...
-      const lines = (leftovers + data).split("\n");
-      leftoversMap.set(streamVariant, lines.pop() ?? "");
+      const lines: string[] = [];
+
+      // If a container never writes a newline, this application slowly grinds to a halt
+      // because the "leftovers" map grows unbounded
+      let carried = leftovers;
+      let offset = 0;
+      for (let newline = data.indexOf("\n"); newline !== -1; newline = data.indexOf("\n", offset)) {
+        lines.push(carried + data.slice(offset, newline));
+        carried = "";
+        offset = newline + 1;
+      }
+      carried += data.slice(offset);
+
+      // A line that never ends (a `\r` progress bar, a binary dump) is cut, the way docker itself cuts at 16KB
+      for (offset = 0; carried.length - offset > DockerSocket.MAX_LINE_LENGTH; offset += DockerSocket.MAX_LINE_LENGTH) {
+        lines.push(carried.slice(offset, offset + DockerSocket.MAX_LINE_LENGTH));
+      }
+      leftoversMap.set(streamVariant, carried.slice(offset));
 
       for (const line of lines) {
         if (line.length > 0) {
