@@ -2,6 +2,7 @@ import { Prettify } from "@/helpers/Prettify";
 import { ContainerEvent } from "@/models/ContainerEvent";
 import { Direction } from "@/models/Direction";
 import { Line } from "@/website/rendering/Line";
+import { RowMarker } from "@/website/rendering/RowMarker";
 import clsx from "clsx";
 import { ReactNode } from "react";
 import { JSX } from "react/jsx-runtime";
@@ -51,7 +52,7 @@ export namespace Row {
   export function TimestampAnchor({ line: { timestamp }, dismiss }: TimestampAnchorProps) {
     const { DOLOG_TIMEZONE } = useRegistry("env");
     return (
-      <div data-anchored className="relative flex justify-center my-5">
+      <div {...RowMarker.props({ isAnchored: true })} className="relative flex justify-center my-5">
         <span aria-hidden className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-c-accent" />
         <button
           onClick={dismiss}
@@ -74,8 +75,7 @@ export namespace Row {
     const { DOLOG_TIMEZONE } = useRegistry("env");
     return (
       <div
-        data-event={event.id} // TODO: use a shared constant for these custom DOM attributes
-        data-anchored={isAnchored} // TODO: use a shared constant for these custom DOM attributes
+        {...RowMarker.props({ eventId: event.id, isAnchored })}
         className={clsx(
           "flex items-start border-y border-transparent",
           match === "main_match" && "bg-c-accent/30",

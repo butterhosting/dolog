@@ -51,7 +51,6 @@ export function useAnchor(): useAnchor.Result {
   // Effect for binding the shortcut key that opens the navigation dialog
   //
   useEffect(() => {
-    // TODO: pressing CMD+I repeatedly keeps opening modals on top of eachother
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "i") {
         event.preventDefault();

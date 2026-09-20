@@ -32,7 +32,6 @@ export function SvcToolbar({ filter, textSize, liveStats, onApply, onNavigate, o
       <Cell className="px-4">
         <Button onClick={onSearch} title="find a line among the ones on screen">
           {" "}
-          {/* TODO: fix all `button` titles */}
           Search {Internal.MODIFIER}K
         </Button>
       </Cell>

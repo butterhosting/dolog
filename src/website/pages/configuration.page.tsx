@@ -218,7 +218,8 @@ namespace Internal {
     return (
       <div className="flex max-w-2xl flex-col gap-3">
         {docs.title && <h3 className="text-lg">{docs.title}</h3>}
-        <p className="text-c-rule">
+        {/* a div, since a description may bring paragraphs of its own */}
+        <div className="text-c-rule">
           {docs.description}
           {setting.defaultValue && (
             <>
@@ -226,7 +227,7 @@ namespace Internal {
               Default: <Value value={setting.defaultValue} />
             </>
           )}
-        </p>
+        </div>
       </div>
     );
   }

@@ -1,3 +1,4 @@
+import { RowMarker } from "@/website/rendering/RowMarker";
 import { useState } from "react";
 import { ParentNode } from "./objects/ParentNode";
 import { usePhysicalDOMElement } from "./usePhysicalDOMElement";
@@ -59,8 +60,8 @@ export function useParentNode(): useParentNode.Result {
           }
           const shown = Internal.findAll(container).filter((line) => Internal.overlaps(line, container));
           return {
-            uppermostId: shown.at(0)?.dataset.event,
-            bottommostId: shown.at(-1)?.dataset.event,
+            uppermostId: RowMarker.eventIdOf(shown.at(0)),
+            bottommostId: RowMarker.eventIdOf(shown.at(-1)),
           };
         },
       },
@@ -94,15 +95,15 @@ export namespace useParentNode {
 
 namespace Internal {
   export function findAnchorElement(container: HTMLElement | undefined): HTMLElement | undefined {
-    return container?.querySelector('[data-anchored="true"]') ?? undefined; // at most 1
+    return container?.querySelector<HTMLElement>(RowMarker.ANCHORED_SELECTOR) ?? undefined; // at most 1
   }
 
   export function findEventElement(container: HTMLElement | undefined, eventId: string): HTMLElement | undefined {
-    return container?.querySelector<HTMLElement>(`[data-event="${CSS.escape(eventId)}"]`) ?? undefined;
+    return container?.querySelector<HTMLElement>(RowMarker.querySelectorForEvent(eventId)) ?? undefined;
   }
 
   export function findAll(container: HTMLElement | undefined): HTMLElement[] {
-    return [...(container?.querySelectorAll<HTMLElement>("[data-event]") || [])];
+    return [...(container?.querySelectorAll<HTMLElement>(RowMarker.EVENT_SELECTOR) || [])];
   }
 
   export function overlaps(line: HTMLElement, container: HTMLElement): boolean {
