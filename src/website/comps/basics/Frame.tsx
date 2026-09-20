@@ -90,12 +90,12 @@ namespace Internal {
     const { DOLOG_SUPPORTER } = useRegistry("env");
     return (
       <footer className="my-12 flex justify-center">
-        <div className="flex flex-col items-end gap-3">
-          <div className="flex items-center gap-2.5">
-            <LogoIcon className="h-12 w-auto" withLove={DOLOG_SUPPORTER} />
-            <div className="text-5xl font-bold text-c-accent">Dolog</div>
+        <div className="flex flex-col items-center gap-3">
+          <div className="flex items-center gap-2">
+            <LogoIcon className="h-9 w-auto" withLove={DOLOG_SUPPORTER} />
+            <div className="text-4xl font-bold text-c-accent">Dolog</div>
           </div>
-          <div className="text-c-rule">
+          <div className="pl-10 text-c-rule">
             by{" "}
             <a href="https://www.butterhost.ing" target="_blank" rel="noopener noreferrer" className="text-c-accent hover:text-white">
               Butterhost.ing

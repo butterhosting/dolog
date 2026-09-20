@@ -56,7 +56,7 @@ describe("Env", () => {
     // then
     expect(off.DOLOG_ALERTING_TEXT_PATTERN).toBeUndefined();
     expect(off.DOLOG_ALERTING_THROUGHPUT_THRESHOLD).toBeUndefined();
-    expect(off.DOLOG_ALERTING_COOLDOWN_WINDOW.total("minutes")).toEqual(5);
+    expect(off.DOLOG_ALERTING_COOLDOWN_WINDOW.total("minutes")).toEqual(30);
     expect(on.DOLOG_ALERTING_TEXT_PATTERN?.test("a FATAL thing")).toEqual(true);
     expect(on.DOLOG_ALERTING_THROUGHPUT_THRESHOLD).toEqual(250);
     expect(() => Env.initialize("UTC", { ...REQUIRED, DOLOG_ALERTING_TEXT_PATTERN: "(" })).toThrow("invalid_regex");
