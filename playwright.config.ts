@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { statSync } from "node:fs";
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -40,7 +41,7 @@ export default defineConfig({
       "mkdir -p opt",
       "./dolog image create --stage e2e",
       process.env.CI
-        ? `HOST_UID=${process.getuid!()} HOST_GID=${process.getgid!()} docker compose -f compose-e2e.yaml up`
+        ? `HOST_UID=${process.getuid!()} HOST_GID=${process.getgid!()} DOCKER_GID=${statSync("/var/run/docker.sock").gid} docker compose -f compose-e2e.yaml up`
         : "docker compose -f compose-e2e.yaml up",
     ].join(" && "),
     stdout: "pipe",
