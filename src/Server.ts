@@ -13,6 +13,7 @@ import { Socket } from "./models/socket/Socket";
 import { ConfigurationService } from "./services/ConfigurationService";
 import { HostService } from "./services/HostService";
 import { LogService } from "./services/LogService";
+import { RestrictedService } from "./services/RestrictedService";
 import { SocketService } from "./services/SocketService";
 import { SvcService } from "./services/SvcService";
 
@@ -26,6 +27,7 @@ export class Server {
     private readonly hostService: HostService,
     private readonly configurationService: ConfigurationService,
     private readonly socketService: SocketService,
+    private readonly restrictedService: RestrictedService,
     private readonly middleware: Middleware,
   ) {}
 
@@ -135,6 +137,16 @@ export class Server {
           GET: this.handleRoute(async ({ params, url }) => {
             const query = Object.fromEntries(new URL(url).searchParams);
             return Response.json(await this.logService.find(Svc.decodeId(params.id), query));
+          }),
+        },
+
+        /**
+         * Restricted (never in production; the e2e suite starts from here)
+         */
+        "/internal-api/restricted/purge": {
+          POST: this.handleRoute(async () => {
+            await this.restrictedService.purge();
+            return new Response(null, { status: 204 });
           }),
         },
       },

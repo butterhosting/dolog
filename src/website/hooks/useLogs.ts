@@ -15,7 +15,7 @@ export function useLogs({ svcId, parentNode, filter, anchor }: useLogs.Options):
   const socketClient = useRegistry(SocketClient);
   const renderer = useRegistry(Renderer);
 
-  const { events, appendEvent, loadingRef, isLoading, hasNewer, hasOlder, requestLogs } = useLoading({
+  const { events, appendEvent, loadingRef, landed, isLoading, hasNewer, hasOlder, requestLogs } = useLoading({
     svcId,
     filter,
   });
@@ -80,7 +80,9 @@ export function useLogs({ svcId, parentNode, filter, anchor }: useLogs.Options):
         postDOM: parentNode.move.toAnchor,
       });
     } else {
-      requestLogs("latest");
+      // the spinner grows the view while this loads, which reads as no longer being at the bottom;
+      // so the newest page says where it belongs rather than counting on still being followed
+      followStream();
     }
   }, [filter]); // ⚠️ treat each filter change as an initial load
 
@@ -116,9 +118,17 @@ export function useLogs({ svcId, parentNode, filter, anchor }: useLogs.Options):
   //
   // Effect to keep ourselves stuck to the bottom (when following the stream)
   //
+  const honouredLoad = useRef(landed.nonce);
   useEffect(() => {
     if (loadingRef.current === "backwards") {
       return; // don't stick to the bottom, if we're in the middle of paging upwards
+    }
+    // A load that scrolled to a place of its own keeps it. `isFollowingStream` is a render behind here:
+    // with nothing newer to fetch it still says yes, and would drag an anchored view to the bottom
+    const isFreshLoad = honouredLoad.current !== landed.nonce;
+    honouredLoad.current = landed.nonce;
+    if (isFreshLoad && landed.positioned) {
+      return;
     }
     if (isFollowingStream) {
       parentNode.move.toTheBottom();

@@ -193,7 +193,7 @@ namespace Internal {
 
   export function Topic({ topic, isLast }: { topic: Topic; isLast: boolean }) {
     return (
-      <div className={clsx("border-b", isLast ? "border-c-rule" : "border-c-rule/30")}>
+      <div data-testid={`topic-${topic.title}`} className={clsx("border-b", isLast ? "border-c-rule" : "border-c-rule/30")}>
         <Split pad="pt-10" left={<Heading yellow>{topic.title}</Heading>} />
         {topic.entries.map((entry, i) => (
           <Fragment key={entry.setting.envVar}>
@@ -236,7 +236,7 @@ namespace Internal {
 
   function Live({ setting }: { setting: Configuration.Setting }) {
     return (
-      <div className="flex flex-col gap-3">
+      <div data-testid={`setting-${setting.envVar}`} className="flex flex-col gap-3">
         <Caption accentText="global setting">- env variable</Caption>
         <Card className={clsx(ROW, "px-4 py-3")}>
           <span className="text-sm text-c-rule">{setting.envVar}</span>
@@ -269,7 +269,7 @@ namespace Internal {
               <Link to={Route.svcsLogs(Svc.encodeId(override))} className="pl-6 text-c-accent">
                 {override.dgroup ?? "(ungrouped)"} / {override.dname}
               </Link>
-              <span>{override.value || <Muted>(empty)</Muted>}</span>
+              <span>{override.value ? <span className="text-c-accent">{override.value}</span> : <Muted>(empty)</Muted>}</span>
             </div>
           ))}
         </Card>

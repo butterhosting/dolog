@@ -6,6 +6,8 @@ import { statSync } from "node:fs";
  */
 export default defineConfig({
   testDir: "./e2e",
+  /* Purges the events, so every run starts from a log that begins now; also against a stack that was already up */
+  globalSetup: "./e2e/global-setup.ts",
   outputDir: "./e2e/.test-results",
   timeout: 10_000,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */

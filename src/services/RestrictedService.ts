@@ -1,6 +1,7 @@
 import { $container, $containerEvent } from "@/drizzle/schema";
 import { Sqlite } from "@/drizzle/sqlite";
 import { Env } from "@/Env";
+import { ServerError } from "@/errors/ServerError";
 import { Initialize } from "@/Initialize";
 import { Logger } from "@/Logger";
 import { ContainerEvent } from "@/models/ContainerEvent";
@@ -25,7 +26,7 @@ export class RestrictedService {
 
   @Initialize
   public async inventFixtureContainer(): Promise<void> {
-    if (this.env.DOLOG_STAGE !== "dev") {
+    if (this.env.DOLOG_STAGE === "prod") {
       return;
     }
 
@@ -40,6 +41,20 @@ export class RestrictedService {
     }
   }
 
+  /**
+   * Forgets every event, so a test run starts from a log that begins now. The containers stay: the
+   * stream holds on to the ones that are running, and would be writing against rows that are gone
+   */
+  public async purge(): Promise<void> {
+    if (this.env.DOLOG_STAGE === "prod") {
+      throw ServerError.route_not_found();
+    }
+
+    this.sqlite.delete($containerEvent).run();
+    this.log.info("Purged all events");
+    await this.inventFixtureContainer();
+  }
+
   private upsertFixtureContainer(): number {
     return this.sqlite
       .insert($container)
@@ -50,10 +65,6 @@ export class RestrictedService {
       .at(0)!.id;
   }
 
-  /**
-   * The wipe still goes by name rather than by our one row, so a stray same-name row cannot keep
-   * stale events around
-   */
   private findContainerIds(): number[] {
     return this.sqlite
       .select({ id: $container.id })

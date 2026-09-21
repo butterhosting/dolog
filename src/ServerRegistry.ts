@@ -45,14 +45,23 @@ export class ServerRegistry {
     const { logService } = this.register({ LogService }, [fountain, eventRepository, socketService]);
     const { hostService } = this.register({ HostService }, [dockerSocket, socketService]);
     const { configurationService } = this.register({ ConfigurationService }, [env, svcService, socketService]);
-    this.register({ RestrictedService }, [env, sqlite]);
+    const { restrictedService } = this.register({ RestrictedService }, [env, sqlite]);
 
     // Middleware
     const { loggingMiddleware } = this.register({ LoggingMiddleware }, []);
     const { middleware } = this.register({ Middleware }, [loggingMiddleware]);
 
     // Server
-    this.register({ Server }, [env, svcService, logService, hostService, configurationService, socketService, middleware]);
+    this.register({ Server }, [
+      env,
+      svcService,
+      logService,
+      hostService,
+      configurationService,
+      socketService,
+      restrictedService,
+      middleware,
+    ]);
   }
 
   /**

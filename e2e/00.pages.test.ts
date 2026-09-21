@@ -9,7 +9,7 @@ test("all main pages load and have the right title", async ({ page }) => {
       title: string;
     };
   };
-  const trickle = await AppBoundary.svc(page, "trickle");
+  const trickle = await AppBoundary.getSvc(page, "trickle");
   const testCases: TestCase[] = [
     {
       url: "",

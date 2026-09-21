@@ -16,7 +16,7 @@ export function useLoading({ svcId, filter }: useLoading.Options): useLoading.Re
 
   const [events, setEvents] = useState<ContainerEvent[]>([]);
   const [isLoading, setLoading] = useState(false);
-  const [loadingNonce, setLoadingNonce] = useState(0);
+  const [landed, setLanded] = useState<useLoading.Landed>({ nonce: 0, positioned: false });
 
   const [hasOlder, setHasOlder] = useState(false);
   const [hasNewer, setHasNewer] = useState(false);
@@ -119,7 +119,7 @@ export function useLoading({ svcId, filter }: useLoading.Options): useLoading.Re
         variant satisfies never;
       }
     }
-    setLoadingNonce(nonce);
+    setLanded({ nonce, positioned: Boolean(options?.postDOM) });
   }
 
   //
@@ -132,11 +132,11 @@ export function useLoading({ svcId, filter }: useLoading.Options): useLoading.Re
   //    > Use this to read layout from the DOM and synchronously re-render.
   //
   useLayoutEffect(() => {
-    if (activeLoadState.current?.nonce === loadingNonce) {
+    if (activeLoadState.current?.nonce === landed.nonce) {
       activeLoadState.current.postDOM?.();
       clearActiveLoad();
     }
-  }, [loadingNonce]);
+  }, [landed]);
 
   function appendEvent(event: ContainerEvent): boolean {
     if (isActivelyLoading()) {
@@ -152,6 +152,7 @@ export function useLoading({ svcId, filter }: useLoading.Options): useLoading.Re
     events,
     appendEvent,
     loadingRef: activeLoadVariant,
+    landed,
     isLoading,
     hasNewer,
     hasOlder,
@@ -173,6 +174,11 @@ namespace Internal {
 
 export namespace useLoading {
   export type Variant = "latest" | "forwards" | "backwards" | "around";
+  /** The load whose events are now on screen, and whether it scrolled the view to a place of its own. */
+  export type Landed = {
+    nonce: number;
+    positioned: boolean;
+  };
   export type Options = {
     svcId: string;
     filter: ClientFilter;
@@ -181,6 +187,7 @@ export namespace useLoading {
     events: ContainerEvent[];
     appendEvent(event: ContainerEvent): boolean;
     loadingRef: RefObject<Variant | undefined>;
+    landed: Landed;
     isLoading: boolean;
     hasNewer: boolean;
     hasOlder: boolean;

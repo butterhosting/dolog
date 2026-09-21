@@ -1,12 +1,3 @@
-# What dolog runs beside, in `bun dev` and in the e2e stack alike. Two containers to point it at,
-# which between them cover the two things the viewer has to get right: a log slow enough to read,
-# and one fast enough to be throttled. And `webhooks`, which is where both of them send their alerts.
-#
-# `$` is doubled throughout because compose expands it before the shell ever sees it.
-#
-# The two log writers carry `attach: false`: the daemon still records every line, so dolog reads
-# them off the socket as usual, compose just stops mirroring them into the terminal running `bun dev`.
-# `docker compose logs trickle` still prints them on demand.
 services:
   trickle:
     image: alpine
@@ -15,6 +6,8 @@ services:
     mem_limit: 12m
     restart: unless-stopped
     attach: false
+    # a shell loop ignores SIGTERM, and the e2e run does not wait the default ten seconds for it
+    stop_grace_period: 100ms
     labels:
       dolog.alerting.text-pattern: '" 500 '
     command:
@@ -50,6 +43,7 @@ services:
     mem_limit: 12m
     restart: unless-stopped
     attach: false
+    stop_grace_period: 100ms
     # ~400 lines a second, comfortably over the custom budget of 150 so the throttler has to fold
     # and over the throughput threshold too, which alerts the `webhooks` container once a minute
     labels:
@@ -77,22 +71,30 @@ services:
     networks:
       - app-network
     stop_grace_period: 100ms
+    ports:
+      - "3001:3001"
     command:
       - bun
       - -e
       - |
+        const received = [];
         Bun.serve({
-          port: 8080,
+          port: 3001,
           async fetch(request) {
-            // the healthcheck below asks every second, and is not worth a line
+            const { pathname } = new URL(request.url);
             if (request.method === "POST") {
-              console.log(request.method, new URL(request.url).pathname, await request.json());
+              const body = await request.json();
+              received.push(body);
+              console.log(request.method, pathname, body);
+            }
+            if (request.method === "GET" && pathname === "/received") {
+              return Response.json(received);
             }
             return new Response(null, { status: 204 });
           },
         });
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3001/ || exit 1"]
       interval: 1s
       timeout: 10s
       retries: 10

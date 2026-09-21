@@ -69,13 +69,13 @@ export namespace Row {
     line: Line.Event;
     filter: ClientFilter;
     toggleAnchor: () => unknown;
-    match?: "main_match" | "side_match";
+    match?: RowMarker.Match;
   };
   export function Event({ line: { event, isAnchored }, filter, toggleAnchor, match }: EventProps) {
     const { DOLOG_TIMEZONE } = useRegistry("env");
     return (
       <div
-        {...RowMarker.props({ eventId: event.id, isAnchored })}
+        {...RowMarker.props({ eventId: event.id, isAnchored, match })}
         className={clsx(
           "flex items-start border-y border-transparent",
           match === "main_match" && "bg-c-accent/30",
