@@ -15,6 +15,7 @@ services:
       - "3000:3000"
     volumes:
       - dolog:/opt/dolog
+      - ./.htpasswd:/opt/dolog/.htpasswd:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       init:

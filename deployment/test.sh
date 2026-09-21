@@ -4,7 +4,6 @@ set -eu
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TIMEOUT=30
-# not 3000, so this can run while `bun dev` or the e2e stack is up; see the compose files
 BASE_URL="http://localhost:3000"
 
 passed=0
@@ -51,6 +50,16 @@ assert_status() {
     fi
     printf "    OK    %s → %s %s\n" "$expected" "$path" "$*"
     return 0
+}
+
+# A handshake rather than a plain GET, which only ever gets the (public) html shell. A 101 keeps the
+# connection open, so that one takes curl's whole timeout to come back
+assert_upgrade() {
+    expected="$1"
+    shift
+    assert_status "$expected" /socket "$@" \
+        -H "Connection: Upgrade" -H "Upgrade: websocket" \
+        -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw=="
 }
 
 run_scenario() {
@@ -118,12 +127,28 @@ verify_no_auth() {
     && assert_status "404" /internal-api/restricted/purge -X POST
 }
 
+# the healthcheck stays open, as docker has no credentials to offer; see `.htpasswd` for kim
+verify_auth() {
+    assert_status "200" /health \
+    && assert_status "401" /internal-api/env \
+    && assert_status "401" /internal-api/svcs \
+    && assert_upgrade "401" \
+    && assert_upgrade "101" -u kim:possible \
+    && assert_status "401" /internal-api/env -u kim:impossible \
+    && assert_status "200" /internal-api/env -u kim:possible \
+    && assert_status "200" /internal-api/host -u kim:possible \
+    && assert_status "200" /internal-api/svcs -u kim:possible \
+    && assert_status "401" /internal-api/restricted/purge -X POST \
+    && assert_status "404" /internal-api/restricted/purge -u kim:possible -X POST
+}
+
 # ─── scenarios ───
 
 cd "$ROOT"
 
 build_image "default"
 run_scenario "fully-accessible" "$SCRIPT_DIR/compose.yaml" verify_no_auth
+run_scenario "basic-auth-restricted" "$SCRIPT_DIR/compose-auth.yaml" verify_auth
 
 # ─── summary ───
 

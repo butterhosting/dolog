@@ -101,7 +101,8 @@ EOF
 COPY --chmod=755 <<'ENTRYPOINT_SH' /entrypoint.sh
 #!/bin/sh
 set -eu
-chown -R bun:bun ${dolog_root}
+# a read-only mount inside the root (an .htpasswd, say) cannot be chowned, and does not need to be
+chown -R bun:bun ${dolog_root} 2>/dev/null || true
 socket="\${DOLOG_DOCKER_SOCKET:-/var/run/docker.sock}"
 if [ -S "\$socket" ]; then
     gid=\$(stat -c %g "\$socket")

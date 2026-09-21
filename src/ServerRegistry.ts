@@ -2,6 +2,7 @@ import { Class } from "@/types/Class";
 import { Sqlite } from "./drizzle/sqlite";
 import { Env } from "./Env";
 import { Initialize } from "./Initialize";
+import { BasicAuthMiddleware } from "./middleware/basicauth/BasicAuthMiddleware";
 import { LoggingMiddleware } from "./middleware/logging/LoggingMiddleware";
 import { Middleware } from "./middleware/Middleware";
 import { EventRepository } from "./repositories/EventRepository";
@@ -49,7 +50,8 @@ export class ServerRegistry {
 
     // Middleware
     const { loggingMiddleware } = this.register({ LoggingMiddleware }, []);
-    const { middleware } = this.register({ Middleware }, [loggingMiddleware]);
+    const { basicAuthMiddleware } = this.register({ BasicAuthMiddleware }, [env]);
+    const { middleware } = this.register({ Middleware }, [loggingMiddleware, basicAuthMiddleware]);
 
     // Server
     this.register({ Server }, [

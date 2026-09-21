@@ -51,3 +51,27 @@ test("a clicked line stays pinned across a reload, until it is clicked again", a
   // then
   await LogsFlow.expectLive(page);
 });
+
+/**
+ * The service and its logs are fetched side by side, and either can come back first. With the service held
+ * back, the logs used to scroll to their line before there was a view to scroll: 5 lost out of 5.
+ */
+test("a pinned line is found again when the logs come back before the service does", async ({ page }) => {
+  // given
+  await LogsFlow.scrollUp(page);
+  const eventId = (await LogsFlow.rows(page).nth(40).getAttribute("data-event"))!;
+  const pinned = LogsFlow.row(page, eventId);
+  await pinned.getByTitle("mark this line").click();
+  await expect(page).toHaveURL(new RegExp(`[?&]at=${eventId}`));
+
+  // when
+  await page.route("**/internal-api/svcs", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await route.continue();
+  });
+  await page.reload();
+
+  // then
+  await expect(pinned).toHaveAttribute("data-anchored", "true");
+  await expect(pinned).toBeInViewport();
+});

@@ -10,6 +10,7 @@ import { Logger } from "./Logger";
 import { Middleware } from "./middleware/Middleware";
 import { Svc } from "./models/Svc";
 import { Socket } from "./models/socket/Socket";
+import { ServerEndpoint } from "./ServerEndpoint";
 import { ConfigurationService } from "./services/ConfigurationService";
 import { HostService } from "./services/HostService";
 import { LogService } from "./services/LogService";
@@ -84,7 +85,7 @@ export class Server {
         /**
          * Health (used as the container healthcheck)
          */
-        "/health": {
+        [ServerEndpoint.Public.health]: {
           GET: this.handleRoute(() => {
             return Response.json({ status: "ok" });
           }),

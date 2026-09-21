@@ -9,7 +9,7 @@ import { CaretIcon } from "./icons/CaretIcon";
 type Props = {
   dname: string;
   dgroup?: string;
-  dimage: string;
+  dimage?: string;
   filter: useFilter.Result;
 };
 export function SvcHeader({ dname, dgroup, dimage, filter }: Props) {
@@ -24,7 +24,7 @@ export function SvcHeader({ dname, dgroup, dimage, filter }: Props) {
           {dgroup && <span className="text-sm text-c-rule">{dgroup} / </span>}
           <span className="text-base text-c-accent">{dname}</span>
         </div>
-        <span className="text-xs text-c-rule/50">{dimage}</span>
+        <span className="text-xs text-c-rule/50">{dimage ?? " "}</span>
       </div>
       <Button
         className="absolute right-4"

@@ -46,27 +46,18 @@ export function svcLogsPage() {
 
   useDocumentTitle(`${dname} | Dolog`);
 
-  if (!svc) {
-    return (
-      <div className="full-bleed flex h-screen flex-col bg-c-shell">
-        <div className="flex justify-center py-24">
-          <SpinnerIcon />
-        </div>
-      </div>
-    );
-  }
   return (
     <div className="full-bleed flex h-screen flex-col bg-c-shell">
       <SvcHeader
         dname={dname} //
         dgroup={dgroup}
-        dimage={svc.mostRecentContainer.dimage}
+        dimage={svc?.mostRecentContainer.dimage}
         filter={filterResult}
       />
       <SvcToolbar
         filter={filterResult}
         textSize={textSize}
-        liveStats={svc.mostRecentContainer.liveStats}
+        liveStats={svc?.mostRecentContainer.liveStats}
         onApply={filterResult.formState.apply}
         onNavigate={() => void anchorResult.promptNavigation()}
         onSearch={() => (searchResult.activated ? searchResult.deactivate() : searchResult.activate())}
