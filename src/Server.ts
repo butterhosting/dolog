@@ -145,6 +145,9 @@ export class Server {
          */
         "/internal-api/restricted/purge": {
           POST: this.handleRoute(async () => {
+            if (this.env.DOLOG_STAGE === "prod") {
+              return Response.json(ServerError.route_not_found().problemDetails(), { status: 404 });
+            }
             await this.restrictedService.purge();
             return new Response(null, { status: 204 });
           }),

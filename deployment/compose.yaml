@@ -1,0 +1,25 @@
+services:
+  # Creates root-owned directories in the volume before dolog starts.
+  # This simulates a real deployment where bind mounts or pre-existing
+  # volumes are owned by root — the scenario where the entrypoint's
+  # chown is actually needed.
+  init:
+    image: alpine
+    volumes:
+      - dolog:/opt/dolog
+    command: ["sh", "-c", "mkdir -p /opt/dolog/data"]
+
+  dolog:
+    image: dolog:latest
+    # not 3000, so this can run while `bun dev` or the e2e stack is up
+    ports:
+      - "3000:3000"
+    volumes:
+      - dolog:/opt/dolog
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+volumes:
+  dolog:

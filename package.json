@@ -17,7 +17,8 @@
     "start:e2e": "bun --env-file=.env.e2e src/index.ts",
     "start:prod": "bun --env-file=.env.prod src/index.ts",
     "tc": "bunx tsc --noEmit",
-    "test:unit": "bun test"
+    "test:unit": "bun test",
+    "test:deployment": "deployment/test.sh"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",

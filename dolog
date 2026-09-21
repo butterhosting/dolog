@@ -95,8 +95,25 @@ EOF
     if [ "$is_absolute" = true ]; then
         printf "RUN apk add --no-cache su-exec\n" >> "$tmpfile"
         printf "RUN mkdir -p %s && chown bun:bun %s\n" "$dolog_root" "$dolog_root" >> "$tmpfile"
+        # The docker socket is root:<group> 0660, and that group's id is the host's to choose. So bun joins
+        # whichever group owns the mounted socket; compose's group_add would not survive su-exec
         cat >> "$tmpfile" <<ENTRY_EOF
-RUN printf '#!/bin/sh\nchown -R bun:bun ${dolog_root}\nexec su-exec bun "\$@"\n' > /entrypoint.sh && chmod +x /entrypoint.sh
+COPY --chmod=755 <<'ENTRYPOINT_SH' /entrypoint.sh
+#!/bin/sh
+set -eu
+chown -R bun:bun ${dolog_root}
+socket="\${DOLOG_DOCKER_SOCKET:-/var/run/docker.sock}"
+if [ -S "\$socket" ]; then
+    gid=\$(stat -c %g "\$socket")
+    group=\$(getent group "\$gid" | cut -d: -f1)
+    if [ -z "\$group" ]; then
+        group=dockersock
+        addgroup -g "\$gid" "\$group"
+    fi
+    id -nG bun | tr ' ' '\n' | grep -qx "\$group" || addgroup bun "\$group"
+fi
+exec su-exec bun "\$@"
+ENTRYPOINT_SH
 ENTRY_EOF
     fi
 
