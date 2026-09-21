@@ -40,7 +40,7 @@ services:
             *) c=200 ;;
           esac
           echo "$$(date -u +%H:%M:%S) \"$$m $$p\" $$c $$(((i * 37) % 400 + 3))ms"
-          sleep 1
+          sleep 0.2
         done
 
   firehose:
