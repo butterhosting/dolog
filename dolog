@@ -151,7 +151,9 @@ EOF
 }
 
 cmd_version_list() {
-    git --no-pager tag --sort=-version:refname 2>/dev/null || true
+    # without the suffixes, git ranks 1.0.0-rc.1 above 1.0.0
+    git -c versionsort.suffix=-alpha -c versionsort.suffix=-beta -c versionsort.suffix=-rc \
+        --no-pager tag --sort=-version:refname 2>/dev/null || true
 }
 
 # --- routing ---

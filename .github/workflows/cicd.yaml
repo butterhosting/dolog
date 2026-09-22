@@ -60,10 +60,14 @@ jobs:
       - name: "Image :: Build"
         run: ./dolog image create
 
+      # a prerelease (1.0.0-alpha.1) does not become `latest`
       - name: "Image :: Tag"
         run: |
           docker tag "dolog:${GITHUB_REF_NAME}" "${DOCKER_IMAGE}:${GITHUB_REF_NAME}"
-          docker tag "dolog:${GITHUB_REF_NAME}" "${DOCKER_IMAGE}:latest"
+          case "$GITHUB_REF_NAME" in
+            *-*) ;;
+            *) docker tag "dolog:${GITHUB_REF_NAME}" "${DOCKER_IMAGE}:latest" ;;
+          esac
 
       - name: "Docker Hub :: Login"
         env:
@@ -71,6 +75,4 @@ jobs:
         run: printf "%s" "$DOCKER_HUB_TOKEN" | docker login --username "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
 
       - name: "Docker Hub :: Push"
-        run: |
-          docker push "${DOCKER_IMAGE}:${GITHUB_REF_NAME}"
-          docker push "${DOCKER_IMAGE}:latest"
+        run: docker push --all-tags "${DOCKER_IMAGE}"
