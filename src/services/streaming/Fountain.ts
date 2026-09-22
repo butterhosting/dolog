@@ -298,16 +298,19 @@ export class Fountain {
    */
   private exponentialBackoff(retryCount: number, message: string, error?: unknown): Observable<unknown> {
     const min = Temporal.Duration.from({ milliseconds: 100 });
-    const max = Temporal.Duration.from({ seconds: 2 });
+    const max = Temporal.Duration.from({ minutes: 1 });
 
-    // 100ms -> 200ms -> 400ms -> 800ms -> 1600ms -> 2000ms ....
+    // 100ms -> 200ms -> 400ms -> ... -> 25.6s -> 51.2s -> 60s -> 60s ....
     const delay = Math.min(max.total("milliseconds"), min.total("milliseconds") * Math.pow(2, retryCount - 1));
 
     const logMessage = `${message}, retrying in ${delay}ms (#${retryCount})`;
-    if (error) {
+    if (!error) {
+      this.log.debug(logMessage);
+    } else if (retryCount === 1) {
       this.log.warn(logMessage, error);
     } else {
-      this.log.debug(logMessage);
+      // the stack trace went out with the first attempt; the count restarts on success, so it does so per outage
+      this.log.warn(`${logMessage}: ${error instanceof Error ? error.message : error}`);
     }
     return timer(delay);
   }

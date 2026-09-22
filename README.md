@@ -24,24 +24,7 @@ Start the Dolog container with a mount of the Docker socket, and receive:
 docker run --rm \
   -p 3000:3000 \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  dolog:latest
-```
-
-## Build from Source
-
-```sh
-# Clone the sources
-git clone https://github.com/butterhosting/dolog.git
-cd dolog
-
-# Create an image
-./dolog image create
-
-# Run the container
-docker run --rm \
-  -p 3000:3000 \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  dolog:latest
+  butterhosting/dolog
 ```
 
 ## Documentation
