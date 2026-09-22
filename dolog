@@ -85,7 +85,9 @@ COPY package.json bun.lock* tsconfig.json bunfig.toml bun-env.d.ts drizzle.confi
 ARG DOLOG_VERSION
 ARG DOLOG_COMMIT
 RUN bun -e "const p='./package.json'; const j=await Bun.file(p).json(); j.version='$DOLOG_VERSION'; j.commit='$DOLOG_COMMIT'; await Bun.write(p, JSON.stringify(j, null, 2))"
-RUN bun install --frozen-lockfile --production
+# bun-plugin-tailwind names the `bun` npm package as a peer; installed, it ships a 340 MB platform binary that shadows
+# the real bun on PATH, and the builder's platform is not the target's
+RUN bun install --frozen-lockfile --production --omit=peer
 COPY src/ src/
 
 FROM oven/bun:alpine
