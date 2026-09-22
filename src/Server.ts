@@ -177,8 +177,6 @@ export class Server {
         "",
         `  \x1b[1mLogging\x1b[0m   ${this.env.DOLOG_LOGGING}`,
         `  \x1b[1mTimezone\x1b[0m  ${this.env.DOLOG_TIMEZONE}`,
-        `  \x1b[1mSocket\x1b[0m    ${this.env.DOLOG_DOCKER_SOCKET}`,
-        `  \x1b[1mThrottle\x1b[0m  ${this.env.DOLOG_THROTTLING_LOGS_PER_SECOND} logs/second/container`,
         "",
         ...(this.env.DOLOG_SUPPORTER
           ? [
