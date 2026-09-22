@@ -26,7 +26,8 @@ export default defineConfig({
     baseURL: "http://localhost:3000",
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
-    trace: "on-first-retry",
+    /* CI has no retries, so a trace there is only ever the failed attempt's; the workflow uploads it */
+    trace: process.env.CI ? "retain-on-failure" : "on-first-retry",
   },
 
   /* Configure projects for major browsers */

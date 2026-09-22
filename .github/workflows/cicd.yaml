@@ -48,6 +48,16 @@ jobs:
       - name: "Application :: E2E Tests"
         run: bun e2e:headless
 
+      - name: "Application :: E2E Report"
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            e2e/.playwright-report
+            e2e/.test-results
+          retention-days: 3
+
   cd:
     name: "CD Pipeline"
     runs-on: ubuntu-latest
