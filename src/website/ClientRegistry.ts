@@ -1,15 +1,14 @@
 import { Env } from "@/Env";
 import { ProblemDetails } from "@/models/internal/ProblemDetails";
 import { Class } from "@/types/Class";
-import { OmitBetter } from "@/types/OmitBetter";
 import { createContext } from "react";
 import { Yesttp } from "yesttp";
-import { SvcClient } from "./clients/SvcClient";
 import { ConfigurationClient } from "./clients/ConfigurationClient";
 import { DialogClient } from "./clients/DialogClient";
 import { HostClient } from "./clients/HostClient";
 import { LogClient } from "./clients/LogClient";
 import { SocketClient } from "./clients/SocketClient";
+import { SvcClient } from "./clients/SvcClient";
 import { Renderer } from "./rendering/Renderer";
 
 export class ClientRegistry {
