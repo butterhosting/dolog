@@ -26,11 +26,12 @@ export class ClientRegistry {
   }
 
   private static printEnv(env: Env.Public) {
-    const envCopy: OmitBetter<Env.Public, "DOLOG_SUPPORTER"> = {
+    const envCopy: Env.Public = {
       DOLOG_STAGE: env.DOLOG_STAGE,
       DOLOG_VERSION: env.DOLOG_VERSION,
       DOLOG_COMMIT: env.DOLOG_COMMIT,
       DOLOG_TIMEZONE: env.DOLOG_TIMEZONE,
+      DOLOG_SUPPORTER: env.DOLOG_SUPPORTER,
     };
     const longestKey = Object.keys(envCopy)
       .map((k) => k.length)
