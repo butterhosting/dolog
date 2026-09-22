@@ -5,6 +5,7 @@ import index from "@/website/index.html";
 import { Temporal } from "@js-temporal/polyfill";
 import { ErrorLike } from "bun";
 import { randomUUID } from "crypto";
+import path from "path";
 import { Yexception } from "yexception";
 import { Logger } from "./Logger";
 import { Middleware } from "./middleware/Middleware";
@@ -70,7 +71,7 @@ export class Server {
       },
       routes: {
         /**
-         * HTML/API fallbacks
+         * HTML/API fallbacks + stable favicon path
          *
          * Unfortunately, no middleware on the HTMLBundle right now; see
          * https://github.com/oven-sh/bun/issues/17595#issuecomment-2965865078
@@ -78,6 +79,7 @@ export class Server {
          * (the suggested "secret asset path" breaks my websocket, unfortunately)
          */
         "/*": index,
+        "/favicon.svg": Bun.file(path.join(import.meta.dir, "website/images/favicon.svg")),
         "/internal-api/*": this.handleRoute(() => {
           return Response.json(ServerError.route_not_found().problemDetails(), { status: 404 });
         }),
