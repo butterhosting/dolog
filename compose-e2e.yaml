@@ -3,7 +3,7 @@ include:
 
 services:
   application:
-    image: dolog:latest
+    image: butterhosting/dolog:latest
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     # the socket is root:<group> 0660, so a non-root user only gets in through its group
     group_add:

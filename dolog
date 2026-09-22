@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+DOLOG_IMAGE="butterhosting/dolog"
+
 usage() {
     printf "Usage: %s <command> [arguments]\n" "$(basename "$0")"
     printf "\nCommands:\n"
@@ -135,12 +137,22 @@ CMD ["bun", "start:${stage}"]
 EOF
     printf "____________________\n%s\n--------------------\n" "$(cat $tmpfile)"
 
-    tag="dolog:${version}"
+    tag="${DOLOG_IMAGE}:${version}"
+    latest="${DOLOG_IMAGE}:latest"
     old_image_id=$(docker images -q "$tag" 2>/dev/null || true)
-    old_latest_id=$(docker images -q dolog:latest 2>/dev/null || true)
+    old_latest_id=""
+
+    # a prerelease (1.0.0-alpha.1) does not become `latest`; a snapshot is never pushed, so it always does
+    case "$exact_tag" in
+        *-*) tags="-t $tag" ;;
+        *)
+            tags="-t $tag -t $latest"
+            old_latest_id=$(docker images -q "$latest" 2>/dev/null || true)
+            ;;
+    esac
 
     printf "Building image > %s\n" "$tag"
-    docker build -f "$tmpfile" --build-arg DOLOG_VERSION="$version" --build-arg DOLOG_COMMIT="$commit" -t "$tag" -t dolog:latest .
+    docker build -f "$tmpfile" --build-arg DOLOG_VERSION="$version" --build-arg DOLOG_COMMIT="$commit" $tags .
     if [ -n "$old_image_id" ]; then
         docker rmi "$old_image_id" >/dev/null 2>&1 || true
     fi

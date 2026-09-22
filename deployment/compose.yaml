@@ -10,7 +10,7 @@ services:
     command: ["sh", "-c", "mkdir -p /opt/dolog/data"]
 
   dolog:
-    image: dolog:latest
+    image: butterhosting/dolog:latest
     ports:
       - "3000:3000"
     volumes:
