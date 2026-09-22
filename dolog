@@ -2,12 +2,15 @@
 set -eu
 
 DOLOG_IMAGE="butterhosting/dolog"
+DOLOG_PLATFORMS="linux/amd64,linux/arm64"
 
 usage() {
     printf "Usage: %s <command> [arguments]\n" "$(basename "$0")"
     printf "\nCommands:\n"
-    printf "  image create [options]    Build a production Docker image\n"
-    printf "  version list              List all available versions\n"
+    printf "  image create [options]     Build a production Docker image for this machine\n"
+    printf "  image publish [options]    Build the image for all platforms and push it to Docker Hub\n"
+    printf "\nOptions:\n"
+    printf "  --stage <stage>            The .env.<stage> to bake in (default: prod)\n"
     exit 1
 }
 
@@ -20,7 +23,7 @@ require_commands() {
     done
 }
 
-cmd_image_create() {
+prepare_image() {
     stage="prod"
 
     while [ $# -gt 0 ]; do
@@ -76,7 +79,7 @@ cmd_image_create() {
 
     # Builder stage (shared)
     cat > "$tmpfile" <<'EOF'
-FROM oven/bun:alpine AS builder
+FROM --platform=$BUILDPLATFORM oven/bun:alpine AS builder
 WORKDIR /app
 COPY package.json bun.lock* tsconfig.json bunfig.toml bun-env.d.ts drizzle.config.ts .env.* ./
 ARG DOLOG_VERSION
@@ -139,33 +142,30 @@ EOF
 
     tag="${DOLOG_IMAGE}:${version}"
     latest="${DOLOG_IMAGE}:latest"
-    old_image_id=$(docker images -q "$tag" 2>/dev/null || true)
-    old_latest_id=""
+    build_args="-f $tmpfile --build-arg DOLOG_VERSION=$version --build-arg DOLOG_COMMIT=$commit"
 
     # a prerelease (1.0.0-alpha.1) does not become `latest`; a snapshot is never pushed, so it always does
     case "$exact_tag" in
         *-*) tags="-t $tag" ;;
-        *)
-            tags="-t $tag -t $latest"
-            old_latest_id=$(docker images -q "$latest" 2>/dev/null || true)
-            ;;
+        *) tags="-t $tag -t $latest" ;;
     esac
+}
+
+cmd_image_create() {
+    prepare_image "$@"
 
     printf "Building image > %s\n" "$tag"
-    docker build -f "$tmpfile" --build-arg DOLOG_VERSION="$version" --build-arg DOLOG_COMMIT="$commit" $tags .
-    if [ -n "$old_image_id" ]; then
-        docker rmi "$old_image_id" >/dev/null 2>&1 || true
-    fi
-    if [ -n "$old_latest_id" ]; then
-        docker rmi "$old_latest_id" >/dev/null 2>&1 || true
-    fi
+    docker build $build_args $tags .
     printf "Created image > %s\n" "$tag"
 }
 
-cmd_version_list() {
-    # without the suffixes, git ranks 1.0.0-rc.1 above 1.0.0
-    git -c versionsort.suffix=-alpha -c versionsort.suffix=-beta -c versionsort.suffix=-rc \
-        --no-pager tag --sort=-version:refname 2>/dev/null || true
+# a multi-platform image cannot land in the local image store, so it is pushed as it is built
+cmd_image_publish() {
+    prepare_image "$@"
+
+    printf "Publishing image > %s\n" "$tag"
+    docker buildx build $build_args $tags --platform "$DOLOG_PLATFORMS" --push .
+    printf "Published image > %s\n" "$tag"
 }
 
 # --- routing ---
@@ -181,20 +181,14 @@ shift
 
 case "$command" in
     image)
-        if [ $# -lt 1 ] || [ "$1" != "create" ]; then
-            printf "Error: expected 'image create'\n\n"
-            usage
-        fi
-        shift
-        cmd_image_create "$@"
-        ;;
-    version)
-        if [ $# -lt 1 ] || [ "$1" != "list" ]; then
-            printf "Error: expected 'version list'\n\n"
-            usage
-        fi
-        shift
-        cmd_version_list "$@"
+        case "${1:-}" in
+            create) shift; cmd_image_create "$@" ;;
+            publish) shift; cmd_image_publish "$@" ;;
+            *)
+                printf "Error: expected 'image create' or 'image publish'\n\n"
+                usage
+                ;;
+        esac
         ;;
     *)
         printf "Error: unknown command '%s'\n\n" "$command"
