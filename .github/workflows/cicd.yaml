@@ -80,4 +80,4 @@ jobs:
         run: printf "%s" "$DOCKER_HUB_TOKEN" | docker login --username "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
 
       - name: "Image :: Publish"
-        run: ./image publish
+        run: ./image.sh publish

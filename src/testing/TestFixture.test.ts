@@ -86,7 +86,7 @@ export namespace TestFixture {
       id: Bun.randomUUIDv7(),
       type: Alert.Type.text,
       timestamp: Temporal.Now.instant(),
-      svc: {
+      service: {
         id: Svc.encodeId({ dname: "web", dgroup: "shop" }),
         link: Route.svcsLogs(Svc.encodeId({ dname: "web", dgroup: "shop" })),
         dname: "web",
@@ -104,7 +104,7 @@ export namespace TestFixture {
       id: Bun.randomUUIDv7(),
       type: Alert.Type.throughput,
       timestamp: Temporal.Now.instant(),
-      svc: {
+      service: {
         id: Svc.encodeId({ dname: "web", dgroup: "shop" }),
         link: Route.svcsLogs(Svc.encodeId({ dname: "web", dgroup: "shop" })),
         dname: "web",

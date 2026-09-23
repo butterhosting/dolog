@@ -15,9 +15,8 @@ import { Source } from "../contracts/Source";
 /**
  * A fleet of invented containers for the interactive demo, standing in for the docker socket.
  *
- * Time is cut into slots per container, and every line, restart and stats sample is a pure function of
- * its slot. So the history seeded at startup and the lines streamed live afterwards tell one story, and
- * the demo reads the same on every machine.
+ * Time is cut into slots per container, and each slot is written once: for the history seeded at startup
+ * and for the lines streamed live afterwards alike, so the two tell one story.
  */
 export class DemoSocket implements Source {
   private readonly log = new Logger(__filename);
@@ -232,26 +231,13 @@ namespace Internal {
 
   // v-- the fleet --v
 
-  /** A repeatable stand-in for randomness: the same seeds always roll the same number in [0, 1) */
-  function roll(...seeds: number[]): number {
-    let h = 0x811c9dc5;
-    for (const seed of seeds) {
-      h = Math.imul(h ^ (seed | 0), 0x01000193);
-      h ^= h >>> 15;
-    }
-    h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
-    h ^= h >>> 16;
-    return (h >>> 0) / 2 ** 32;
-  }
-
-  function pick<T>(items: readonly T[], r: number): T {
-    return items[Math.floor(r * items.length)]!;
-  }
+  const pick = <T>(items: readonly T[]): T => items[Math.floor(Math.random() * items.length)]!;
+  const between = (low: number, high: number): number => low + Math.floor(Math.random() * (high - low + 1));
 
   /** Between `low` and `high`, drifting slowly and trembling a little, so a meter looks alive rather than random */
-  function wobble(ms: number, low: number, high: number, seed: number): number {
-    const drift = 0.5 + 0.5 * Math.sin((2 * Math.PI * ms) / (7 * MINUTE) + seed);
-    const tremble = (roll(seed, Math.floor(ms / SECOND)) - 0.5) * 0.1;
+  function wobble(ms: number, low: number, high: number, phase: number): number {
+    const drift = 0.5 + 0.5 * Math.sin((2 * Math.PI * ms) / (7 * MINUTE) + phase);
+    const tremble = (Math.random() - 0.5) * 0.1;
     return low + (high - low) * Math.min(1, Math.max(0, drift + tremble));
   }
 
@@ -286,9 +272,9 @@ namespace Internal {
 
   const web: Personality = {
     container: container("web", "nginx:1.27-alpine", "shop", { "alerting.text-pattern": '" 500 ' }),
-    spacing: 3 * SECOND,
+    spacing: SECOND,
     depth: 6 * HOUR,
-    lines: (slot, at) => {
+    lines: (_slot, at) => {
       const PATHS = [
         "/",
         "/products",
@@ -300,13 +286,13 @@ namespace Internal {
         "/api/orders/8821",
         "/static/app.css",
       ];
-      const r = (n: number) => roll(1, slot, n);
-      const probing = r(0) < 0.04;
-      const path = probing ? pick(["/wp-login.php", "/.env", "/admin/config.php", "/xmlrpc.php"], r(1)) : pick(PATHS, r(1));
-      const method = path === "/api/orders" && r(2) < 0.6 ? "POST" : "GET";
-      const status = probing ? 404 : r(3) < 0.004 ? 500 : r(3) < 0.02 ? 404 : r(3) < 0.2 ? 304 : method === "POST" ? 201 : 200;
-      const bytes = status === 304 ? 0 : 180 + Math.floor(r(4) * 14_000);
-      const ip = `${pick(["203.0.113", "198.51.100", "192.0.2"], r(5))}.${1 + Math.floor(r(6) * 254)}`;
+      const probing = Math.random() < 0.04;
+      const path = probing ? pick(["/wp-login.php", "/.env", "/admin/config.php", "/xmlrpc.php"]) : pick(PATHS);
+      const method = path === "/api/orders" && Math.random() < 0.6 ? "POST" : "GET";
+      const luck = Math.random();
+      const status = probing ? 404 : luck < 0.004 ? 500 : luck < 0.02 ? 404 : luck < 0.2 ? 304 : method === "POST" ? 201 : 200;
+      const bytes = status === 304 ? 0 : between(180, 14_180);
+      const ip = `${pick(["203.0.113", "198.51.100", "192.0.2"])}.${between(1, 254)}`;
       return [{ line: `${ip} - - [${nginxDate(at)}] "${method} ${path} HTTP/1.1" ${status} ${bytes}` }];
     },
     stats: (ms) => ({
@@ -319,12 +305,11 @@ namespace Internal {
 
   const api: Personality = {
     container: container("api", "node:22-alpine", "shop"),
-    spacing: 4 * SECOND,
+    spacing: 2 * SECOND,
     depth: 6 * HOUR,
-    lines: (slot, at) => {
-      const r = (n: number) => roll(2, slot, n);
+    lines: (_slot, at) => {
       const entry = (fields: Record<string, unknown>, level = "info") => JSON.stringify({ level, time: at.toString(), ...fields });
-      if (r(0) < 0.008) {
+      if (Math.random() < 0.008) {
         return [
           {
             streamVariant: StreamVariant.stderr,
@@ -339,11 +324,12 @@ namespace Internal {
           },
         ];
       }
-      const orderId = `ord_${10_000 + Math.floor(r(1) * 90_000)}`;
-      const kind = r(2);
+      const orderId = `ord_${between(10_000, 99_999)}`;
+      const amount = between(0, 24_000) / 100;
+      const kind = Math.random();
       if (kind < 0.55) {
-        const path = pick(["/products", "/products/4471", "/cart", "/orders", `/orders/${orderId}`, "/me"], r(3));
-        const status = r(4) < 0.03 ? 404 : path === "/orders" ? 201 : 200;
+        const path = pick(["/products", "/products/4471", "/cart", "/orders", `/orders/${orderId}`, "/me"]);
+        const status = Math.random() < 0.03 ? 404 : path === "/orders" ? 201 : 200;
         return [
           {
             line: entry({
@@ -351,19 +337,19 @@ namespace Internal {
               method: path === "/orders" ? "POST" : "GET",
               path,
               status,
-              ms: 3 + Math.floor(r(5) * 180),
+              ms: between(3, 182),
             }),
           },
         ];
       }
       if (kind < 0.75) {
-        return [{ line: entry({ msg: "order placed", orderId, items: 1 + Math.floor(r(3) * 5), total: Math.round(r(4) * 24_000) / 100 }) }];
+        return [{ line: entry({ msg: "order placed", orderId, items: between(1, 5), total: amount }) }];
       }
       if (kind < 0.85) {
-        return [{ line: entry({ msg: "payment captured", orderId, provider: "stripe", amount: Math.round(r(3) * 24_000) / 100 }) }];
+        return [{ line: entry({ msg: "payment captured", orderId, provider: "stripe", amount }) }];
       }
       if (kind < 0.95) {
-        return [{ line: entry({ msg: r(3) < 0.7 ? "cache hit" : "cache miss", key: `product:${1000 + Math.floor(r(4) * 5000)}` }) }];
+        return [{ line: entry({ msg: Math.random() < 0.7 ? "cache hit" : "cache miss", key: `product:${between(1000, 5999)}` }) }];
       }
       return [
         {
@@ -371,7 +357,7 @@ namespace Internal {
             {
               msg: "slow query",
               query: "select * from orders where customer_id = $1 order by created_at desc",
-              ms: 400 + Math.floor(r(3) * 900),
+              ms: between(400, 1299),
             },
             "warn",
           ),
@@ -391,7 +377,6 @@ namespace Internal {
     spacing: 5 * MINUTE,
     depth: 3 * DAY,
     lines: (slot, at) => {
-      const r = (n: number) => roll(3, slot, n);
       const entry = (offset: number, pid: number, message: string) => ({
         offset,
         streamVariant: StreamVariant.stderr,
@@ -399,7 +384,7 @@ namespace Internal {
       });
       const lines: Array<{ offset: number; streamVariant: StreamVariant; line: string }> = [];
       if (slot % 3 === 0) {
-        const buffers = 80 + Math.floor(r(0) * 400);
+        const buffers = between(80, 479);
         lines.push(entry(0, 28, "LOG:  checkpoint starting: time"));
         lines.push(
           entry(
@@ -409,7 +394,7 @@ namespace Internal {
           ),
         );
       }
-      if (r(1) < 0.15) {
+      if (Math.random() < 0.15) {
         lines.push(
           entry(
             40_000,
@@ -418,16 +403,16 @@ namespace Internal {
           ),
         );
       }
-      if (r(2) < 0.08) {
+      if (Math.random() < 0.08) {
         lines.push(
           entry(
             120_000,
             57,
-            `LOG:  duration: ${(800 + r(3) * 2500).toFixed(3)} ms  statement: SELECT o.*, c.email FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.status = 'pending'`,
+            `LOG:  duration: ${(800 + Math.random() * 2500).toFixed(3)} ms  statement: SELECT o.*, c.email FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.status = 'pending'`,
           ),
         );
       }
-      if (r(4) < 0.03) {
+      if (Math.random() < 0.03) {
         lines.push(entry(200_000, 57, "WARNING:  there is no transaction in progress"));
       }
       return lines;
@@ -449,7 +434,6 @@ namespace Internal {
     outage: { period: WORKER_PERIOD, down: 3 },
     lines: (slot) => {
       const phase = slot % WORKER_PERIOD;
-      const r = (n: number) => roll(4, slot, n);
       if (phase === 0) {
         return [
           { line: "[worker] shop-worker v2.4.1 starting, 4 queues (images, mail, exports, webhooks)" },
@@ -471,14 +455,15 @@ namespace Internal {
           },
         ];
       }
-      const queue = pick(["images", "mail", "exports", "webhooks"], r(0));
+      const queue = pick(["images", "mail", "exports", "webhooks"]);
       const jobId = `job_${(slot * 7919) % 100_000}`;
+      const duration = between(120, 2519);
       const lines: Array<{ offset?: number; line: string }> = [
         { line: `[worker] ${queue}: picked up ${jobId}` },
-        { offset: 120 + Math.floor(r(1) * 2400), line: `[worker] ${queue}: ${jobId} done in ${120 + Math.floor(r(1) * 2400)}ms` },
+        { offset: duration, line: `[worker] ${queue}: ${jobId} done in ${duration}ms` },
       ];
       if (phase % 5 === 0) {
-        lines.push({ offset: 3000, line: `[worker] heap ${96 + phase * 15 + Math.floor(r(2) * 10)} MB / 512 MB` });
+        lines.push({ offset: 3000, line: `[worker] heap ${96 + phase * 15 + between(0, 9)} MB / 512 MB` });
       }
       return lines;
     },
@@ -498,15 +483,12 @@ namespace Internal {
     container: container("collector", "acme/telemetry-collector:1.8.3", "monitoring", { "throttling.logs-per-second": "50" }),
     spacing: 30 * SECOND,
     depth: 30 * MINUTE,
-    lines: (slot) => {
+    lines: () => {
       const BURST = 300;
-      return Array.from({ length: BURST }, (_, k) => {
-        const r = (n: number) => roll(5, slot, k, n);
-        return {
-          offset: k * 3,
-          line: `info  exporter/otlp  flushed batch ${k + 1}/${BURST}: ${20 + Math.floor(r(0) * 400)} spans, ${Math.floor(r(1) * 60)} metrics -> backend:4317 (${2 + Math.floor(r(2) * 40)}ms)`,
-        };
-      });
+      return Array.from({ length: BURST }, (_, k) => ({
+        offset: k * 3,
+        line: `info  exporter/otlp  flushed batch ${k + 1}/${BURST}: ${between(20, 419)} spans, ${between(0, 59)} metrics -> backend:4317 (${between(2, 41)}ms)`,
+      }));
     },
     stats: (ms) => {
       const burst = ms % (30 * SECOND) < 2 * SECOND ? 0.7 : 0;
@@ -525,7 +507,7 @@ namespace Internal {
     spacing: 5 * MINUTE,
     depth: 3 * DAY,
     stoppedAgo: 2 * DAY,
-    lines: (slot, at, farewell) => {
+    lines: (_slot, at, farewell) => {
       const entry = (offset: number, message: string) => ({
         offset,
         line: `1:M ${redisDate(at.add({ milliseconds: offset }))} ${message}`,
@@ -539,7 +521,7 @@ namespace Internal {
           entry(231, "# Redis is now ready to exit, bye bye..."),
         ];
       }
-      const changes = 1 + Math.floor(roll(6, slot) * 40);
+      const changes = between(1, 40);
       return [
         entry(0, `* ${changes} changes in 300 seconds. Saving...`),
         entry(2, "* Background saving started by pid 41"),

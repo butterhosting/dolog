@@ -14,7 +14,7 @@ export namespace Alert {
   type Common = {
     id: string; // UUIDv7
     object: "alert";
-    svc: Pick<Svc, "id" | "dname" | "dgroup"> & { link: string };
+    service: Pick<Svc, "id" | "dname" | "dgroup"> & { link: string };
     timestamp: Temporal.Instant;
   };
 
@@ -39,7 +39,7 @@ export namespace Alert {
     id: z.uuidv7(),
     object: z.literal("alert"),
     timestamp: z.string().transform(ZodParser.instant),
-    svc: z.object({
+    service: z.object({
       id: z.string(),
       link: z.string(),
       dname: z.string(),

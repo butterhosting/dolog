@@ -39,7 +39,7 @@ export class AlertingService {
         mergeMap((candidate) =>
           defer(() => this.deliver(candidate)).pipe(
             catchError((error) => {
-              this.log.warn(`Could not deliver a ${candidate.alert.type} alert for ${candidate.alert.svc.dname}`, error);
+              this.log.warn(`Could not deliver a ${candidate.alert.type} alert for ${candidate.alert.service.dname}`, error);
               return EMPTY;
             }),
           ),
@@ -104,7 +104,7 @@ export class AlertingService {
   private coolDownPerSvc() {
     const createCooldownTimer = (candidate: AlertingService.Candidate) => timer(candidate.cooldown.total("milliseconds"));
     return pipe(
-      groupBy(({ alert }: AlertingService.Candidate) => `${alert.type}:${alert.svc.id}`, {
+      groupBy(({ alert }: AlertingService.Candidate) => `${alert.type}:${alert.service.id}`, {
         // a group may only go once it has been quiet for a whole cooldown, or its successor would alert early
         duration: (group) => group.pipe(debounce(createCooldownTimer)),
       }),
@@ -118,7 +118,7 @@ export class AlertingService {
       throw AlertError.unknown_webhook({ webhookRef });
     }
     await this.webhookSender.post(webhook, alert);
-    this.log.info(`Sent a ${alert.type} alert for ${alert.svc.dname} to ${webhookRef}`);
+    this.log.info(`Sent a ${alert.type} alert for ${alert.service.dname} to ${webhookRef}`);
   }
 
   private commonAlertProps({ dname, dgroup }: Container) {
@@ -127,7 +127,7 @@ export class AlertingService {
       id: Bun.randomUUIDv7(),
       object: "alert" as const,
       timestamp: Temporal.Now.instant(),
-      svc: {
+      service: {
         id,
         link: Route.svcsLogs(id),
         dname,

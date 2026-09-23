@@ -49,7 +49,7 @@ describe(AlertingService.name, () => {
           expect.objectContaining({
             object: "alert",
             type: Alert.Type.text,
-            svc: {
+            service: {
               id: Svc.encodeId({ dname: "web", dgroup: "shop" }),
               link: Route.svcsLogs(Svc.encodeId({ dname: "web", dgroup: "shop" })),
               dname: "web",
@@ -119,7 +119,7 @@ describe(AlertingService.name, () => {
           at: 1,
           alert: expect.objectContaining({
             type: Alert.Type.throughput,
-            svc: {
+            service: {
               id: Svc.encodeId({ dname: "web", dgroup: "shop" }),
               link: Route.svcsLogs(Svc.encodeId({ dname: "web", dgroup: "shop" })),
               dname: "web",
@@ -162,7 +162,7 @@ describe(AlertingService.name, () => {
         });
       });
       // then
-      expect(sent.map(({ at, alert }) => [at, alert.svc.dname, alert.type])).toEqual([
+      expect(sent.map(({ at, alert }) => [at, alert.service.dname, alert.type])).toEqual([
         [0, "web", Alert.Type.text],
         [0, "db", Alert.Type.text],
         [0, "web", Alert.Type.throughput],
@@ -207,7 +207,7 @@ describe(AlertingService.name, () => {
         });
       });
       // then (the unknown webhook never reaches the sender at all)
-      expect(context.webhookSenderMock.post.mock.calls.map(([, alert]) => alert.svc.dname)).toEqual(["b", "c"]);
+      expect(context.webhookSenderMock.post.mock.calls.map(([, alert]) => alert.service.dname)).toEqual(["b", "c"]);
     });
   });
 
