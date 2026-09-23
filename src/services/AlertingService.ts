@@ -14,6 +14,7 @@ import { WebhookSender } from "./alerting/WebhookSender";
 import { Fountain } from "./streaming/Fountain";
 import { ThrottleService } from "./streaming/ThrottleService";
 import { Webhook } from "@/models/Webhook";
+import { Route } from "@/website/Route";
 
 export class AlertingService {
   private readonly log = new Logger(__filename);
@@ -121,11 +122,17 @@ export class AlertingService {
   }
 
   private commonAlertProps({ dname, dgroup }: Container) {
+    const id = Svc.encodeId({ dname, dgroup });
     return {
       id: Bun.randomUUIDv7(),
       object: "alert" as const,
       timestamp: Temporal.Now.instant(),
-      svc: { id: Svc.encodeId({ dname, dgroup }), dname, dgroup },
+      svc: {
+        id,
+        link: Route.svcsLogs(id),
+        dname,
+        dgroup,
+      },
     };
   }
 

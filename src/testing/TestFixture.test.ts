@@ -5,6 +5,7 @@ import { StreamVariant } from "@/models/StreamVariant";
 import { Svc } from "@/models/Svc";
 import { Throughput } from "@/models/Throughput";
 import { Temporal } from "@js-temporal/polyfill";
+import { Route } from "@/website/Route";
 
 type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } : T;
 
@@ -85,7 +86,12 @@ export namespace TestFixture {
       id: Bun.randomUUIDv7(),
       type: Alert.Type.text,
       timestamp: Temporal.Now.instant(),
-      svc: { id: Svc.encodeId({ dname: "web", dgroup: "shop" }), dname: "web", dgroup: "shop" },
+      svc: {
+        id: Svc.encodeId({ dname: "web", dgroup: "shop" }),
+        link: Route.svcsLogs(Svc.encodeId({ dname: "web", dgroup: "shop" })),
+        dname: "web",
+        dgroup: "shop",
+      },
       containerEventId: Bun.randomUUIDv7(),
       match: { pattern: "ERROR", line: "ERROR boom" },
     };
@@ -98,7 +104,12 @@ export namespace TestFixture {
       id: Bun.randomUUIDv7(),
       type: Alert.Type.throughput,
       timestamp: Temporal.Now.instant(),
-      svc: { id: Svc.encodeId({ dname: "web", dgroup: "shop" }), dname: "web", dgroup: "shop" },
+      svc: {
+        id: Svc.encodeId({ dname: "web", dgroup: "shop" }),
+        link: Route.svcsLogs(Svc.encodeId({ dname: "web", dgroup: "shop" })),
+        dname: "web",
+        dgroup: "shop",
+      },
       breach: { threshold: 100, logsPerSecond: 250 },
     };
     return deepMerge(defaults, overrides);

@@ -11,6 +11,7 @@ import { TestScheduler } from "rxjs/testing";
 import { AlertingService } from "./AlertingService";
 import { Fountain } from "./streaming/Fountain";
 import { ThrottleService } from "./streaming/ThrottleService";
+import { Route } from "@/website/Route";
 
 /**
  * Cooldowns are time-based operators, so these run on rxjs' virtual clock: five minutes pass
@@ -48,7 +49,12 @@ describe(AlertingService.name, () => {
           expect.objectContaining({
             object: "alert",
             type: Alert.Type.text,
-            svc: { id: Svc.encodeId({ dname: "web", dgroup: "shop" }), dname: "web", dgroup: "shop" },
+            svc: {
+              id: Svc.encodeId({ dname: "web", dgroup: "shop" }),
+              link: Route.svcsLogs(Svc.encodeId({ dname: "web", dgroup: "shop" })),
+              dname: "web",
+              dgroup: "shop",
+            },
             containerEventId: loud.id,
             match: { pattern: "ERROR|FATAL", line: "FATAL out of memory" },
           } satisfies Partial<Alert.Text>),
@@ -99,7 +105,10 @@ describe(AlertingService.name, () => {
         // when
         alertOn({
           throughputs: cold("ab", {
-            a: [TestFixture.throughput({ container, logsPerSecond: 100 }), TestFixture.throughput({ container: unlabelled, logsPerSecond: 9000 })],
+            a: [
+              TestFixture.throughput({ container, logsPerSecond: 100 }),
+              TestFixture.throughput({ container: unlabelled, logsPerSecond: 9000 }),
+            ],
             b: [TestFixture.throughput({ container, logsPerSecond: 101 })],
           }),
         });
@@ -110,7 +119,12 @@ describe(AlertingService.name, () => {
           at: 1,
           alert: expect.objectContaining({
             type: Alert.Type.throughput,
-            svc: { id: Svc.encodeId({ dname: "web", dgroup: "shop" }), dname: "web", dgroup: "shop" },
+            svc: {
+              id: Svc.encodeId({ dname: "web", dgroup: "shop" }),
+              link: Route.svcsLogs(Svc.encodeId({ dname: "web", dgroup: "shop" })),
+              dname: "web",
+              dgroup: "shop",
+            },
             breach: { threshold: 100, logsPerSecond: 101 },
           } satisfies Partial<Alert.Throughput>),
         },
