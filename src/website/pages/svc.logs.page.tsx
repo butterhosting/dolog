@@ -1,6 +1,7 @@
 import { Svc } from "@/models/Svc";
 import clsx from "clsx";
 import { useParams } from "react-router";
+import { DemoBanner } from "../comps/DemoBanner";
 import { LogSearchBox } from "../comps/LogSearchBox";
 import { Row } from "../comps/Row";
 import { SvcHeader } from "../comps/SvcHeader";
@@ -48,6 +49,7 @@ export function svcLogsPage() {
 
   return (
     <div className="full-bleed flex h-screen flex-col bg-c-shell">
+      <DemoBanner />
       <SvcHeader
         dname={dname} //
         dgroup={dgroup}

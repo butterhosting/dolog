@@ -1,5 +1,5 @@
 import { WebhookSender } from "@/services/alerting/WebhookSender";
-import { DockerSocket } from "@/services/streaming/DockerSocket";
+import { Source } from "@/services/contracts/Source";
 import { Sqlite } from "@/drizzle/sqlite";
 import { Env } from "@/Env";
 import { Initialize } from "@/Initialize";
@@ -25,7 +25,7 @@ export namespace TestEnvironment {
     eventRepository: EventRepository;
     flushTrigger: Subject<void>;
     patchEnvironmentVariables(environment: Record<string, string>): void;
-    dockerSocketMock: Mocked<DockerSocket>;
+    dockerSocketMock: Mocked<Source>;
     webhookSenderMock: Mocked<WebhookSender>;
   }
 
@@ -101,7 +101,7 @@ export namespace TestEnvironment {
     }
 
     // Dependencies
-    const dockerSocketMock = registerMockObject<DockerSocket>({
+    const dockerSocketMock = registerMockObject<Source>({
       listRunningContainers: mock(),
       inspectHost: mock(),
       streamLifecycles: mock(),

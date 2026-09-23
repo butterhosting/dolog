@@ -189,6 +189,8 @@ export class Server {
               `            https://butterhost.ing/dolog/love`, //
             ]),
         "",
+        ...(this.env.DOLOG_DEMO ? ["  \x1b[1mThis is a DEMO: all containers and log lines are invented\x1b[0m"] : []),
+        "",
       ].join("\n"),
     );
   }

@@ -18,13 +18,10 @@ Start the Dolog container with a mount of the Docker socket, and receive:
 - webhook alerts based on log patterns or throughput thresholds
 - ... and much more!
 
-## Quickstart
+## Quickstart / Demo
 
 ```sh
-docker run --rm \
-  -p 3000:3000 \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  butterhosting/dolog
+docker run --rm -p 3000:3000 -e DOLOG_DEMO=true butterhosting/dolog
 ```
 
 ## Documentation

@@ -21,7 +21,13 @@ describe("Env", () => {
     expect(env.DOLOG_LOGGING).toEqual(LogLevel.debug);
     expect(env.DOLOG_RETENTION_TIME_WINDOW.toString()).toEqual("P180D");
     expect(env.DOLOG_THROTTLING_LOGS_PER_SECOND).toEqual(100);
+    expect(env.DOLOG_DEMO).toEqual(false);
     expect(env.DOLOG_PROVIDED).toEqual({ DOLOG_LOGGING: "debug" });
+  });
+
+  it("should read a flag as the words true and false, and nothing else", () => {
+    expect(Env.initialize("UTC", { ...REQUIRED, DOLOG_DEMO: "true" }).DOLOG_DEMO).toEqual(true);
+    expect(() => Env.initialize("UTC", { ...REQUIRED, DOLOG_DEMO: "yes" })).toThrow("invalid_boolean");
   });
 
   it("should read the webhooks as name=url entries split on any whitespace, moving credentials out of the URL", () => {

@@ -2,15 +2,15 @@ import { Env } from "@/Env";
 import { DockerError } from "@/errors/DockerError";
 import { Container } from "@/models/Container";
 import { Host } from "@/models/Host";
-import { LiveStats } from "@/models/LiveStats";
 import { StreamVariant } from "@/models/StreamVariant";
 import { Temporal } from "@js-temporal/polyfill";
 import z from "zod/v4";
+import { Source } from "../contracts/Source";
 
 /**
  * Interacts with the Docker Engine API, directly via the unix socket
  */
-export class DockerSocket {
+export class DockerSocket implements Source {
   private static readonly LABEL_COMPOSE_PROJECT = "com.docker.compose.project";
   private static readonly LABEL_SWARM_STACK = "com.docker.stack.namespace";
   public static readonly MAX_LINE_LENGTH = 64 * 1024;
@@ -35,7 +35,7 @@ export class DockerSocket {
     return { hostname: Name, dockerVersion: ServerVersion, cpuTotal: NCPU, memoryTotal: MemTotal };
   }
 
-  public async *streamLifecycles(signal: AbortSignal): AsyncGenerator<DockerSocket.Lifecycle> {
+  public async *streamLifecycles(signal: AbortSignal): AsyncGenerator<Source.Lifecycle> {
     const filters = JSON.stringify({
       type: ["container"],
       event: ["start", "die"],
@@ -59,7 +59,7 @@ export class DockerSocket {
     }
   }
 
-  public async *streamLogLines(id: string, signal: AbortSignal): AsyncGenerator<DockerSocket.LogLine> {
+  public async *streamLogLines(id: string, signal: AbortSignal): AsyncGenerator<Source.LogLine> {
     // Containers started with a TTY emit a raw byte stream for their logs; all others emit Docker's
     // multiplexed framing. There is no way to tell from the log stream itself, so it has to be asked up front.
     // Containers are usually started without an interactive shell, so non-TTY is the overwhelmingly "normal" case.
@@ -132,7 +132,7 @@ export class DockerSocket {
   /**
    * Docker samples a running container about once a second; the maths below is the docker CLI's.
    */
-  public async *streamStats(id: string, signal: AbortSignal): AsyncGenerator<DockerSocket.Stats> {
+  public async *streamStats(id: string, signal: AbortSignal): AsyncGenerator<Source.Stats> {
     const cpuLimit = this.readCpuLimit(await this.inspect(id, signal));
 
     const path = `/containers/${id}/stats?stream=1`;
@@ -356,23 +356,6 @@ export class DockerSocket {
     result.set(right, left.length);
     return result;
   }
-}
-
-export namespace DockerSocket {
-  export type LogLine = {
-    streamVariant: StreamVariant;
-    timestamp: Temporal.Instant;
-    line: string;
-  };
-
-  export type Lifecycle = {
-    status: "start" | "die";
-    timestamp: Temporal.Instant;
-    container: Container;
-  };
-
-  // the measured half of LiveStats, so a sample spreads into it by name; usage is in cores and bytes, like the totals
-  export type Stats = Pick<LiveStats, "cpuUsage" | "cpuTotal" | "memoryUsage" | "memoryTotal">;
 }
 
 /**

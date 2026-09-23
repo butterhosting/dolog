@@ -1,0 +1,8 @@
+# The README's one-liner, as a stack: no volume and no socket, only the flag
+services:
+  dolog:
+    image: butterhosting/dolog:latest
+    ports:
+      - "3000:3000"
+    environment:
+      DOLOG_DEMO: "true"

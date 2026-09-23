@@ -4,7 +4,6 @@ import { ServerError } from "@/errors/ServerError";
 import { TestEnvironment } from "@/testing/TestEnvironment.test";
 import { TestFixture } from "@/testing/TestFixture.test";
 import { beforeEach, describe, expect, it } from "bun:test";
-import { eq } from "drizzle-orm";
 import { RestrictedService } from "./RestrictedService";
 
 describe(RestrictedService.name, () => {
@@ -30,7 +29,7 @@ describe(RestrictedService.name, () => {
 
   describe("purge", () => {
     for (const stage of ["dev", "e2e"] as const) {
-      it(`should leave the containers and the fixture's history behind in ${stage}, and no other event`, async () => {
+      it(`should forget every event but keep the containers in ${stage}`, async () => {
         // given
         await saveSomeEvents();
         expect(countEvents()).toBe(2);
@@ -39,12 +38,8 @@ describe(RestrictedService.name, () => {
         await serviceFor(stage).purge();
 
         // then
-        const events = context.sqlite.select().from($containerEvent).all();
-        const fixture = context.sqlite.select().from($container).where(eq($container.dname, "fixture")).all().at(0)!;
-        expect(events.length).toBeGreaterThan(0);
-        expect(events.every((event) => event.containerId === fixture.id)).toBe(true);
-        // the one the events belonged to, and the fixture
-        expect(countContainers()).toBe(2);
+        expect(countEvents()).toBe(0);
+        expect(countContainers()).toBe(1);
       });
     }
 

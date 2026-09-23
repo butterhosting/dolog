@@ -54,6 +54,11 @@ export class EventRepository {
     this.enforcePendingCeiling();
   }
 
+  /** Written on the spot rather than buffered: a whole history would fill the buffer several times over */
+  public async saveHistory(events: ContainerEvent[]): Promise<void> {
+    await this.batchInsert(events);
+  }
+
   public async findEvent(svcId: Svc.Id, search: EventRepository.Search, filter: Filter): Promise<{ id: string | undefined }> {
     const searchPredicate = {
       fullObjectTest: PredicateFactory.forSearch("full_object_test", search),

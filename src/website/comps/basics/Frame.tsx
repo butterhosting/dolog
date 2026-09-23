@@ -9,6 +9,7 @@ import { useSvcs } from "../../hooks/useSvcs";
 import { Route } from "../../Route";
 import { LogoIcon } from "../icons/LogoIcon";
 import { SlidersIcon } from "../icons/SlidersIcon";
+import { DemoBanner } from "../DemoBanner";
 import { Meter } from "../Meter";
 import { Cell } from "./Cell";
 
@@ -18,6 +19,7 @@ type Props = ComponentProps<"main"> & {
 export function Frame({ padded = true, ...props }: Props) {
   return (
     <div className="full-bleed flex min-h-screen flex-col">
+      <DemoBanner />
       <Internal.Header />
       <Internal.Main padded={padded} {...props} />
       <Internal.Footer />

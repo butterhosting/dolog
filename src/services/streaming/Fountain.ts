@@ -23,7 +23,7 @@ import {
   timer,
   toArray,
 } from "rxjs";
-import { DockerSocket } from "./DockerSocket";
+import { Source } from "../contracts/Source";
 import { ThrottleService } from "./ThrottleService";
 
 /**
@@ -42,7 +42,7 @@ export class Fountain {
   private events?: Observable<ContainerEvent>;
 
   public constructor(
-    private readonly dockerSocket: DockerSocket,
+    private readonly source: Source,
     private readonly throttleService: ThrottleService,
   ) {}
 
@@ -211,7 +211,7 @@ export class Fountain {
   }
 
   private burstRunningContainers(): Observable<Container> {
-    return defer(() => this.dockerSocket.listRunningContainers()) //
+    return defer(() => this.source.listRunningContainers()) //
       .pipe(
         retry({
           delay: (error, retryCount) => this.exponentialBackoff(retryCount, "Could not list running containers", error),
@@ -222,7 +222,7 @@ export class Fountain {
   }
 
   private streamLifecycles(): Observable<ContainerEvent.Start | ContainerEvent.Stop> {
-    return this.toObservable((signal) => this.dockerSocket.streamLifecycles(signal)) //
+    return this.toObservable((signal) => this.source.streamLifecycles(signal)) //
       .pipe(
         map(({ status, timestamp, container }): ContainerEvent.Start | ContainerEvent.Stop => {
           switch (status) {
@@ -257,7 +257,7 @@ export class Fountain {
   }
 
   private logs(container: Container): Observable<ContainerEvent.Log> {
-    return this.toObservable((signal) => this.dockerSocket.streamLogLines(container.did, signal)) //
+    return this.toObservable((signal) => this.source.streamLogLines(container.did, signal)) //
       .pipe(
         map(({ streamVariant, timestamp, line }): ContainerEvent.Log => ({
           object: "container_event",
@@ -280,8 +280,8 @@ export class Fountain {
       );
   }
 
-  private stats(container: Container): Observable<DockerSocket.Stats> {
-    return this.toObservable((signal) => this.dockerSocket.streamStats(container.did, signal)) //
+  private stats(container: Container): Observable<Source.Stats> {
+    return this.toObservable((signal) => this.source.streamStats(container.did, signal)) //
       .pipe(
         retry({
           delay: (error, retryCount) => this.exponentialBackoff(retryCount, `Stats stream failed for ${container.dname}`, error),

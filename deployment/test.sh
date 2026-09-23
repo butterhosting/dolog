@@ -52,6 +52,18 @@ assert_status() {
     return 0
 }
 
+assert_body() {
+    needle="$1"
+    path="$2"
+    body=$(curl -s -m 5 "$BASE_URL$path" || true)
+    if ! printf "%s" "$body" | grep -q -- "$needle"; then
+        printf "    FAIL  expected '%s' in the body of %s\n" "$needle" "$path"
+        return 1
+    fi
+    printf "    OK    '%s' in %s\n" "$needle" "$path"
+    return 0
+}
+
 # A handshake rather than a plain GET, which only ever gets the (public) html shell. A 101 keeps the
 # connection open, so that one takes curl's whole timeout to come back
 assert_upgrade() {
@@ -142,6 +154,15 @@ verify_auth() {
     && assert_status "404" /internal-api/restricted/purge -u kim:possible -X POST
 }
 
+# no socket at all: the invented fleet is what the container list and the host come from
+verify_demo() {
+    assert_status "200" /health \
+    && assert_body '"DOLOG_DEMO":true' /internal-api/env \
+    && assert_body '"hostname":"demo"' /internal-api/host \
+    && assert_body '"dname":"worker"' /internal-api/svcs \
+    && assert_status "404" /internal-api/restricted/purge -X POST
+}
+
 # ─── scenarios ───
 
 cd "$ROOT"
@@ -149,6 +170,7 @@ cd "$ROOT"
 build_image "default"
 run_scenario "fully-accessible" "$SCRIPT_DIR/compose.yaml" verify_no_auth
 run_scenario "basic-auth-restricted" "$SCRIPT_DIR/compose-auth.yaml" verify_auth
+run_scenario "interactive-demo" "$SCRIPT_DIR/compose-demo.yaml" verify_demo
 
 # ─── summary ───
 

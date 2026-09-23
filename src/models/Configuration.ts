@@ -7,7 +7,8 @@ export type Configuration = {
 };
 
 export namespace Configuration {
-  export type EnvVar = Env.Defaultable;
+  // the demo flag has a default too, but it is a way of trying dolog rather than a setting of it
+  export type EnvVar = Exclude<Env.Defaultable, "DOLOG_DEMO">;
 
   export type Setting = {
     envVar: EnvVar;

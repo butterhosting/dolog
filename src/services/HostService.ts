@@ -19,14 +19,14 @@ import {
   switchMap,
   timer,
 } from "rxjs";
-import { DockerSocket } from "./streaming/DockerSocket";
+import { Source } from "./contracts/Source";
 
 export class HostService {
   private readonly log = new Logger(__filename);
   private readonly host: Observable<Host>;
 
   public constructor(
-    private readonly dockerSocket: DockerSocket,
+    private readonly source: Source,
     private readonly socketService: SocketService,
   ) {
     this.host = this.sampleHost();
@@ -48,7 +48,7 @@ export class HostService {
     const SAMPLE_INTERVAL = Temporal.Duration.from({ seconds: 1 });
     const RETRY_DELAY = Temporal.Duration.from({ seconds: 5 });
 
-    const identity = defer(() => this.dockerSocket.inspectHost()).pipe(
+    const identity = defer(() => this.source.inspectHost()).pipe(
       retry({
         delay: (error) => {
           this.log.warn("Docker would not describe its host, retrying", error);

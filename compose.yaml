@@ -7,6 +7,8 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     command: bun start:dev
+    environment:
+      DOLOG_DEMO: true
     ports:
       - "3000:3000"
     volumes:

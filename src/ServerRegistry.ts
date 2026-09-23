@@ -10,11 +10,13 @@ import { Server } from "./Server";
 import { WebhookSender } from "./services/alerting/WebhookSender";
 import { AlertingService } from "./services/AlertingService";
 import { ConfigurationService } from "./services/ConfigurationService";
+import { DemoSocket } from "./services/streaming/DemoSocket";
 import { HostService } from "./services/HostService";
 import { LogService } from "./services/LogService";
 import { RestrictedService } from "./services/RestrictedService";
 import { RetentionService } from "./services/RetentionService";
 import { SocketService } from "./services/SocketService";
+import { Source } from "./services/contracts/Source";
 import { DockerSocket } from "./services/streaming/DockerSocket";
 import { Fountain } from "./services/streaming/Fountain";
 import { ThrottleService } from "./services/streaming/ThrottleService";
@@ -34,17 +36,24 @@ export class ServerRegistry {
     // Repositories
     const { eventRepository } = this.register({ EventRepository }, [sqlite]);
 
+    // Socket
+    let source: Source;
+    if (env.DOLOG_DEMO) {
+      source = this.register({ DemoSocket }, [env, eventRepository]).demoSocket;
+    } else {
+      source = this.register({ DockerSocket }, [env]).dockerSocket;
+    }
+
     // Services
-    const { dockerSocket } = this.register({ DockerSocket }, [env]);
     const { throttleService } = this.register({ ThrottleService }, [env]);
-    const { fountain } = this.register({ Fountain }, [dockerSocket, throttleService]);
+    const { fountain } = this.register({ Fountain }, [source, throttleService]);
     this.register({ RetentionService }, [fountain, env, eventRepository]);
     const { webhookSender } = this.register({ WebhookSender }, []);
     this.register({ AlertingService }, [fountain, throttleService, env, webhookSender]);
     const { socketService } = this.register({ SocketService }, []);
     const { svcService } = this.register({ SvcService }, [fountain, eventRepository, socketService]);
     const { logService } = this.register({ LogService }, [fountain, eventRepository, socketService]);
-    const { hostService } = this.register({ HostService }, [dockerSocket, socketService]);
+    const { hostService } = this.register({ HostService }, [source, socketService]);
     const { configurationService } = this.register({ ConfigurationService }, [env, svcService, socketService]);
     const { restrictedService } = this.register({ RestrictedService }, [env, sqlite]);
 

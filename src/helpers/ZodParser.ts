@@ -45,6 +45,10 @@ export namespace ZodParser {
       });
   }
 
+  export function boolean() {
+    return z.enum(["true", "false"], { error: "invalid_boolean" }).transform((value) => value === "true");
+  }
+
   export function positiveInteger() {
     return z
       .string()
