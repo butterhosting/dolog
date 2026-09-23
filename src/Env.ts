@@ -79,7 +79,7 @@ export namespace Env {
         DOLOG_COMMIT: packageJson.commit.slice(0, 7),
         DOLOG_VERSION: packageJson.version,
         DOLOG_HTPASSWD: join(env.DOLOG_ROOT, ".htpasswd"),
-        DOLOG_DATABASE: join(env.DOLOG_ROOT, "data", "db.sqlite"),
+        DOLOG_DATABASE: env.DOLOG_DEMO ? ":memory:" : join(env.DOLOG_ROOT, "data", "db.sqlite"),
         DOLOG_CONTAINER_LABEL_PREFIX: "dolog.",
         DOLOG_PROVIDED: provided,
       }))

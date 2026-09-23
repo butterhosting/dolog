@@ -10,7 +10,7 @@
     "dev": "docker compose up",
     "drizzle": "sh -c ': \"${1:?Please pass a migration name}\"; bunx drizzle-kit generate --name=$1 --custom' _",
     "e2e": "playwright test --ui",
-    "e2e:headless": "playwright test --max-failures 1 --reporter github",
+    "e2e:headless": "playwright test --max-failures 1",
     "install:browsers": "playwright install chromium --with-deps",
     "lint": "bunx tsc --noEmit -p tsconfig.lint.json && bunx knip-bun",
     "start:dev": "bun --env-file=.env.dev --watch src/index.ts",

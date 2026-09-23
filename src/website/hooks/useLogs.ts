@@ -41,7 +41,7 @@ export function useLogs({ svcId, parentNode, filter, anchor }: useLogs.Options):
         // Live lines are _only_ appended while the reader is tailing the end of the logs ...
         // ... otherwise they're noted as missed, and caught up on when they return. The window can
         // turn one down as well, mid-load, which counts as missed for the same reason
-        if (!isFollowingStreamRef.current || !appendEvent(event)) {
+        if (!isFollowingStreamRef.current || !parentNode.currentScrollWindowPosition.isStillAtTheBottom() || !appendEvent(event)) {
           hasMissedDataWhilePaused.current = true;
         }
       },
@@ -130,7 +130,9 @@ export function useLogs({ svcId, parentNode, filter, anchor }: useLogs.Options):
     if (isFreshLoad && landed.positioned) {
       return;
     }
-    if (isFollowingStream) {
+    // ... and behind a scroll the reader has already made: a line landing in that gap would drag them
+    // straight back down (1 scroll-up in 20 at 6x CPU throttle; the flaky 03b in CI)
+    if (isFollowingStream && parentNode.currentScrollWindowPosition.isStillAtTheBottom()) {
       parentNode.move.toTheBottom();
     }
   }, [events, isFollowingStream]);

@@ -55,6 +55,8 @@ jobs:
           path: |
             e2e/.playwright-report
             e2e/.test-results
+          # both are dot-directories, which the action leaves out unless told otherwise
+          include-hidden-files: true
           retention-days: 3
 
   cd:

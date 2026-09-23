@@ -2,6 +2,8 @@ export type ParentNode = {
   currentScrollWindowPosition: {
     atTheTop: boolean;
     atTheBottom: boolean;
+    /** `atTheBottom` is a render behind; this is where the last scroll actually left the view */
+    isStillAtTheBottom(): boolean;
     createRestoreFn(): () => unknown;
   };
   events: {

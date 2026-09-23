@@ -19,7 +19,9 @@ if (!env.DOLOG_DEMO) {
   }
 }
 
-await mkdir(dirname(env.DOLOG_DATABASE), { recursive: true });
+if (!env.DOLOG_DEMO) {
+  await mkdir(dirname(env.DOLOG_DATABASE), { recursive: true });
+}
 const sqlite = await Sqlite.initialize(env);
 
 await ServerRegistry.bootstrap(env, sqlite);

@@ -1,5 +1,5 @@
 import { RowMarker } from "@/website/rendering/RowMarker";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ParentNode } from "./objects/ParentNode";
 import { usePhysicalDOMElement } from "./usePhysicalDOMElement";
 
@@ -11,17 +11,34 @@ const EDGE_SLACK_PX = 24;
 export function useParentNode(): useParentNode.Result {
   const [atTheTop, setAtTheTop] = useState(false);
   const [atTheBottom, setAtTheBottom] = useState(true);
+  // whether the last scroll left the reader at the bottom, for a decision made before the state above has caught up
+  const scrolledToTheBottom = useRef(true);
+  const bottomScrollTop = useRef(0);
 
-  function reorient(container: HTMLElement) {
+  function reorient(container: HTMLElement): boolean {
+    const atTheBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= EDGE_SLACK_PX;
     setAtTheTop(container.scrollTop <= EDGE_SLACK_PX);
-    setAtTheBottom(container.scrollHeight - container.scrollTop - container.clientHeight <= EDGE_SLACK_PX);
+    setAtTheBottom(atTheBottom);
+    return atTheBottom;
+  }
+
+  // A scroll event arrives a frame after the scroll, by when a chatty container has grown the view past the
+  // slack again; only a scrollTop below where the reader was last put at the bottom is the reader going up
+  function scrolled(container: HTMLElement) {
+    if (reorient(container)) {
+      bottomScrollTop.current = container.scrollTop;
+      scrolledToTheBottom.current = true;
+    } else if (container.scrollTop < bottomScrollTop.current) {
+      scrolledToTheBottom.current = false;
+    }
   }
 
   const { elementRef, registerElement } = usePhysicalDOMElement({
     eventListeners: {
-      scroll: (_, element) => reorient(element),
+      scroll: (_, element) => scrolled(element),
     },
     mutationListener: {
+      // content growing under a reader who stayed put is not the reader scrolling
       onMutation: (_, element) => reorient(element),
       subscription: { childList: true },
     },
@@ -33,13 +50,14 @@ export function useParentNode(): useParentNode.Result {
       currentScrollWindowPosition: {
         atTheTop,
         atTheBottom,
+        isStillAtTheBottom: () => scrolledToTheBottom.current,
         createRestoreFn() {
           const container = elementRef.current;
           const heightBefore = container?.scrollHeight ?? 0;
           return () => {
             if (container) {
               container.scrollTop += container.scrollHeight - heightBefore;
-              reorient(container);
+              scrolled(container);
             }
           };
         },
@@ -78,7 +96,7 @@ export function useParentNode(): useParentNode.Result {
           const container = elementRef.current;
           if (container) {
             container.scrollTop = container.scrollHeight;
-            reorient(container);
+            scrolled(container);
           }
         },
       },

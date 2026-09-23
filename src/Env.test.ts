@@ -26,7 +26,9 @@ describe("Env", () => {
   });
 
   it("should read a flag as the words true and false, and nothing else", () => {
-    expect(Env.initialize("UTC", { ...REQUIRED, DOLOG_DEMO: "true" }).DOLOG_DEMO).toEqual(true);
+    const demo = Env.initialize("UTC", { ...REQUIRED, DOLOG_DEMO: "true" });
+    expect(demo.DOLOG_DEMO).toEqual(true);
+    expect(demo.DOLOG_DATABASE).toEqual(":memory:");
     expect(() => Env.initialize("UTC", { ...REQUIRED, DOLOG_DEMO: "yes" })).toThrow("invalid_boolean");
   });
 
