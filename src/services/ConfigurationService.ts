@@ -40,7 +40,7 @@ export class ConfigurationService {
   }
 
   public snapshot(svcs: Svc[]): Configuration {
-    const INSTANCE_WIDE = ["DOLOG_TIMEZONE", "DOLOG_LOGGING", "DOLOG_DOCKER_SOCKET", "DOLOG_WEBHOOKS"] satisfies Configuration.EnvVar[];
+    const INSTANCE_WIDE = ["DOLOG_TIMEZONE", "DOLOG_LOGGING", "DOLOG_WEBHOOKS"] satisfies Configuration.EnvVar[];
     const prefix = this.env.DOLOG_CONTAINER_LABEL_PREFIX;
 
     const instanceWide = INSTANCE_WIDE.map((key) => this.setting(key));

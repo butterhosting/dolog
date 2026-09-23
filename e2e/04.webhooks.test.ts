@@ -12,11 +12,11 @@ test("a text alert and a throughput alert are delivered to the webhook", async (
 
     // then
     const text = alerts.find((alert) => alert.type === "text");
-    expect(text).toMatchObject({ object: "alert", svc: { dname: "trickle" }, match: { pattern: '" 500 ' } });
+    expect(text).toMatchObject({ object: "alert", service: { dname: "trickle" }, match: { pattern: '" 500 ' } });
     expect(text!.match!.line).toContain('" 500 ');
 
     const throughput = alerts.find((alert) => alert.type === "throughput");
-    expect(throughput).toMatchObject({ object: "alert", svc: { dname: "firehose" }, breach: { threshold: 300 } });
+    expect(throughput).toMatchObject({ object: "alert", service: { dname: "firehose" }, breach: { threshold: 300 } });
     expect(throughput!.breach!.logsPerSecond).toBeGreaterThan(300);
   }).toPass();
 });

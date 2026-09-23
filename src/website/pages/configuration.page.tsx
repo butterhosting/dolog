@@ -50,11 +50,6 @@ namespace Internal {
       title: "logging",
       description: "How much Dolog writes to its own output. Must be one of debug, info, warn or error.",
     },
-    DOLOG_DOCKER_SOCKET: {
-      topic: "system",
-      title: "docker socket",
-      description: "Where Dolog reads containers and their logs from. Must be mounted into the Dolog container.",
-    },
     DOLOG_RETENTION_TIME_WINDOW: {
       topic: "retention",
       title: "time window",

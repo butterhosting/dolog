@@ -22,11 +22,6 @@ test("every setting is listed under its topic, with its value and the labels ove
       expectation: ["debug"],
     },
     {
-      topic: "system",
-      envVar: "DOLOG_DOCKER_SOCKET",
-      expectation: ["/var/run/docker.sock (using default)"],
-    },
-    {
       topic: "retention",
       envVar: "DOLOG_RETENTION_MAX_LINES",
       expectation: ["100000 (using default)", "dolog.retention.max-lines", "(no labels detected)"],

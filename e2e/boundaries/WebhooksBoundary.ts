@@ -6,7 +6,7 @@ export namespace WebhooksBoundary {
   type Alert = {
     object: "alert";
     type: "text" | "throughput";
-    svc: { dname: string };
+    service: { dname: string };
     match?: { pattern: string; line: string };
     breach?: { threshold: number; logsPerSecond: number };
   };

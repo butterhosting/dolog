@@ -24,7 +24,6 @@ describe(ConfigurationService.name, () => {
     expect(settings.map(({ envVar }) => envVar)).toEqual([
       "DOLOG_TIMEZONE",
       "DOLOG_LOGGING",
-      "DOLOG_DOCKER_SOCKET",
       "DOLOG_WEBHOOKS",
       "DOLOG_THROTTLING_LOGS_PER_SECOND",
       "DOLOG_RETENTION_TIME_WINDOW",

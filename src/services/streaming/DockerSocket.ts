@@ -14,6 +14,7 @@ export class DockerSocket implements Source {
   private static readonly LABEL_COMPOSE_PROJECT = "com.docker.compose.project";
   private static readonly LABEL_SWARM_STACK = "com.docker.stack.namespace";
   public static readonly MAX_LINE_LENGTH = 64 * 1024;
+  public static readonly PATH = "/var/run/docker.sock";
 
   public constructor(private readonly env: Env.Private) {}
 
@@ -268,9 +269,8 @@ export class DockerSocket implements Source {
   }
 
   private async request(path: string, signal?: AbortSignal): Promise<Response> {
-    const socket = this.env.DOLOG_DOCKER_SOCKET;
-    const response = await fetch(`http://docker${path}`, { unix: socket, signal }).catch((cause) => {
-      throw DockerError.socket_unreachable({ socket, reason: `${cause}` });
+    const response = await fetch(`http://docker${path}`, { unix: DockerSocket.PATH, signal }).catch((cause) => {
+      throw DockerError.socket_unreachable({ socket: DockerSocket.PATH, reason: `${cause}` });
     });
     if (!response.ok) {
       throw DockerError.unexpected_response({ path, status: response.status });

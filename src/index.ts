@@ -5,17 +5,18 @@ import { Env } from "./Env";
 import { DockerError } from "./errors/DockerError";
 import { Logger } from "./Logger";
 import { ServerRegistry } from "./ServerRegistry";
+import { DockerSocket } from "./services/streaming/DockerSocket";
 
 Logger.initialize(Env.initialize.partiallyForLogger());
 const env = Env.initialize();
 
 if (!env.DOLOG_DEMO) {
-  const isSocketAvailable = await stat(env.DOLOG_DOCKER_SOCKET).then(
+  const isSocketAvailable = await stat(DockerSocket.PATH).then(
     (s) => s.isSocket(),
     () => false,
   );
   if (!isSocketAvailable) {
-    throw DockerError.socket_unreachable({ socket: env.DOLOG_DOCKER_SOCKET });
+    throw DockerError.socket_unreachable({ socket: DockerSocket.PATH });
   }
 }
 

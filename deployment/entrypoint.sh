@@ -14,7 +14,7 @@ chown -R bun:bun "$root" 2>/dev/null || true
 
 # The docker socket is root:<group> 0660, and that group's id is the host's to choose. So bun joins
 # whichever group owns the mounted socket; compose's group_add would not survive su-exec
-socket="${DOLOG_DOCKER_SOCKET:-/var/run/docker.sock}"
+socket=/var/run/docker.sock
 if [ -S "$socket" ]; then
     gid=$(stat -c %g "$socket")
     group=$(getent group "$gid" | cut -d: -f1)
