@@ -29,7 +29,7 @@ build_image() {
     shift
     printf "\n  BUILD %s\n" "$label"
     build_log=$(mktemp)
-    if ! ./dolog image create "$@" >"$build_log" 2>&1; then
+    if ! ./image create "$@" >"$build_log" 2>&1; then
         cat "$build_log"
         printf "  FAIL  %s (image build failed)\n" "$label"
         rm -f "$build_log"
