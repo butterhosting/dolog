@@ -18,6 +18,7 @@ import { LogService } from "./services/LogService";
 import { RestrictedService } from "./services/RestrictedService";
 import { SocketService } from "./services/SocketService";
 import { SvcService } from "./services/SvcService";
+import { Demo } from "./models/copy/Demo";
 
 export class Server {
   private readonly log = new Logger(__filename);
@@ -189,7 +190,7 @@ export class Server {
               `            https://butterhost.ing/dolog/love`, //
             ]),
         "",
-        ...(this.env.DOLOG_DEMO ? ["  \x1b[1mThis is a DEMO: all containers and log lines are invented\x1b[0m"] : []),
+        ...(this.env.DOLOG_DEMO ? [`  \x1b[1m${Demo.description}\x1b[0m`] : []),
         "",
       ].join("\n"),
     );

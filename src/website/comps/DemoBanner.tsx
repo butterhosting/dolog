@@ -1,3 +1,4 @@
+import { Demo } from "@/models/copy/Demo";
 import { useRegistry } from "../hooks/basics/useRegistry";
 
 export function DemoBanner() {
@@ -7,10 +8,7 @@ export function DemoBanner() {
   }
   return (
     <div className="py-2 flex flex-col items-center gap-2 bg-c-accent px-4 text-sm text-c-shell">
-      <span className="font-bold">This is a DEMO: all containers and log lines are invented</span>
-      <a href="https://www.butterhost.ing/dolog" target="_blank" rel="noopener noreferrer" className="underline hover:no-underline">
-        www.butterhost.ing/dolog
-      </a>
+      <span className="font-bold">{Demo.description}</span>
     </div>
   );
 }
