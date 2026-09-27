@@ -157,7 +157,7 @@ verify_auth() {
 # no socket at all: the invented fleet is what the container list and the host come from
 verify_demo() {
     assert_status "200" /health \
-    && assert_body '"DOLOG_DEMO":true' /internal-api/env \
+    && assert_body '"INTERACTIVE_DEMO":true' /internal-api/env \
     && assert_body '"hostname":"demo"' /internal-api/host \
     && assert_body '"dname":"worker"' /internal-api/svcs \
     && assert_status "404" /internal-api/restricted/purge -X POST

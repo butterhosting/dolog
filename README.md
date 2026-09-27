@@ -21,7 +21,7 @@ Start the Dolog container with a mount of the Docker socket, and receive:
 ## Quickstart / Demo
 
 ```sh
-docker run --rm -p 3000:3000 -e DOLOG_DEMO=true butterhosting/dolog
+docker run --rm -p 3000:3000 -e INTERACTIVE_DEMO=true butterhosting/dolog
 ```
 
 ## Documentation

@@ -18,7 +18,7 @@ export namespace Env {
 
     DOLOG_ROOT: z.string(),
     DOLOG_LOGGING: z.enum(LogLevel),
-    DOLOG_DEMO: ZodParser.boolean(),
+    INTERACTIVE_DEMO: ZodParser.boolean(),
     DOLOG_SUPPORT_TOKEN: z.string().optional(),
     DOLOG_VERIFICATION_KEY: z.string().transform((str) => str.replaceAll("\\n", "\n")),
 
@@ -37,7 +37,7 @@ export namespace Env {
     keyof z.input<typeof Schema>,
     | "DOLOG_TIMEZONE"
     | "DOLOG_LOGGING"
-    | "DOLOG_DEMO"
+    | "INTERACTIVE_DEMO"
     | "DOLOG_THROTTLING_LOGS_PER_SECOND"
     | "DOLOG_RETENTION_MAX_LINES"
     | "DOLOG_RETENTION_TIME_WINDOW"
@@ -50,7 +50,7 @@ export namespace Env {
   export const Defaults: Record<Defaultable, string> = {
     DOLOG_TIMEZONE: "UTC",
     DOLOG_LOGGING: "info",
-    DOLOG_DEMO: "false",
+    INTERACTIVE_DEMO: "false",
     DOLOG_THROTTLING_LOGS_PER_SECOND: "100",
     DOLOG_RETENTION_TIME_WINDOW: "180d",
     DOLOG_RETENTION_MAX_LINES: "100000",
@@ -76,7 +76,7 @@ export namespace Env {
         DOLOG_COMMIT: packageJson.commit.slice(0, 7),
         DOLOG_VERSION: packageJson.version,
         DOLOG_HTPASSWD: join(env.DOLOG_ROOT, ".htpasswd"),
-        DOLOG_DATABASE: env.DOLOG_DEMO ? ":memory:" : join(env.DOLOG_ROOT, "data", "db.sqlite"),
+        DOLOG_DATABASE: env.INTERACTIVE_DEMO ? ":memory:" : join(env.DOLOG_ROOT, "data", "db.sqlite"),
         DOLOG_CONTAINER_LABEL_PREFIX: "dolog.",
         DOLOG_PROVIDED: provided,
       }))
@@ -94,7 +94,7 @@ export namespace Env {
 
   export type Private = ReturnType<typeof initialize>;
   export type Public = Readonly<
-    Pick<Private, "DOLOG_STAGE" | "DOLOG_TIMEZONE" | "DOLOG_COMMIT" | "DOLOG_VERSION" | "DOLOG_SUPPORTER" | "DOLOG_DEMO">
+    Pick<Private, "DOLOG_STAGE" | "DOLOG_TIMEZONE" | "DOLOG_COMMIT" | "DOLOG_VERSION" | "DOLOG_SUPPORTER" | "INTERACTIVE_DEMO">
   >;
   export function onlyPublic(env: Private): Public {
     return {
@@ -103,7 +103,7 @@ export namespace Env {
       DOLOG_COMMIT: env.DOLOG_COMMIT,
       DOLOG_VERSION: env.DOLOG_VERSION,
       DOLOG_SUPPORTER: env.DOLOG_SUPPORTER,
-      DOLOG_DEMO: env.DOLOG_DEMO,
+      INTERACTIVE_DEMO: env.INTERACTIVE_DEMO,
     };
   }
 

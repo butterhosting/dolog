@@ -7,7 +7,8 @@ describe("Env", () => {
   const REQUIRED = {
     DOLOG_STAGE: "dev",
     DOLOG_ROOT: "/opt/dolog",
-    DOLOG_VERIFICATION_KEY: "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAalpLQu9Fkn/R3WylORAad6UB0XAOowFIjF2/FwAyjpc=\n-----END PUBLIC KEY-----",
+    DOLOG_VERIFICATION_KEY:
+      "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAalpLQu9Fkn/R3WylORAad6UB0XAOowFIjF2/FwAyjpc=\n-----END PUBLIC KEY-----",
   };
 
   beforeEach(async () => {
@@ -21,15 +22,15 @@ describe("Env", () => {
     expect(env.DOLOG_LOGGING).toEqual(LogLevel.debug);
     expect(env.DOLOG_RETENTION_TIME_WINDOW.toString()).toEqual("P180D");
     expect(env.DOLOG_THROTTLING_LOGS_PER_SECOND).toEqual(100);
-    expect(env.DOLOG_DEMO).toEqual(false);
+    expect(env.INTERACTIVE_DEMO).toEqual(false);
     expect(env.DOLOG_PROVIDED).toEqual({ DOLOG_LOGGING: "debug" });
   });
 
   it("should read a flag as the words true and false, and nothing else", () => {
-    const demo = Env.initialize("UTC", { ...REQUIRED, DOLOG_DEMO: "true" });
-    expect(demo.DOLOG_DEMO).toEqual(true);
+    const demo = Env.initialize("UTC", { ...REQUIRED, INTERACTIVE_DEMO: "true" });
+    expect(demo.INTERACTIVE_DEMO).toEqual(true);
     expect(demo.DOLOG_DATABASE).toEqual(":memory:");
-    expect(() => Env.initialize("UTC", { ...REQUIRED, DOLOG_DEMO: "yes" })).toThrow("invalid_boolean");
+    expect(() => Env.initialize("UTC", { ...REQUIRED, INTERACTIVE_DEMO: "yes" })).toThrow("invalid_boolean");
   });
 
   it("should read the webhooks as name=url entries split on any whitespace, moving credentials out of the URL", () => {
@@ -51,7 +52,9 @@ describe("Env", () => {
   it("should refuse a webhook with a bad name or URL, but take an alert target's name as written", () => {
     expect(() => Env.initialize("UTC", { ...REQUIRED, DOLOG_WEBHOOKS: "op.s=https://x" })).toThrow("invalid_webhook_name");
     expect(() => Env.initialize("UTC", { ...REQUIRED, DOLOG_WEBHOOKS: "https://x" })).toThrow("invalid_webhook_name");
-    expect(Object.keys(Env.initialize("UTC", { ...REQUIRED, DOLOG_WEBHOOKS: "App_Alerts-2=https://x" }).DOLOG_WEBHOOKS)).toEqual(["App_Alerts-2"]);
+    expect(Object.keys(Env.initialize("UTC", { ...REQUIRED, DOLOG_WEBHOOKS: "App_Alerts-2=https://x" }).DOLOG_WEBHOOKS)).toEqual([
+      "App_Alerts-2",
+    ]);
     expect(() => Env.initialize("UTC", { ...REQUIRED, DOLOG_WEBHOOKS: "ops=notaurl" })).toThrow("invalid_webhook_url");
     expect(() => Env.initialize("UTC", { ...REQUIRED, DOLOG_WEBHOOKS: "ops=ftp://x" })).toThrow("invalid_webhook_url");
     expect(Env.initialize("UTC", { ...REQUIRED, DOLOG_ALERTING_WEBHOOK_REF: "nobody" }).DOLOG_ALERTING_WEBHOOK_REF).toEqual("nobody");
@@ -60,7 +63,11 @@ describe("Env", () => {
   it("should read an empty alerting setting as off, and a filled one as a value", () => {
     // given
     const off = Env.initialize("UTC", REQUIRED);
-    const on = Env.initialize("UTC", { ...REQUIRED, DOLOG_ALERTING_TEXT_PATTERN: "ERROR|FATAL", DOLOG_ALERTING_THROUGHPUT_THRESHOLD: "250" });
+    const on = Env.initialize("UTC", {
+      ...REQUIRED,
+      DOLOG_ALERTING_TEXT_PATTERN: "ERROR|FATAL",
+      DOLOG_ALERTING_THROUGHPUT_THRESHOLD: "250",
+    });
     // then
     expect(off.DOLOG_ALERTING_TEXT_PATTERN).toBeUndefined();
     expect(off.DOLOG_ALERTING_THROUGHPUT_THRESHOLD).toBeUndefined();
@@ -69,5 +76,4 @@ describe("Env", () => {
     expect(on.DOLOG_ALERTING_THROUGHPUT_THRESHOLD).toEqual(250);
     expect(() => Env.initialize("UTC", { ...REQUIRED, DOLOG_ALERTING_TEXT_PATTERN: "(" })).toThrow("invalid_regex");
   });
-
 });

@@ -190,7 +190,7 @@ export class Server {
               `            https://butterhost.ing/dolog/love`, //
             ]),
         "",
-        ...(this.env.DOLOG_DEMO ? [`  \x1b[1m${Demo.description}\x1b[0m`] : []),
+        ...(this.env.INTERACTIVE_DEMO ? [`  \x1b[1m${Demo.description}\x1b[0m`] : []),
         "",
       ].join("\n"),
     );

@@ -2,8 +2,8 @@ import { Demo } from "@/models/copy/Demo";
 import { useRegistry } from "../hooks/basics/useRegistry";
 
 export function DemoBanner() {
-  const { DOLOG_DEMO } = useRegistry("env");
-  if (!DOLOG_DEMO) {
+  const { INTERACTIVE_DEMO } = useRegistry("env");
+  if (!INTERACTIVE_DEMO) {
     return null;
   }
   return (

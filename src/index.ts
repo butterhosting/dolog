@@ -10,7 +10,7 @@ import { DockerSocket } from "./services/streaming/DockerSocket";
 Logger.initialize(Env.initialize.partiallyForLogger());
 const env = Env.initialize();
 
-if (!env.DOLOG_DEMO) {
+if (!env.INTERACTIVE_DEMO) {
   const isSocketAvailable = await stat(DockerSocket.PATH).then(
     (s) => s.isSocket(),
     () => false,
@@ -20,7 +20,7 @@ if (!env.DOLOG_DEMO) {
   }
 }
 
-if (!env.DOLOG_DEMO) {
+if (!env.INTERACTIVE_DEMO) {
   await mkdir(dirname(env.DOLOG_DATABASE), { recursive: true });
 }
 const sqlite = await Sqlite.initialize(env);

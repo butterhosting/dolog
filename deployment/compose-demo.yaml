@@ -5,4 +5,4 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DOLOG_DEMO: "true"
+      INTERACTIVE_DEMO: "true"

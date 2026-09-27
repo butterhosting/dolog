@@ -38,7 +38,7 @@ export class ServerRegistry {
 
     // Socket
     let source: Source;
-    if (env.DOLOG_DEMO) {
+    if (env.INTERACTIVE_DEMO) {
       source = this.register({ DemoSocket }, [env, eventRepository]).demoSocket;
     } else {
       source = this.register({ DockerSocket }, [env]).dockerSocket;
