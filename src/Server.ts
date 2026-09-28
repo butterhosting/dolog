@@ -22,6 +22,7 @@ import { Demo } from "./models/copy/Demo";
 
 export class Server {
   private readonly log = new Logger(__filename);
+  private server?: Bun.Server<Socket.Context>;
 
   public constructor(
     private readonly env: Env.Private,
@@ -164,6 +165,8 @@ export class Server {
       error: (e) => this.handleError(e),
     });
 
+    this.server = server;
+
     // ordinary log, so this is always printed (independent of log level)
     console.log(
       [
@@ -194,6 +197,15 @@ export class Server {
         "",
       ].join("\n"),
     );
+  }
+
+  /**
+   * Stops accepting requests and closes the open connections, so that a `docker stop` ends the process cleanly
+   */
+  public async stop() {
+    await this.server?.stop(true);
+    // ordinary log, mirroring the startup banner
+    console.log(`\n  👋 \x1b[1mDolog stopped\x1b[0m\n`);
   }
 
   private handleFetch<C>(

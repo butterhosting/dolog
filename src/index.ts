@@ -4,6 +4,7 @@ import { Sqlite } from "./drizzle/sqlite";
 import { Env } from "./Env";
 import { DockerError } from "./errors/DockerError";
 import { Logger } from "./Logger";
+import { Server } from "./Server";
 import { ServerRegistry } from "./ServerRegistry";
 import { DockerSocket } from "./services/streaming/DockerSocket";
 
@@ -25,4 +26,12 @@ if (!env.INTERACTIVE_DEMO) {
 }
 const sqlite = await Sqlite.initialize(env);
 
-await ServerRegistry.bootstrap(env, sqlite);
+const registry = await ServerRegistry.bootstrap(env, sqlite);
+
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signal, async () => {
+    await registry.get(Server).stop();
+    sqlite.close();
+    process.exit(0);
+  });
+}
