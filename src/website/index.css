@@ -10,8 +10,8 @@
     /* Colors */
     /* the chrome around the logs -- header and toolbar sit on this */
     --color-c-shell: #0f0e11;
-    /* the logs themselves, one step darker so the two read as separate planes */
-    --color-c-surface: #000000;
+    /* the logs themselves, one step lighter so the two read as separate planes; not black, which makes white text glare */
+    --color-c-surface: #18171b;
     /* reserved for controls that *do* something; nothing decorative is allowed to wear it */
     --color-c-accent: #feea3a;
     /* hairlines and any text the eye should skip past, timestamps included */
@@ -21,6 +21,15 @@
     --color-c-chip: #2a2a2a;
     --color-c-chip-edge: #979797;
     --color-c-error: #ff4d4d;
+    /* the marker beside a line; warn is orange because yellow belongs to the controls */
+    --color-c-severity-error: #ff4d4d;
+    --color-c-severity-warn: #ff9a3c;
+    --color-c-severity-info: #4cc38a;
+    --color-c-severity-debug: #9d7cf2;
+    /* a band every other line, just enough to keep the eye on its row across a wide screen */
+    --color-c-stripe: #ffffff12;
+    /* log text is a step off white, which glares on black; still well above the timestamps' c-rule */
+    --color-c-log: #e0e0e0;
 
     /* one typeface for the whole app: the logs are monospaced, so the chrome around them is too */
     --font-mono: Menlo, "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;

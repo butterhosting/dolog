@@ -22,12 +22,22 @@ export namespace AppBoundary {
   type EnoughHistory = {
     svcId: string;
     events: number;
-    timeout: number;
   };
-  export async function ensureEnoughHistory(page: Page, { svcId, events, timeout }: EnoughHistory): Promise<void> {
-    await expect(async () => {
+  // waits for as long as the history keeps growing, since how fast a cpu-capped container logs depends on the host
+  export async function ensureEnoughHistory(page: Page, { svcId, events }: EnoughHistory): Promise<void> {
+    const STALL = 10_000;
+    let seen = 0;
+    let grewAt = Date.now();
+    while (true) {
       const response = await page.request.get(`/internal-api/svcs/${svcId}/logs?limit=${events}`, { failOnStatusCode: true });
-      expect(((await response.json()) as { hasOlder: boolean }).hasOlder).toBe(true);
-    }).toPass({ timeout });
+      const { data, hasOlder } = (await response.json()) as { data: unknown[]; hasOlder: boolean };
+      if (hasOlder) return;
+      if (data.length > seen) {
+        seen = data.length;
+        grewAt = Date.now();
+      }
+      expect(Date.now() - grewAt, `stopped logging at ${seen} of ${events} events`).toBeLessThan(STALL);
+      await page.waitForTimeout(1_000);
+    }
   }
 }

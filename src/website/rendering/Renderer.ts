@@ -8,6 +8,8 @@ import { Env } from "@/Env";
 
 export class Renderer {
   private readonly timezone: string;
+  // the live window drops its oldest line for every new one, so stripes counted by position would all flip each time
+  private readonly stripes = new WeakMap<ContainerEvent, boolean>();
 
   public constructor(env: Pick<Env.Public, "DOLOG_TIMEZONE">) {
     this.timezone = env.DOLOG_TIMEZONE;
@@ -30,6 +32,7 @@ export class Renderer {
       };
     }
 
+    const stripes = this.stripe(events);
     const result: Line[] = [];
     if (hasOlder) {
       const type = Line.Type.scroll_teaser;
@@ -77,11 +80,14 @@ export class Renderer {
         result.push(timestampAnchor.line);
       }
 
+      const above = result.at(-1);
       result.push({
         id: event.id,
         type: Line.Type.event,
         event,
         isAnchored: anchor?.type === "id" && event.id === anchor.value,
+        isStriped: stripes[index],
+        repeatsTimestamp: above?.type === Line.Type.event && Renderer.continues(above.event, event),
       });
     });
 
@@ -98,6 +104,24 @@ export class Renderer {
     return result;
   }
 
+  /**
+   * Alternates per block of log lines from the same second, outwards from the first event that was already
+   * striped, so every event keeps the stripe it was given
+   */
+  private stripe(events: ContainerEvent[]): boolean[] {
+    const blocks: number[] = [];
+    events.forEach((event, index) => {
+      blocks.push(index === 0 ? 0 : blocks[index - 1] + (Renderer.continues(events[index - 1], event) ? 0 : 1));
+    });
+    const pivot = Math.max(0, events.findIndex((event) => this.stripes.has(event)));
+    const parity = this.stripes.get(events[pivot]) ? 1 : 0;
+    return events.map((event, index) => {
+      const isStriped = (blocks[index] - blocks[pivot] + parity) % 2 !== 0;
+      this.stripes.set(event, isStriped);
+      return isStriped;
+    });
+  }
+
   private day(event: ContainerEvent): Temporal.PlainDate {
     return Timezone.dayOf(event.timestamp, this.timezone);
   }
@@ -108,6 +132,19 @@ export class Renderer {
 }
 
 export namespace Renderer {
+  /**
+   * Whether a log line carries on the one before it: both log lines, from the same second. Timestamps show whole
+   * seconds, and every zone's seconds start at the same instants, so this holds for any zone.
+   */
+  export function continues(previous: ContainerEvent, event: ContainerEvent): boolean {
+    const second = (instant: Temporal.Instant) => Math.floor(instant.epochMilliseconds / 1000);
+    return (
+      previous.type === ContainerEvent.Type.log &&
+      event.type === ContainerEvent.Type.log &&
+      second(previous.timestamp) === second(event.timestamp)
+    );
+  }
+
   export type Options = {
     anchor?: Anchor;
     events: ContainerEvent[];

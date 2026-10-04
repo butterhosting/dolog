@@ -21,26 +21,26 @@ test("the summary counts the running containers and shows the host's cpu and mem
   await expect(summary).toContainText(/[\d.]+ [KMGT]iB \/ [\d.]+ [KMGT]iB/);
 });
 
-test("every running container has a card", async ({ page }) => {
+test("every running container has a line", async ({ page }) => {
   // when
-  const cards = page.getByTestId("svc-card");
+  const cards = page.getByTestId("svc-line");
 
   // then
   await expect(cards).toHaveCount(RUNNING.length);
   for (const dname of RUNNING) {
     await expect(cards.filter({ hasText: dname })).toHaveCount(1);
   }
-  await expect(cards.filter({ hasText: "stopped" })).toHaveCount(0);
+  await expect(cards.filter({ hasText: "N/A" })).toHaveCount(0);
 });
 
-test("a card says how fast its container logs, or that it is being throttled", async ({ page }) => {
+test("a line says how fast its container logs, or that it is being throttled", async ({ page }) => {
   // when
-  const cards = page.getByTestId("svc-card");
+  const cards = page.getByTestId("svc-line");
 
   // then
   // firehose writes ~400 lines a second against a budget of 150; see `compose-deps.yaml`
   await expect(cards.filter({ hasText: "firehose" })).toContainText("throttling");
-  await expect(cards.filter({ hasText: "trickle" })).toContainText(/\d+ logs?\/second/);
+  await expect(cards.filter({ hasText: "trickle" })).toContainText(/\d+\/s/);
   await expect(cards.filter({ hasText: "trickle" })).not.toContainText("throttling");
 });
 
@@ -48,12 +48,12 @@ test("a stopped container only shows once the preferences ask for it", async ({ 
   // given
   // a reused stack remembers the containers of earlier runs, so each run brings a name of its own
   const name = `e2e-ephemeral-${Date.now()}`;
-  const card = page.getByTestId("svc-card").filter({ hasText: name });
+  const card = page.getByTestId("svc-line").filter({ hasText: name });
 
   try {
     await DockerBoundary.runToCompletion({ name, line: "hello from the e2e suite" });
     await page.reload();
-    await expect(page.getByTestId("svc-card")).toHaveCount(RUNNING.length);
+    await expect(page.getByTestId("svc-line")).toHaveCount(RUNNING.length);
     await expect(card).toHaveCount(0);
 
     // when
@@ -61,7 +61,7 @@ test("a stopped container only shows once the preferences ask for it", async ({ 
 
     // then
     await expect(card).toHaveCount(1);
-    await expect(card).toContainText("stopped");
+    await expect(card).toContainText("N/A");
 
     // when
     await PreferencesFlow.setHideStopped(page, { hideStopped: true });

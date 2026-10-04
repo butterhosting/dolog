@@ -4,13 +4,14 @@ import { AppBoundary } from "../boundaries/AppBoundary";
 export namespace LogsFlow {
   /**
    * Two pages of history before anything else. These flows are about a log longer than the viewer loads
-   * at once, and a stack that only just came up does not have one yet; trickle gets there in ~40 seconds.
+   * at once, and a stack that only just came up does not have one yet; trickle, capped at 0.1 cpu, writes
+   * about 2 lines a second, so that can take ~100 seconds after the purge.
    * What the viewer does with less than a page is `03f.logs.shortlog.test.ts`.
    */
   export async function open(page: Page, dname: string): Promise<void> {
-    test.setTimeout(60_000);
+    test.setTimeout(180_000);
     const svc = await AppBoundary.getSvc(page, dname);
-    await AppBoundary.ensureEnoughHistory(page, { svcId: svc.id, events: 200, timeout: 45_000 });
+    await AppBoundary.ensureEnoughHistory(page, { svcId: svc.id, events: 200 });
     await page.goto(`services/${svc.id}/logs`);
     await expect(rows(page).first()).toBeVisible();
   }

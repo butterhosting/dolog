@@ -250,4 +250,83 @@ describe(Renderer.name, () => {
       expect(body(rows)).toEqual(["line:2026-03-01T09:00:00Z"]);
     });
   });
+
+  describe("stripes", () => {
+    function stripes(rows: Line[]): Record<string, boolean> {
+      return Object.fromEntries(rows.flatMap((row) => (row.type === Line.Type.event ? [[row.event.id, row.isStriped]] : [])));
+    }
+
+    it("alternates", () => {
+      // given
+      const events = [at("2026-03-01T09:00:00Z", "a"), at("2026-03-01T09:00:01Z", "b"), at("2026-03-01T09:00:02Z", "c")];
+      // when
+      const rows = new Renderer({ DOLOG_TIMEZONE: "UTC" }).render({ events, hasOlder: true, hasNewer: false });
+      // then
+      expect(stripes(rows)).toEqual({ a: false, b: true, c: false });
+    });
+
+    it("keeps each line's stripe as the window slides, in either direction", () => {
+      // given
+      const renderer = new Renderer({ DOLOG_TIMEZONE: "UTC" });
+      const [a, b, c, d] = ["a", "b", "c", "d"].map((id, index) => at(`2026-03-01T09:00:0${index}Z`, id));
+      renderer.render({ events: [b, c], hasOlder: true, hasNewer: false });
+      // when -- the oldest dropped for a live line, then an older page loaded in
+      const live = renderer.render({ events: [c, d], hasOlder: true, hasNewer: false });
+      const older = renderer.render({ events: [a, b, c, d], hasOlder: true, hasNewer: false });
+      // then
+      expect(stripes(live)).toEqual({ c: true, d: false });
+      expect(stripes(older)).toEqual({ a: true, b: false, c: true, d: false });
+    });
+
+    it("gives the lines of one second one band, so the band changes where the time does", () => {
+      // given
+      const events = [at("2026-03-01T09:00:00.1Z", "a"), at("2026-03-01T09:00:00.2Z", "b"), at("2026-03-01T09:00:01.1Z", "c"), at("2026-03-01T09:00:02.1Z", "d"), at("2026-03-01T09:00:02.2Z", "e")];
+      // when
+      const rows = new Renderer({ DOLOG_TIMEZONE: "UTC" }).render({ events, hasOlder: true, hasNewer: false });
+      // then
+      expect(stripes(rows)).toEqual({ a: false, b: false, c: true, d: false, e: false });
+    });
+
+    it("keeps a block's band when a line joins it, at either end", () => {
+      // given
+      const renderer = new Renderer({ DOLOG_TIMEZONE: "UTC" });
+      const [a, b, c, d] = ["00.1", "00.2", "01.1", "01.2"].map((time, index) => at(`2026-03-01T09:00:${time}Z`, "abcd"[index]));
+      renderer.render({ events: [b, c], hasOlder: true, hasNewer: false });
+      // when -- a live line from c's second, then an older line from b's second
+      const live = renderer.render({ events: [b, c, d], hasOlder: true, hasNewer: false });
+      const older = renderer.render({ events: [a, b, c, d], hasOlder: true, hasNewer: false });
+      // then
+      expect(stripes(live)).toEqual({ b: false, c: true, d: true });
+      expect(stripes(older)).toEqual({ a: false, b: false, c: true, d: true });
+    });
+  });
+
+  describe("repeated timestamps", () => {
+    /** The ids of the event lines whose time repeats the one right above them */
+    function repeats(rows: Line[]): string[] {
+      return rows.flatMap((row) => (row.type === Line.Type.event && row.repeatsTimestamp ? [row.event.id] : []));
+    }
+
+    it("hides the time of a log line from the same second as the log line above it", () => {
+      // given
+      const events = [at("2026-03-01T09:00:00.100Z", "a"), at("2026-03-01T09:00:00.900Z", "b"), at("2026-03-01T09:00:00.950Z", "c"), at("2026-03-01T09:00:01.000Z", "d")];
+      // when
+      const rows = build({ events });
+      // then
+      expect(repeats(rows)).toEqual(["b", "c"]);
+    });
+
+    it("shows the time again after a pin or a container event", () => {
+      // given
+      const start = TestFixture.startEvent({ id: "start", timestamp: Temporal.Instant.from("2026-03-01T09:00:00.500Z") });
+      const events = [at("2026-03-01T09:00:00.100Z", "a"), start, at("2026-03-01T09:00:00.600Z", "b"), at("2026-03-01T09:00:00.700Z", "c")];
+      // when
+      const pinned = build({ events, anchor: Anchor.parse("2026-03-01T09:00:00.650Z") });
+      const unpinned = build({ events });
+      // then
+      expect(repeats(unpinned)).toEqual(["c"]);
+      expect(body(pinned)).toEqual(["line:a", "line:start", "line:b", "pin", "line:c"]);
+      expect(repeats(pinned)).toEqual([]);
+    });
+  });
 });

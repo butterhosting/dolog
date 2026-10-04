@@ -1,9 +1,8 @@
 import { Svc } from "@/models/Svc";
-import clsx from "clsx";
 import { Frame } from "../comps/basics/Frame";
 import { Paper } from "../comps/basics/Paper";
 import { SpinnerIcon } from "../comps/icons/SpinnerIcon";
-import { SvcCard } from "../comps/SvcCard";
+import { SvcGroupCard } from "../comps/SvcGroupCard";
 import { useDocumentTitle } from "../hooks/basics/useDocumentTitle";
 import { usePreferences } from "../hooks/usePreferences";
 import { useSvcs } from "../hooks/useSvcs";
@@ -24,22 +23,18 @@ export function svcsPage() {
   }
   const groups = Internal.group(hideStoppedSvcs ? svcs.filter((svc) => svc.mostRecentContainer.liveStats) : svcs);
   return (
-    <Frame className="flex flex-col gap-12">
+    <Frame>
       {groups.length === 0 && (
         <Paper className="px-6 py-12 text-center">
           <span className="text-sm tracking-wide text-c-rule">{svcs.length === 0 ? "NO CONTAINERS" : "NOTHING RUNNING"}</span>
         </Paper>
       )}
-      {groups.map(({ name, svcs }) => (
-        <section key={name ?? ""} className="flex flex-col gap-4">
-          <h2 className={clsx("text-2xl", !name && "italic text-c-rule")}>{name ?? "(ungrouped)"}</h2>
-          <div className="flex flex-wrap gap-6">
-            {svcs.map((svc) => (
-              <SvcCard key={svc.id} svc={svc} />
-            ))}
-          </div>
-        </section>
-      ))}
+      {/* as many columns as fit, so a tall group and a few short ones fill the width together */}
+      <div className="columns-sm gap-x-6">
+        {groups.map(({ name, svcs }) => (
+          <SvcGroupCard key={name ?? ""} name={name} svcs={svcs} />
+        ))}
+      </div>
     </Frame>
   );
 }

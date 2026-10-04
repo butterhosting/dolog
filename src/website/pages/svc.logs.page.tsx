@@ -65,7 +65,7 @@ export function svcLogsPage() {
         onSearch={() => (searchResult.activated ? searchResult.deactivate() : searchResult.activate())}
       />
       <div className="relative min-h-0 flex-1 bg-c-surface">
-        <div ref={registerParentNode} className={clsx("h-full overflow-y-auto [overflow-anchor:none] px-4 py-3.5", textSize.className)}>
+        <div ref={registerParentNode} className={clsx("h-full overflow-y-auto [overflow-anchor:none] px-4 py-3.5 text-c-log", textSize.className)}>
           {logsResult.isLoading && (
             <div className="flex justify-center py-8">
               <SpinnerIcon />

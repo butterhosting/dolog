@@ -40,5 +40,8 @@ export namespace Line {
     type: Type.event;
     event: ContainerEvent;
     isAnchored: boolean;
+    isStriped: boolean;
+    /** Right below a log line from the same second, so its own timestamp would only repeat that one */
+    repeatsTimestamp: boolean;
   };
 }

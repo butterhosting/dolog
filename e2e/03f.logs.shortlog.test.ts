@@ -63,7 +63,7 @@ namespace Internal {
     await DockerBoundary.runQuietly({ name, lines });
     const svc = await AppBoundary.getSvc(page, name);
     // more than `lines` events, because the container's start is one as well
-    await AppBoundary.ensureEnoughHistory(page, { svcId: svc.id, events: lines, timeout: 10_000 });
+    await AppBoundary.ensureEnoughHistory(page, { svcId: svc.id, events: lines });
     await page.goto(`services/${svc.id}/logs`);
     await expect(LogsFlow.rows(page).last()).toContainText(`${lines}`);
   }
