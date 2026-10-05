@@ -1,3 +1,4 @@
+import { Configuration } from "@/models/Configuration";
 import { Container } from "@/models/Container";
 import { Svc } from "@/models/Svc";
 import { TestEnvironment } from "@/testing/TestEnvironment.test";
@@ -21,7 +22,7 @@ describe(ConfigurationService.name, () => {
     // when
     const { settings } = service.snapshot([]);
     // then (instance-wide first, then the per-container ones, each under the operator's name for it)
-    expect(settings.map(({ envVar }) => envVar)).toEqual([
+    expect(settings.map(Configuration.keyOf)).toEqual([
       "DOLOG_TIMEZONE",
       "DOLOG_LOGGING",
       "DOLOG_WEBHOOKS",
@@ -32,24 +33,25 @@ describe(ConfigurationService.name, () => {
       "DOLOG_ALERTING_TEXT_PATTERN",
       "DOLOG_ALERTING_THROUGHPUT_THRESHOLD",
       "DOLOG_ALERTING_COOLDOWN_WINDOW",
+      "display.group",
     ]);
     // one webhook per line, with the credentials left out of the URL
-    expect(settings.find(({ envVar }) => envVar === "DOLOG_WEBHOOKS")).toEqual({
+    expect(settings.find((setting) => Configuration.keyOf(setting) === "DOLOG_WEBHOOKS")).toEqual({
       envVar: "DOLOG_WEBHOOKS",
       envValue: "ops = https://hooks.example.com/dolog",
       defaultValue: "",
     });
-    expect(settings.find(({ envVar }) => envVar === "DOLOG_ALERTING_WEBHOOK_REF")).toEqual({
+    expect(settings.find((setting) => Configuration.keyOf(setting) === "DOLOG_ALERTING_WEBHOOK_REF")).toEqual({
       envVar: "DOLOG_ALERTING_WEBHOOK_REF",
       defaultValue: "",
       containerLabel: { name: "dolog.alerting.webhook-ref", overrides: [] },
     });
-    expect(settings.find(({ envVar }) => envVar === "DOLOG_LOGGING")).toEqual({
+    expect(settings.find((setting) => Configuration.keyOf(setting) === "DOLOG_LOGGING")).toEqual({
       envVar: "DOLOG_LOGGING",
       envValue: "warn",
       defaultValue: "info",
     });
-    expect(settings.find(({ envVar }) => envVar === "DOLOG_RETENTION_TIME_WINDOW")).toEqual({
+    expect(settings.find((setting) => Configuration.keyOf(setting) === "DOLOG_RETENTION_TIME_WINDOW")).toEqual({
       envVar: "DOLOG_RETENTION_TIME_WINDOW",
       envValue: "30d",
       defaultValue: "180d",
@@ -64,12 +66,31 @@ describe(ConfigurationService.name, () => {
     // when
     const { settings } = service.snapshot([svc(web, true), svc(db, false)]);
     // then
-    const throttling = settings.find(({ envVar }) => envVar === "DOLOG_THROTTLING_LOGS_PER_SECOND");
+    const throttling = settings.find((setting) => Configuration.keyOf(setting) === "DOLOG_THROTTLING_LOGS_PER_SECOND");
     expect(throttling?.containerLabel?.overrides).toEqual([
       { dname: "web", dgroup: "shop", value: "50", valid: true, stopped: false },
       { dname: "db", dgroup: undefined, value: "abc", valid: false, stopped: true },
     ]);
-    expect(settings.find(({ envVar }) => envVar === "DOLOG_RETENTION_MAX_LINES")?.containerLabel?.overrides).toEqual([]);
+    expect(settings.find((setting) => Configuration.keyOf(setting) === "DOLOG_RETENTION_MAX_LINES")?.containerLabel?.overrides).toEqual([]);
+  });
+
+  it("should list the display group as a label without an environment variable, any value of it readable", () => {
+    // given
+    const web = TestFixture.container({ dname: "web", dgroup: "shop", dlabels: { "display.group": "storefront" } });
+    const db = TestFixture.container({ dname: "db", dgroup: "shop", dlabels: { "display.group": "" } });
+    // when
+    const { settings } = service.snapshot([svc(web, true), svc(db, true)]);
+    // then
+    expect(settings.find((setting) => Configuration.keyOf(setting) === "display.group")).toEqual({
+      labelName: "display.group",
+      containerLabel: {
+        name: "dolog.display.group",
+        overrides: [
+          { dname: "web", dgroup: "shop", value: "storefront", valid: true, stopped: false },
+          { dname: "db", dgroup: "shop", value: "", valid: true, stopped: false },
+        ],
+      },
+    });
   });
 
   function svc({ dname, dgroup, dimage, dlabels }: Container, running: boolean): Svc {

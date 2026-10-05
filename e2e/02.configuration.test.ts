@@ -7,45 +7,50 @@ test("every setting is listed under its topic, with its value and the labels ove
   // given
   type TestCase = {
     topic: string;
-    envVar: string;
+    key: string;
     expectation: string[];
   };
   const testCases: TestCase[] = [
     {
       topic: "system",
-      envVar: "DOLOG_TIMEZONE",
+      key: "DOLOG_TIMEZONE",
       expectation: ["UTC (using default)"],
     },
     {
       topic: "system",
-      envVar: "DOLOG_LOGGING",
+      key: "DOLOG_LOGGING",
       expectation: ["debug"],
     },
     {
       topic: "retention",
-      envVar: "DOLOG_RETENTION_MAX_LINES",
+      key: "DOLOG_RETENTION_MAX_LINES",
       expectation: ["100000 (using default)", "dolog.retention.max-lines", "(no labels detected)"],
     },
     {
       topic: "throttling",
-      envVar: "DOLOG_THROTTLING_LOGS_PER_SECOND",
+      key: "DOLOG_THROTTLING_LOGS_PER_SECOND",
       expectation: ["100 (using default)", "dolog.throttling.logs-per-second", "dolog / firehose", "150"],
     },
-    { topic: "webhooks", envVar: "DOLOG_WEBHOOKS", expectation: ["local = http://webhooks:3001/"] },
+    { topic: "webhooks", key: "DOLOG_WEBHOOKS", expectation: ["local = http://webhooks:3001/"] },
     {
       topic: "alerting",
-      envVar: "DOLOG_ALERTING_WEBHOOK_REF",
+      key: "DOLOG_ALERTING_WEBHOOK_REF",
       expectation: ["local", "dolog.alerting.webhook-ref", "(no labels detected)"],
     },
     {
       topic: "alerting",
-      envVar: "DOLOG_ALERTING_TEXT_PATTERN",
+      key: "DOLOG_ALERTING_TEXT_PATTERN",
       expectation: ["(none)", "dolog.alerting.text-pattern", "dolog / trickle", '" 500'],
     },
     {
       topic: "alerting",
-      envVar: "DOLOG_ALERTING_THROUGHPUT_THRESHOLD",
+      key: "DOLOG_ALERTING_THROUGHPUT_THRESHOLD",
       expectation: ["(none)", "dolog.alerting.throughput-threshold", "dolog / firehose", "300"],
+    },
+    {
+      topic: "display",
+      key: "display.group",
+      expectation: ["dolog.display.group", "dolog / webhooks", "tooling"],
     },
   ];
 
@@ -53,9 +58,9 @@ test("every setting is listed under its topic, with its value and the labels ove
   await page.goto("configuration");
 
   // then
-  for (const { topic, envVar, expectation } of testCases) {
-    const setting = page.getByTestId(`topic-${topic}`).getByTestId(`setting-${envVar}`);
-    await expect(setting).toContainText(envVar);
+  for (const { topic, key, expectation } of testCases) {
+    const setting = page.getByTestId(`topic-${topic}`).getByTestId(`setting-${key}`);
+    await expect(setting).toContainText(key.startsWith("DOLOG_") ? key : `dolog.${key}`);
     for (const text of expectation) {
       await expect(setting).toContainText(text);
     }

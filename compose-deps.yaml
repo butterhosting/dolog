@@ -73,6 +73,9 @@ services:
     stop_grace_period: 100ms
     ports:
       - "3001:3001"
+    # listed apart from the compose project it belongs to, so the overview shows a group of its own
+    labels:
+      dolog.display.group: tooling
     command:
       - bun
       - -e

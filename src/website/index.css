@@ -11,7 +11,7 @@
     /* the chrome around the logs -- header and toolbar sit on this */
     --color-c-shell: #0f0e11;
     /* the logs themselves, one step lighter so the two read as separate planes; not black, which makes white text glare */
-    --color-c-surface: #18171b;
+    --color-c-surface: #141316;
     /* reserved for controls that *do* something; nothing decorative is allowed to wear it */
     --color-c-accent: #feea3a;
     /* hairlines and any text the eye should skip past, timestamps included */

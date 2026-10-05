@@ -46,23 +46,34 @@ export class ConfigurationService {
     const instanceWide = INSTANCE_WIDE.map((key) => this.setting(key));
     const perContainer = Object.values(ContainerLabelConfig.Settings).map(({ name, envKey }) => ({
       ...this.setting(envKey),
-      containerLabel: {
-        name: `${prefix}${name}`,
-        overrides: svcs
-          .filter(({ mostRecentContainer }) => mostRecentContainer.dlabels[name] !== undefined)
-          .map(({ dname, dgroup, mostRecentContainer: { dlabels, liveStats } }) => ({
-            dname,
-            dgroup,
-            value: dlabels[name]!,
-            valid: !ContainerLabelConfig.resolve(this.env, dlabels).issues.some((issue) => issue.label === `${prefix}${name}`),
-            stopped: !liveStats,
-          })),
-      },
+      containerLabel: this.containerLabel(svcs, name, (dlabels) =>
+        ContainerLabelConfig.resolve(this.env, dlabels).issues.every((issue) => issue.label !== `${prefix}${name}`),
+      ),
     }));
-    return { settings: [...instanceWide, ...perContainer] };
+    const labelOnly: Configuration.LabelSetting = {
+      labelName: Svc.DISPLAY_GROUP_LABEL,
+      // any text names a group, an empty one included
+      containerLabel: this.containerLabel(svcs, Svc.DISPLAY_GROUP_LABEL, () => true),
+    };
+    return { settings: [...instanceWide, ...perContainer, labelOnly] };
   }
 
-  private setting(key: Configuration.EnvVar): Configuration.Setting {
+  private containerLabel(svcs: Svc[], name: string, isValid: (dlabels: Record<string, string>) => boolean): Configuration.ContainerLabel {
+    return {
+      name: `${this.env.DOLOG_CONTAINER_LABEL_PREFIX}${name}`,
+      overrides: svcs
+        .filter(({ mostRecentContainer }) => mostRecentContainer.dlabels[name] !== undefined)
+        .map(({ dname, dgroup, mostRecentContainer: { dlabels, liveStats } }) => ({
+          dname,
+          dgroup,
+          value: dlabels[name]!,
+          valid: isValid(dlabels),
+          stopped: !liveStats,
+        })),
+    };
+  }
+
+  private setting(key: Configuration.EnvVar): Configuration.EnvSetting {
     return {
       envVar: key,
       envValue: (() => {

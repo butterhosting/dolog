@@ -44,6 +44,8 @@ export function svcLogsPage() {
 
   const svc = useSvcs({ id: svcId });
   const { dname, dgroup } = svc ?? Svc.decodeId(svcId);
+  // until the service arrives, its docker group is the best guess there is
+  const group = svc ? Svc.displayGroup(svc) : dgroup;
 
   useDocumentTitle(`${dname} | Dolog`);
 
@@ -52,7 +54,7 @@ export function svcLogsPage() {
       <DemoBanner />
       <SvcHeader
         dname={dname} //
-        dgroup={dgroup}
+        group={group}
         dimage={svc?.mostRecentContainer.dimage}
         filter={filterResult}
       />

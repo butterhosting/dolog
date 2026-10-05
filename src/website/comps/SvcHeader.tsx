@@ -8,11 +8,11 @@ import { CaretIcon } from "./icons/CaretIcon";
 
 type Props = {
   dname: string;
-  dgroup?: string;
+  group?: string;
   dimage?: string;
   filter: useFilter.Result;
 };
-export function SvcHeader({ dname, dgroup, dimage, filter }: Props) {
+export function SvcHeader({ dname, group, dimage, filter }: Props) {
   const { DOLOG_TIMEZONE } = useRegistry("env");
   return (
     <header className="relative flex h-16 shrink-0 items-center justify-center border-b border-c-rule">
@@ -21,7 +21,7 @@ export function SvcHeader({ dname, dgroup, dimage, filter }: Props) {
       </Link>
       <div className="flex flex-col items-center">
         <div>
-          {dgroup && <span className="text-sm text-c-rule">{dgroup} / </span>}
+          {group && <span className="text-sm text-c-rule">{group} / </span>}
           <span className="text-base text-c-accent">{dname}</span>
         </div>
         <span className="text-xs text-c-rule/50">{dimage ?? " "}</span>

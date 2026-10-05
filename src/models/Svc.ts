@@ -17,6 +17,15 @@ export type Svc = {
 export namespace Svc {
   export type Id = Pick<Svc, "dname" | "dgroup">;
 
+  /** Under the configured prefix, like every label; it moves a service to another card, never to another identity */
+  export const DISPLAY_GROUP_LABEL = "display.group";
+
+  /** The card a service is listed under: its label when it has one (an empty one leaving it ungrouped), else its docker group */
+  export function displayGroup({ dgroup, mostRecentContainer }: Pick<Svc, "dgroup" | "mostRecentContainer">): string | undefined {
+    const label = mostRecentContainer.dlabels[DISPLAY_GROUP_LABEL];
+    return label === undefined ? dgroup : label.trim() || undefined;
+  }
+
   export function encodeId({ dname, dgroup }: Id): string {
     const marker = dgroup ? "1" : "0";
     const len = dname.length.toString().padStart(3, "0"); // dname ≤ 999 chars

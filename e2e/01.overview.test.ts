@@ -44,6 +44,16 @@ test("a line says how fast its container logs, or that it is being throttled", a
   await expect(cards.filter({ hasText: "trickle" })).not.toContainText("throttling");
 });
 
+test("a container's display group label lists it apart from its compose project", async ({ page }) => {
+  // when
+  const groups = page.getByTestId("svc-group");
+
+  // then
+  // `webhooks` is labelled `dolog.display.group: tooling`; see `compose-deps.yaml`
+  await expect(groups.filter({ hasText: "tooling" }).getByTestId("svc-line")).toHaveText([/webhooks/]);
+  await expect(groups.filter({ hasText: "trickle" })).not.toContainText("webhooks");
+});
+
 test("a stopped container only shows once the preferences ask for it", async ({ page }) => {
   // given
   // a reused stack remembers the containers of earlier runs, so each run brings a name of its own

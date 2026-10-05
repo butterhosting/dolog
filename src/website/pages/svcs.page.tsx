@@ -48,7 +48,8 @@ namespace Internal {
   export function group(svcs: Svc[]): Group[] {
     const byName = new Map<string | undefined, Svc[]>();
     for (const svc of svcs) {
-      byName.set(svc.dgroup, [...(byName.get(svc.dgroup) ?? []), svc]);
+      const name = Svc.displayGroup(svc);
+      byName.set(name, [...(byName.get(name) ?? []), svc]);
     }
     return [...byName.entries()]
       .map(([name, members]) => ({ name, svcs: [...members].sort((a, b) => a.dname.localeCompare(b.dname)) }))

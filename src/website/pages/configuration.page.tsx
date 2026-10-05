@@ -39,7 +39,7 @@ namespace Internal {
     title?: string;
     description: ReactNode;
   };
-  const DOCS: Record<Configuration.EnvVar, Docs> = {
+  const DOCS: Record<Configuration.Key, Docs> = {
     DOLOG_TIMEZONE: {
       topic: "system",
       title: "timezone",
@@ -49,6 +49,12 @@ namespace Internal {
       topic: "system",
       title: "logging",
       description: "How much Dolog writes to its own output. Must be one of debug, info, warn or error.",
+    },
+    "display.group": {
+      topic: "display",
+      title: "group",
+      description:
+        "The group a service is shown under on the overview page, instead of its compose project. This is purely a visual preference for the overview page.",
     },
     DOLOG_RETENTION_TIME_WINDOW: {
       topic: "retention",
@@ -122,8 +128,8 @@ namespace Internal {
   };
   export function topics(configuration: Configuration): Topic[] {
     const topics: Topic[] = [];
-    for (const [envVar, docs] of Object.entries(DOCS) as Array<[Configuration.EnvVar, Docs]>) {
-      const setting = configuration.settings.find((setting) => setting.envVar === envVar);
+    for (const [key, docs] of Object.entries(DOCS) as Array<[Configuration.Key, Docs]>) {
+      const setting = configuration.settings.find((setting) => Configuration.keyOf(setting) === key);
       if (!setting) {
         continue;
       }
@@ -191,7 +197,7 @@ namespace Internal {
       <div data-testid={`topic-${topic.title}`} className={clsx("border-b", isLast ? "border-c-rule" : "border-c-rule/30")}>
         <Split pad="pt-10" left={<Heading yellow>{topic.title}</Heading>} />
         {topic.entries.map((entry, i) => (
-          <Fragment key={entry.setting.envVar}>
+          <Fragment key={Configuration.keyOf(entry.setting)}>
             {i > 0 && <Divider />}
             <Split left={<Docs entry={entry} />} right={<Live setting={entry.setting} />} />
           </Fragment>
@@ -216,7 +222,7 @@ namespace Internal {
         {/* a div, since a description may bring paragraphs of its own */}
         <div className="text-c-rule">
           {docs.description}
-          {setting.defaultValue && (
+          {"defaultValue" in setting && setting.defaultValue && (
             <>
               {" "}
               Default: <Value value={setting.defaultValue} />
@@ -231,7 +237,15 @@ namespace Internal {
 
   function Live({ setting }: { setting: Configuration.Setting }) {
     return (
-      <div data-testid={`setting-${setting.envVar}`} className="flex flex-col gap-3">
+      <div data-testid={`setting-${Configuration.keyOf(setting)}`} className="flex flex-col gap-3">
+        {"envVar" in setting ? <Global setting={setting} /> : <Overrides label={setting.containerLabel} isFirst />}
+      </div>
+    );
+  }
+
+  function Global({ setting }: { setting: Configuration.EnvSetting }) {
+    return (
+      <>
         <Caption accentText="global setting">- env variable</Caption>
         <Card className={clsx(ROW, "px-4 py-3")}>
           <span className="text-sm text-c-rule">{setting.envVar}</span>
@@ -244,14 +258,14 @@ namespace Internal {
           )}
         </Card>
         {setting.containerLabel && <Overrides label={setting.containerLabel} />}
-      </div>
+      </>
     );
   }
 
-  function Overrides({ label }: { label: NonNullable<Configuration.Setting["containerLabel"]> }) {
+  function Overrides({ label, isFirst }: { label: Configuration.ContainerLabel; isFirst?: true }) {
     return (
       <>
-        <Caption accentText="container overrides" accentColor="accent" className="mt-5">
+        <Caption accentText="container settings" accentColor="accent" className={clsx(!isFirst && "mt-5")}>
           - detected docker labels
         </Caption>
         <Card className="flex flex-col gap-3 px-4 py-3 border-l-2 border-l-c-accent!">
