@@ -7,8 +7,6 @@ describe("Env", () => {
   const REQUIRED = {
     DOLOG_STAGE: "dev",
     DOLOG_ROOT: "/opt/dolog",
-    DOLOG_VERIFICATION_KEY:
-      "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAalpLQu9Fkn/R3WylORAad6UB0XAOowFIjF2/FwAyjpc=\n-----END PUBLIC KEY-----",
   };
 
   beforeEach(async () => {

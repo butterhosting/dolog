@@ -6,7 +6,6 @@ import { Timezone } from "./helpers/Timezone";
 import { ZodParser } from "./helpers/ZodParser";
 import { LogLevel } from "./models/internal/LogLevel";
 import { Webhook } from "./models/Webhook";
-import { SupportToken } from "./support/SupportToken";
 import { ExtractBetter } from "./types/ExtractBetter";
 
 export namespace Env {
@@ -19,8 +18,6 @@ export namespace Env {
     DOLOG_ROOT: z.string(),
     DOLOG_LOGGING: z.enum(LogLevel),
     INTERACTIVE_DEMO: ZodParser.boolean(),
-    DOLOG_SUPPORT_TOKEN: z.string().optional(),
-    DOLOG_VERIFICATION_KEY: z.string().transform((str) => str.replaceAll("\\n", "\n")),
 
     DOLOG_THROTTLING_LOGS_PER_SECOND: ZodParser.positiveInteger(),
     DOLOG_RETENTION_TIME_WINDOW: ZodParser.duration(),
@@ -66,10 +63,9 @@ export namespace Env {
       throw new Error(`Invalid timezone: ${timezone}`);
     }
     const { provided, merged } = withDefaults(environment);
-    return Schema.transform(({ DOLOG_ROOT, DOLOG_SUPPORT_TOKEN, DOLOG_VERIFICATION_KEY, ...env }) => ({
+    return Schema.transform(({ DOLOG_ROOT, ...env }) => ({
       ...env,
       DOLOG_ROOT: isAbsolute(DOLOG_ROOT) ? DOLOG_ROOT : join(process.cwd(), DOLOG_ROOT),
-      DOLOG_SUPPORTER: Boolean(SupportToken.verify({ hexToken: DOLOG_SUPPORT_TOKEN, publicKey: DOLOG_VERIFICATION_KEY })),
     }))
       .transform((env) => ({
         ...env,
@@ -94,7 +90,7 @@ export namespace Env {
 
   export type Private = ReturnType<typeof initialize>;
   export type Public = Readonly<
-    Pick<Private, "DOLOG_STAGE" | "DOLOG_TIMEZONE" | "DOLOG_COMMIT" | "DOLOG_VERSION" | "DOLOG_SUPPORTER" | "INTERACTIVE_DEMO">
+    Pick<Private, "DOLOG_STAGE" | "DOLOG_TIMEZONE" | "DOLOG_COMMIT" | "DOLOG_VERSION" | "INTERACTIVE_DEMO">
   >;
   export function onlyPublic(env: Private): Public {
     return {
@@ -102,7 +98,6 @@ export namespace Env {
       DOLOG_TIMEZONE: env.DOLOG_TIMEZONE,
       DOLOG_COMMIT: env.DOLOG_COMMIT,
       DOLOG_VERSION: env.DOLOG_VERSION,
-      DOLOG_SUPPORTER: env.DOLOG_SUPPORTER,
       INTERACTIVE_DEMO: env.INTERACTIVE_DEMO,
     };
   }

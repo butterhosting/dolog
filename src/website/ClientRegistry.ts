@@ -30,7 +30,6 @@ export class ClientRegistry {
       DOLOG_VERSION: env.DOLOG_VERSION,
       DOLOG_COMMIT: env.DOLOG_COMMIT,
       DOLOG_TIMEZONE: env.DOLOG_TIMEZONE,
-      DOLOG_SUPPORTER: env.DOLOG_SUPPORTER,
       INTERACTIVE_DEMO: env.INTERACTIVE_DEMO,
     };
     const longestKey = Object.keys(envCopy)
