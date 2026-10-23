@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM oven/bun:alpine AS builder
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.4-alpine AS builder
 WORKDIR /app
 COPY package.json bun.lock* tsconfig.json bunfig.toml bun-env.d.ts drizzle.config.ts .env.* ./
 ARG VERSION=0.0.0
@@ -9,7 +9,7 @@ RUN bun -e "const p='./package.json'; const j=await Bun.file(p).json(); j.versio
 RUN bun install --frozen-lockfile --production --omit=peer
 COPY src/ src/
 
-FROM oven/bun:alpine
+FROM oven/bun:1.4.4-alpine
 RUN apk add --no-cache bash sqlite su-exec
 COPY --chmod=755 deployment/entrypoint.sh /entrypoint.sh
 WORKDIR /app
